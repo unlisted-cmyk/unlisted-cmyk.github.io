@@ -1,0 +1,1547 @@
+<!DOCTYPE html>
+
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>WorkForge 3D - Simulador de Taller</title>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0b10;
+  --panel: #12141c;
+  --panel2: #1a1c27;
+  --border: #252838;
+  --accent: #ff6b35;
+  --accent2: #ffd700;
+  --text: #c8cdd8;
+  --text2: #565c6e;
+  --success: #22c55e;
+  --danger: #ef4444;
+  /* Tap-target mínimo 44px */
+  --tap: 44px;
+  --lw: 230px;
+  --rw: 270px;
+  --tbh: 52px;
+  --sbh: 36px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+body { background: var(--bg); color: var(--text); font-family: 'Rajdhani', sans-serif; overflow: hidden; user-select: none; touch-action: none; }
+
+#canvas-container { position: fixed; inset: 0; z-index: 1; }
+
+/* ── TOP BAR ── */
+#topbar {
+position: fixed; top: 0; left: 0; right: 0; height: var(–tbh);
+background: var(–panel); border-bottom: 1px solid var(–border);
+display: flex; align-items: center; padding: 0 10px; gap: 5px; z-index: 100;
+overflow-x: auto; overflow-y: hidden;
+}
+#topbar::-webkit-scrollbar { display: none; }
+.tb-title { font-size: 1rem; font-weight: 700; color: var(–accent); letter-spacing: 2px; margin-right: 6px; flex-shrink: 0; }
+.tb-sep { width: 1px; height: 26px; background: var(–border); margin: 0 2px; flex-shrink: 0; }
+.tb-spacer { flex: 1; min-width: 8px; }
+.tbtn {
+background: var(–panel2); border: 1px solid var(–border); color: var(–text);
+padding: 0 11px; height: 36px; border-radius: 6px; cursor: pointer;
+font-family: ‘Rajdhani’, sans-serif; font-size: 0.82rem; font-weight: 600;
+transition: background 0.13s, border-color 0.13s; display: flex; align-items: center;
+gap: 5px; flex-shrink: 0; white-space: nowrap; min-width: var(–tap);
+}
+.tbtn:hover, .tbtn:active { border-color: var(–accent); color: var(–accent); }
+.tbtn:disabled { opacity: 0.3; cursor: not-allowed; }
+.tbtn.active-snap { border-color: var(–accent); color: var(–accent); background: rgba(255,107,53,.12); }
+.tbtn.danger { color: var(–danger); }
+.tbtn.danger:hover, .tbtn.danger:active { border-color: var(–danger); }
+
+/* ── TOOL INFO ── */
+#toolinfo {
+position: fixed; top: var(–tbh); left: 0; right: 0; height: 26px;
+background: rgba(10,11,16,0.92); border-bottom: 1px solid var(–border);
+display: flex; align-items: center; padding: 0 10px; gap: 12px;
+font-family: ‘Share Tech Mono’, monospace; font-size: 0.68rem; color: var(–text2); z-index: 99;
+overflow: hidden;
+}
+.ti-tool { color: var(–accent); font-weight: bold; }
+.ti-coords { margin-left: auto; font-size: 0.62rem; }
+
+/* ── LEFT PANEL ── */
+#lpanel {
+position: fixed; top: calc(var(–tbh) + 26px); left: 0;
+width: var(–lw); bottom: var(–sbh);
+background: var(–panel); border-right: 1px solid var(–border);
+overflow-y: auto; overflow-x: hidden; z-index: 50;
+display: flex; flex-direction: column;
+transition: transform 0.22s ease;
+}
+
+/* ── RIGHT PANEL ── */
+#rpanel {
+position: fixed; top: calc(var(–tbh) + 26px); right: 0;
+width: var(–rw); bottom: var(–sbh);
+background: var(–panel); border-left: 1px solid var(–border);
+overflow-y: auto; z-index: 50;
+display: flex; flex-direction: column;
+transition: transform 0.22s ease;
+}
+
+/* ── PANEL TOGGLE BUTTONS (mobile) ── */
+#btn-lpanel, #btn-rpanel {
+display: none; position: fixed; z-index: 60;
+width: 40px; height: 40px; border-radius: 50%;
+background: var(–panel); border: 1px solid var(–border);
+color: var(–text); font-size: 1.1rem; cursor: pointer;
+align-items: center; justify-content: center;
+box-shadow: 0 3px 12px rgba(0,0,0,.5);
+}
+#btn-lpanel { bottom: calc(var(–sbh) + 10px); left: 10px; }
+#btn-rpanel { bottom: calc(var(–sbh) + 10px); right: 10px; }
+
+/* ── BOTTOM STATUS ── */
+#statusbar {
+position: fixed; bottom: 0; left: 0; right: 0; height: var(–sbh);
+background: var(–panel); border-top: 1px solid var(–border);
+display: flex; align-items: center; padding: 0 10px; gap: 10px;
+font-family: ‘Share Tech Mono’, monospace; font-size: 0.66rem; color: var(–text2); z-index: 100;
+overflow: hidden;
+}
+.sb-sep { width: 1px; height: 14px; background: var(–border); }
+.kbkey { background: var(–panel2); border: 1px solid var(–border); padding: 1px 4px; border-radius: 2px; color: var(–text); font-size: 0.62rem; }
+#sb-selected { margin-left: auto; color: var(–accent); font-size: 0.7rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
+#sb-hints { display: flex; gap: 8px; }
+
+/* ── PANEL SECTIONS ── */
+.ps { padding: 10px 12px; border-bottom: 1px solid var(–border); }
+.ps:last-child { border-bottom: none; }
+.pt { font-size: 0.64rem; font-weight: 700; color: var(–text2); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 8px; }
+
+/* ── TOOL BUTTONS (touch-friendly) ── */
+.toolbtn {
+width: 100%; min-height: var(–tap); padding: 0 10px; background: transparent;
+border: 1px solid transparent; border-radius: 6px;
+color: var(–text); cursor: pointer; font-family: ‘Rajdhani’, sans-serif;
+font-size: 0.92rem; font-weight: 600;
+display: flex; align-items: center; gap: 10px; margin-bottom: 2px; transition: all 0.12s;
+}
+.toolbtn:hover, .toolbtn:active { background: var(–panel2); border-color: var(–border); }
+.toolbtn.active { background: rgba(255,107,53,.13); border-color: var(–accent); color: var(–accent); }
+.toolbtn .ticon { width: 22px; text-align: center; font-size: 1.1rem; flex-shrink: 0; }
+.toolbtn .tshort { margin-left: auto; font-size: 0.62rem; color: var(–text2); font-family: ‘Share Tech Mono’, monospace; background: var(–panel2); border: 1px solid var(–border); padding: 1px 4px; border-radius: 2px; flex-shrink: 0; }
+
+/* ── INVENTORY BUTTONS (touch-friendly) ── */
+.invbtn {
+width: 100%; min-height: var(–tap); padding: 0 12px;
+background: var(–panel2); border: 1px solid var(–border);
+border-radius: 6px; color: var(–text); cursor: pointer;
+font-family: ‘Rajdhani’, sans-serif; font-size: 0.92rem; font-weight: 600;
+display: flex; align-items: center; gap: 10px; margin-bottom: 6px; transition: all 0.12s;
+}
+.invbtn:hover, .invbtn:active { border-color: var(–accent); color: var(–accent); }
+
+/* ── PROPERTIES ── */
+.prop-row { display: flex; align-items: center; gap: 6px; margin-bottom: 7px; }
+.prop-lbl { font-size: 0.7rem; color: var(–text2); width: 64px; flex-shrink: 0; }
+.prop-val {
+flex: 1; background: var(–bg); border: 1px solid var(–border); border-radius: 4px;
+padding: 6px 8px; font-family: ‘Share Tech Mono’, monospace; font-size: 0.75rem; color: var(–text);
+min-height: 34px;
+}
+.prop-val:focus { outline: none; border-color: var(–accent); }
+.prop-static { flex: 1; font-family: ‘Share Tech Mono’, monospace; font-size: 0.72rem; color: var(–text2); }
+.prop-sub { font-size: 0.62rem; color: var(–text2); text-transform: uppercase; letter-spacing: 1.5px; margin: 9px 0 5px 0; }
+
+/* ── COLOR SWATCHES ── */
+.cgrid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
+.cswatch {
+aspect-ratio: 1; border-radius: 4px; cursor: pointer; min-height: 28px;
+border: 2px solid transparent; transition: all 0.12s;
+}
+.cswatch:hover, .cswatch:active, .cswatch.active { border-color: white; transform: scale(1.12); }
+
+/* ── PIECE LIST ── */
+.plitem {
+display: flex; align-items: center; gap: 8px; padding: 9px 8px;
+border-radius: 4px; cursor: pointer; transition: all 0.12s; font-size: 0.85rem; margin-bottom: 1px;
+min-height: var(–tap);
+}
+.plitem:hover, .plitem:active { background: var(–panel2); }
+.plitem.selected { background: rgba(255,107,53,.1); border-left: 2px solid var(–accent); padding-left: 6px; }
+.pldot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.plname { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pltype { font-size: 0.68rem; color: var(–text2); flex-shrink: 0; }
+
+/* ── RANGE SLIDERS (larger touch target) ── */
+input[type=range] {
+-webkit-appearance: none; height: 4px; border-radius: 2px; background: var(–border);
+outline: none; cursor: pointer; width: 100%;
+}
+input[type=range]::-webkit-slider-thumb {
+-webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%;
+background: var(–accent); cursor: pointer; border: 2px solid var(–panel);
+}
+
+/* ── MODAL ── */
+#modal-bg {
+display: none; position: fixed; inset: 0; background: rgba(0,0,0,.75);
+z-index: 200; align-items: center; justify-content: center;
+}
+#modal-bg.open { display: flex; }
+#modal {
+background: var(–panel); border: 1px solid var(–border); border-radius: 12px;
+padding: 20px; width: min(500px, 96vw); max-height: 90vh; overflow-y: auto;
+box-shadow: 0 24px 70px rgba(0,0,0,.85);
+}
+.m-title { font-size: 1.1rem; font-weight: 700; color: var(–accent); letter-spacing: 2px; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 1px solid var(–border); }
+.m-sec { margin-bottom: 14px; }
+.m-st { font-size: 0.63rem; color: var(–text2); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 8px; }
+
+/* ── SHAPE GRID ── */
+.shapegrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.sbtn {
+padding: 12px 6px; background: var(–panel2); border: 1px solid var(–border);
+border-radius: 6px; color: var(–text); cursor: pointer; font-family: ‘Rajdhani’, sans-serif;
+font-size: 0.82rem; font-weight: 600; text-align: center; transition: all 0.12s;
+display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 64px; justify-content: center;
+}
+.sbtn:hover, .sbtn:active { border-color: var(–accent); }
+.sbtn.active { border-color: var(–accent); background: rgba(255,107,53,.13); color: var(–accent); }
+.sbtn .si { font-size: 1.5rem; }
+
+/* ── MATERIAL GRID ── */
+.matgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.mbtn {
+padding: 10px 4px; background: var(–panel2); border: 1px solid var(–border);
+border-radius: 6px; color: var(–text); cursor: pointer; font-family: ‘Rajdhani’, sans-serif;
+font-size: 0.82rem; font-weight: 600; text-align: center; transition: all 0.12s; min-height: var(–tap);
+}
+.mbtn:hover, .mbtn:active { border-color: var(–accent); }
+.mbtn.active { border-color: var(–accent); background: rgba(255,107,53,.13); color: var(–accent); }
+
+/* ── SLIDERS ── */
+.slrow { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.sllbl { width: 72px; font-size: 0.78rem; color: var(–text2); flex-shrink: 0; }
+.slval { width: 42px; text-align: right; font-family: ‘Share Tech Mono’, monospace; font-size: 0.78rem; color: var(–accent); flex-shrink: 0; font-weight: 600; }
+
+/* ── MODAL COLORS ── */
+.mcgrid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; }
+.mcs { aspect-ratio: 1; border-radius: 4px; cursor: pointer; border: 2px solid transparent; transition: all 0.12s; min-height: 24px; }
+.mcs:hover, .mcs:active, .mcs.active { border-color: white; transform: scale(1.1); }
+
+/* ── MODAL BUTTONS ── */
+.mfooter { display: flex; gap: 8px; margin-top: 16px; }
+.mbtn-primary {
+flex: 1; padding: 13px; background: var(–accent); border: none; border-radius: 6px;
+color: white; font-family: ‘Rajdhani’, sans-serif; font-size: 1rem; font-weight: 700;
+cursor: pointer; transition: all 0.13s; letter-spacing: 1px; min-height: var(–tap);
+}
+.mbtn-primary:hover, .mbtn-primary:active { background: #ff8c5a; }
+.mbtn-sec {
+padding: 13px 16px; background: var(–panel2); border: 1px solid var(–border);
+border-radius: 6px; color: var(–text); font-family: ‘Rajdhani’, sans-serif;
+font-size: 1rem; font-weight: 600; cursor: pointer; transition: all 0.12s; min-height: var(–tap);
+}
+.mbtn-sec:hover, .mbtn-sec:active { border-color: var(–text); }
+
+input[type=text], input[type=number] {
+background: var(–panel2); border: 1px solid var(–border); border-radius: 5px;
+color: var(–text); font-family: ‘Rajdhani’, sans-serif; font-size: 0.92rem; outline: none;
+min-height: 36px; padding: 6px 10px;
+}
+input[type=text]:focus, input[type=number]:focus { border-color: var(–accent); }
+
+/* ── NOTIFICATIONS ── */
+#notifs { position: fixed; bottom: 50px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 5px; z-index: 500; pointer-events: none; }
+.nf {
+background: rgba(10,11,16,0.95); border: 1px solid var(–border);
+border-left: 3px solid var(–accent); padding: 9px 16px; border-radius: 6px;
+font-family: ‘Share Tech Mono’, monospace; font-size: 0.75rem; color: var(–text);
+animation: nfin .18s ease, nfout .25s ease 1.75s forwards;
+white-space: nowrap; max-width: 90vw; overflow: hidden; text-overflow: ellipsis;
+}
+.nf.ok { border-left-color: var(–success); }
+.nf.err { border-left-color: var(–danger); }
+@keyframes nfin { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+@keyframes nfout { from { opacity:1; } to { opacity:0; transform:translateY(-6px); } }
+
+/* ── CROSSHAIR ── */
+#xhair { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); pointer-events: none; z-index: 10; opacity: 0.35; }
+#xhair::before, #xhair::after { content:’’; position:absolute; background:white; }
+#xhair::before { top:10px; left:0; width:22px; height:2px; }
+#xhair::after { top:0; left:10px; width:2px; height:22px; }
+
+/* ── HOVER TOOLTIP ── */
+#htip {
+position: fixed; background: rgba(10,11,16,.95); border: 1px solid var(–border);
+padding: 5px 10px; border-radius: 5px; font-family: ‘Share Tech Mono’, monospace;
+font-size: 0.72rem; pointer-events: none; display: none; z-index: 150; color: var(–text);
+}
+
+/* ── CONTEXT MENU ── */
+#ctx-menu {
+position: fixed; background: var(–panel); border: 1px solid var(–border); border-radius: 8px;
+padding: 6px 0; min-width: 170px; z-index: 300; box-shadow: 0 8px 30px rgba(0,0,0,.6);
+display: none;
+}
+.ctx-item {
+padding: 12px 16px; font-size: 0.9rem; cursor: pointer; display: flex; align-items: center; gap: 10px;
+transition: background 0.1s; min-height: var(–tap);
+}
+.ctx-item:hover, .ctx-item:active { background: var(–panel2); color: var(–accent); }
+.ctx-item.danger:hover, .ctx-item.danger:active { color: var(–danger); }
+.ctx-sep { height: 1px; background: var(–border); margin: 4px 0; }
+
+/* ── HIST ── */
+#hist-list { max-height: 100px; overflow-y: auto; font-family: ‘Share Tech Mono’, monospace; font-size: 0.65rem; color: var(–text2); }
+.hitem { padding: 3px 0; border-bottom: 1px solid var(–border); }
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: var(–panel); }
+::-webkit-scrollbar-thumb { background: var(–border); border-radius: 2px; }
+
+/* ── MOBILE / TABLET RESPONSIVE ── */
+@media (max-width: 768px) {
+:root { –lw: 220px; –rw: 250px; –tbh: 52px; }
+
+/* Panels hidden off-screen by default on mobile */
+#lpanel { transform: translateX(-100%); }
+#rpanel { transform: translateX(100%); }
+#lpanel.open { transform: translateX(0); }
+#rpanel.open { transform: translateX(0); }
+
+/* Show toggle buttons on mobile */
+#btn-lpanel, #btn-rpanel { display: flex; }
+
+/* Hide keyboard shortcuts in status bar on mobile */
+#sb-hints { display: none; }
+.tb-sep:not(:first-of-type) { display: none; }
+.tbtn .tbtn-txt { display: none; }
+
+/* Toolinfo more compact */
+#toolinfo .ti-coords { display: none; }
+
+/* Bigger taps on touch */
+.toolbtn { min-height: 50px; font-size: 1rem; }
+.invbtn { min-height: 50px; font-size: 1rem; }
+.tbtn { height: 40px; font-size: 0.85rem; }
+
+/* Modal full-width on mobile */
+#modal { border-radius: 12px 12px 0 0; position: fixed; bottom: 0; left: 0; right: 0; width: 100%; max-height: 85vh; border-left: none; border-right: none; border-bottom: none; }
+#modal-bg.open { align-items: flex-end; }
+}
+
+@media (min-width: 769px) {
+/* Show keyboard shortcuts on desktop */
+#sb-hints { display: flex; }
+#btn-lpanel, #btn-rpanel { display: none !important; }
+}
+</style>
+
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}</script>
+
+</head>
+<body>
+
+<!-- CANVAS -->
+
+<div id="canvas-container"></div>
+<div id="xhair"></div>
+<div id="htip"></div>
+<div id="notifs"></div>
+
+<!-- PANEL TOGGLES (mobile) -->
+
+<button id="btn-lpanel" title="Menú">☰</button>
+<button id="btn-rpanel" title="Propiedades">⚙</button>
+
+<!-- TOP BAR -->
+
+<div id="topbar">
+  <div class="tb-title">⚙ WORKFORGE</div>
+  <div class="tb-sep"></div>
+  <button class="tbtn" id="btnUndo" disabled title="Ctrl+Z">↩ Deshacer</button>
+  <button class="tbtn" id="btnRedo" disabled title="Ctrl+Y">↪ Rehacer</button>
+  <div class="tb-sep"></div>
+  <button class="tbtn" id="btnSnap">⊞ Grid: OFF</button>
+  <button class="tbtn" id="btnWire">⬜ Wireframe</button>
+  <button class="tbtn" id="btnShadow">💡 Sombras: ON</button>
+  <div class="tb-sep"></div>
+  <button class="tbtn" id="btnShot">📸 Captura</button>
+  <button class="tbtn" id="btnSave">💾 Guardar</button>
+  <button class="tbtn" id="btnLoad">📂 Cargar</button>
+  <button class="tbtn danger" id="btnReset">🗑 Limpiar Todo</button>
+  <div class="tb-spacer"></div>
+  <span id="pcount" style="font-family:'Share Tech Mono',monospace;font-size:0.72rem;color:var(--text2);">0 piezas</span>
+  <span style="font-family:'Share Tech Mono',monospace;font-size:0.72rem;color:var(--text2);margin-left:8px;">FPS: <span id="fps-v" style="color:var(--accent)">60</span></span>
+</div>
+
+<!-- TOOL INFO -->
+
+<div id="toolinfo">
+  HERRAMIENTA: <span class="ti-tool" id="ti-name">SELECCIONAR</span>
+  <span>|</span>
+  <span id="ti-hint">Haz clic en una pieza para seleccionarla</span>
+  <span class="ti-coords" id="ti-coords">Cursor: (0, 0, 0)</span>
+</div>
+
+<!-- LEFT PANEL -->
+
+<div id="lpanel">
+  <div class="ps">
+    <div class="pt">Crear Pieza</div>
+    <button class="invbtn" id="btnNewPiece">✦ Nueva Pieza Personalizada</button>
+    <div style="font-size:0.68rem;color:var(--text2);margin-bottom:5px;">Acceso rápido:</div>
+    <button class="invbtn" id="qWood">🪵 Tabla de Madera</button>
+    <button class="invbtn" id="qMetal">⚙️ Placa de Metal</button>
+    <button class="invbtn" id="qPipe">🔧 Tubo de Metal</button>
+    <button class="invbtn" id="qConcrete">🧱 Bloque de Hormigón</button>
+    <button class="invbtn" id="qPlastic">🔵 Pieza de Plástico</button>
+  </div>
+
+  <div class="ps">
+    <div class="pt">Herramientas</div>
+    <button class="toolbtn active" id="toolSelect"><span class="ticon">↖</span>Seleccionar<span class="tshort">S</span></button>
+    <button class="toolbtn" id="toolMove"><span class="ticon">🖐</span>Mover<span class="tshort">M</span></button>
+    <button class="toolbtn" id="toolRotate"><span class="ticon">🔄</span>Rotar<span class="tshort">R</span></button>
+    <button class="toolbtn" id="toolScale"><span class="ticon">⇱</span>Escalar<span class="tshort">E</span></button>
+    <button class="toolbtn" id="toolDuplicate"><span class="ticon">⧉</span>Duplicar<span class="tshort">D</span></button>
+    <button class="toolbtn" id="toolDrill"><span class="ticon">🪛</span>Taladrar<span class="tshort">T</span></button>
+    <button class="toolbtn" id="toolScrew"><span class="ticon">🔩</span>Atornillar<span class="tshort">A</span></button>
+    <button class="toolbtn" id="toolCut"><span class="ticon">🪚</span>Cortar<span class="tshort">C</span></button>
+    <button class="toolbtn" id="toolPaint"><span class="ticon">🎨</span>Pintar<span class="tshort">P</span></button>
+    <button class="toolbtn" id="toolMeasure"><span class="ticon">📏</span>Medir<span class="tshort">N</span></button>
+    <button class="toolbtn" id="toolDelete" style="color:var(--danger)"><span class="ticon">✕</span>Eliminar<span class="tshort">X</span></button>
+  </div>
+
+  <div class="ps">
+    <div class="pt">Color de Pintura</div>
+    <div class="cgrid" id="paintGrid"></div>
+    <div style="display:flex;align-items:center;gap:7px;margin-top:7px;">
+      <label style="font-size:0.7rem;color:var(--text2);">Personalizado:</label>
+      <input type="color" id="paintCustom" value="#e74c3c" style="width:32px;height:24px;border:1px solid var(--border);border-radius:3px;padding:1px;background:var(--panel2);cursor:pointer;">
+    </div>
+  </div>
+</div>
+
+<!-- RIGHT PANEL -->
+
+<div id="rpanel">
+  <div class="ps">
+    <div class="pt">Propiedades</div>
+    <div id="no-sel" style="color:var(--text2);font-size:0.78rem;text-align:center;padding:12px 0;">Selecciona una pieza</div>
+    <div id="props" style="display:none;">
+      <div class="prop-row">
+        <span class="prop-lbl">Nombre</span>
+        <input class="prop-val" id="pName" type="text" style="padding:3px 7px;">
+      </div>
+      <div class="prop-row">
+        <span class="prop-lbl">Tipo</span>
+        <span class="prop-static" id="pType">-</span>
+      </div>
+      <div class="prop-sub">Posición</div>
+      <div class="prop-row"><span class="prop-lbl">X</span><input class="prop-val" id="pX" type="number" step="0.5"></div>
+      <div class="prop-row"><span class="prop-lbl">Y</span><input class="prop-val" id="pY" type="number" step="0.5"></div>
+      <div class="prop-row"><span class="prop-lbl">Z</span><input class="prop-val" id="pZ" type="number" step="0.5"></div>
+      <div class="prop-sub">Rotación (°)</div>
+      <div class="prop-row"><span class="prop-lbl">Rot. Y</span><input class="prop-val" id="pRotY" type="number" step="5"></div>
+      <div class="prop-sub">Dimensiones</div>
+      <div class="prop-row"><span class="prop-lbl">Ancho</span><span class="prop-static" id="pW">-</span></div>
+      <div class="prop-row"><span class="prop-lbl">Alto</span><span class="prop-static" id="pH">-</span></div>
+      <div class="prop-row"><span class="prop-lbl">Largo</span><span class="prop-static" id="pD">-</span></div>
+      <div class="prop-sub">Material</div>
+      <div class="prop-row">
+        <span class="prop-lbl">Color</span>
+        <input type="color" id="pColor" style="flex:1;height:24px;border:1px solid var(--border);border-radius:3px;background:var(--panel2);cursor:pointer;padding:1px;">
+      </div>
+      <div class="prop-row"><span class="prop-lbl">Rugosidad</span><input type="range" id="pRough" min="0" max="1" step="0.05" style="flex:1;"></div>
+      <div class="prop-row"><span class="prop-lbl">Metalicidad</span><input type="range" id="pMetal" min="0" max="1" step="0.05" style="flex:1;"></div>
+      <div class="prop-row"><span class="prop-lbl">Emisión</span><input type="range" id="pEmit" min="0" max="2" step="0.1" style="flex:1;"></div>
+      <div class="prop-sub">Escala</div>
+      <div class="prop-row"><span class="prop-lbl">Escala X</span><input class="prop-val" id="pSX" type="number" step="0.1" min="0.01"></div>
+      <div class="prop-row"><span class="prop-lbl">Escala Y</span><input class="prop-val" id="pSY" type="number" step="0.1" min="0.01"></div>
+      <div class="prop-row"><span class="prop-lbl">Escala Z</span><input class="prop-val" id="pSZ" type="number" step="0.1" min="0.01"></div>
+      <button id="pDel" style="width:100%;margin-top:10px;padding:8px;background:var(--danger);border:none;border-radius:4px;color:white;font-family:'Rajdhani',sans-serif;font-weight:700;cursor:pointer;font-size:0.88rem;">🗑 Eliminar Pieza</button>
+    </div>
+  </div>
+
+  <div class="ps">
+    <div class="pt">Piezas en Escena (<span id="plcount">0</span>)</div>
+    <div id="plist" style="max-height:180px;overflow-y:auto;"></div>
+  </div>
+
+  <div class="ps">
+    <div class="pt">Historial</div>
+    <div id="hist-list"></div>
+  </div>
+</div>
+
+<!-- STATUS BAR -->
+
+<div id="statusbar">
+  <span>WORKFORGE 3D v2.0</span>
+  <div class="sb-sep"></div>
+  <span>Piezas: <span id="sb-pieces" style="color:var(--text);">0</span></span>
+  <div class="sb-sep"></div>
+  <span id="sb-hints"><span class="kbkey">Clic der</span> rotar &nbsp;<span class="kbkey">Rueda</span> zoom &nbsp;<span class="kbkey">Del</span> eliminar &nbsp;<span class="kbkey">Ctrl+Z</span> deshacer &nbsp;<span class="kbkey">Flechas</span> mover</span>
+  <span id="sb-selected"></span>
+</div>
+
+<!-- CREATE PIECE MODAL -->
+
+<div id="modal-bg">
+  <div id="modal">
+    <div class="m-title">⚙ NUEVA PIEZA PERSONALIZADA</div>
+
+```
+<div class="m-sec">
+  <div class="m-st">Forma</div>
+  <div class="shapegrid">
+    <button class="sbtn active" data-shape="box"><span class="si">⬜</span>Bloque</button>
+    <button class="sbtn" data-shape="cylinder"><span class="si">⭕</span>Cilindro</button>
+    <button class="sbtn" data-shape="sphere"><span class="si">⚪</span>Esfera</button>
+    <button class="sbtn" data-shape="cone"><span class="si">△</span>Cono</button>
+    <button class="sbtn" data-shape="tube"><span class="si">○</span>Tubo/Caño</button>
+    <button class="sbtn" data-shape="plank"><span class="si">▬</span>Tablón</button>
+    <button class="sbtn" data-shape="torus"><span class="si">🔘</span>Toro/Aro</button>
+    <button class="sbtn" data-shape="capsule"><span class="si">💊</span>Cápsula</button>
+    <button class="sbtn" data-shape="octahedron"><span class="si">♦</span>Octaedro</button>
+  </div>
+</div>
+
+<div class="m-sec">
+  <div class="m-st">Dimensiones</div>
+  <div class="slrow"><span class="sllbl">Ancho (cm):</span><input type="range" id="slW" min="0.5" max="30" value="8" step="0.5"><span class="slval" id="vW">8</span></div>
+  <div class="slrow"><span class="sllbl">Alto (cm):</span><input type="range" id="slH" min="0.2" max="20" value="1.5" step="0.2"><span class="slval" id="vH">1.5</span></div>
+  <div class="slrow"><span class="sllbl">Largo (cm):</span><input type="range" id="slD" min="0.5" max="30" value="12" step="0.5"><span class="slval" id="vD">12</span></div>
+  <div style="font-size:0.68rem;color:var(--text2);margin-top:4px;">* Para esferas y cilindros, Ancho = diámetro</div>
+</div>
+
+<div class="m-sec">
+  <div class="m-st">Material</div>
+  <div class="matgrid">
+    <button class="mbtn active" data-mat="wood">🪵 Madera</button>
+    <button class="mbtn" data-mat="metal">⚙ Metal</button>
+    <button class="mbtn" data-mat="plastic">🔵 Plástico</button>
+    <button class="mbtn" data-mat="concrete">🧱 Hormigón</button>
+    <button class="mbtn" data-mat="glass">🔲 Vidrio</button>
+    <button class="mbtn" data-mat="rubber">⚫ Goma</button>
+  </div>
+</div>
+
+<div class="m-sec">
+  <div class="m-st">Color</div>
+  <div class="mcgrid" id="mColorGrid"></div>
+  <div style="display:flex;align-items:center;gap:8px;margin-top:7px;">
+    <input type="color" id="mColorCustom" value="#d4a373" style="width:36px;height:26px;border:1px solid var(--border);border-radius:3px;padding:1px;background:var(--panel2);cursor:pointer;">
+    <span style="font-size:0.75rem;color:var(--text2);">Color personalizado</span>
+  </div>
+</div>
+
+<div class="m-sec">
+  <div class="m-st">Nombre de la Pieza (opcional)</div>
+  <input type="text" id="mPieceName" placeholder="Ej: Pata izquierda de la mesa"
+    style="width:100%;padding:7px 10px;border-radius:4px;font-size:0.88rem;">
+</div>
+
+<div class="mfooter">
+  <button class="mbtn-sec" id="mCancel">Cancelar</button>
+  <button class="mbtn-primary" id="mCreate">+ CREAR PIEZA</button>
+</div>
+```
+
+  </div>
+</div>
+
+<!-- CONTEXT MENU -->
+
+<div id="ctx-menu">
+  <div class="ctx-item" id="ctx-select">↖ Seleccionar</div>
+  <div class="ctx-item" id="ctx-dup">⧉ Duplicar</div>
+  <div class="ctx-item" id="ctx-focus">🎯 Enfocar cámara</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item danger" id="ctx-del">✕ Eliminar</div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ─── RENDERER & SCENE ───────────────────────────────────────────────────
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1a1f2e);
+
+const camera = new THREE.PerspectiveCamera(52, innerWidth / innerHeight, 0.1, 800);
+camera.position.set(0, 30, 45);
+camera.lookAt(0, 0, 0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.getElementById('canvas-container').appendChild(renderer.domElement);
+renderer.domElement.style.display = 'block';
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.07;
+controls.maxPolarAngle = Math.PI / 2.1;
+controls.minDistance = 4;
+controls.maxDistance = 130;
+controls.mouseButtons = { LEFT: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY };
+controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+
+// ─── LIGHTING ────────────────────────────────────────────────────────────
+scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+
+const sun = new THREE.DirectionalLight(0xffffff, 1.2);
+sun.position.set(18, 45, 22);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.near = 0.5;
+sun.shadow.camera.far = 200;
+sun.shadow.camera.left = sun.shadow.camera.bottom = -45;
+sun.shadow.camera.right = sun.shadow.camera.top = 45;
+sun.shadow.bias = -0.0005;
+scene.add(sun);
+
+const rim = new THREE.DirectionalLight(0x8899cc, 0.5);
+rim.position.set(-12, 18, -22);
+scene.add(rim);
+
+function addCeilLight(x, z) {
+  const pl = new THREE.PointLight(0xffffff, 30, 40, 1.5);
+  pl.position.set(x, 18, z);
+  scene.add(pl);
+}
+addCeilLight(-16, -10); addCeilLight(16, -10); addCeilLight(0, 10); addCeilLight(-16, 10); addCeilLight(16, 10);
+
+// ─── WORKSHOP ENVIRONMENT ───────────────────────────────────────────────
+// Main work plane
+const planeMat = new THREE.MeshStandardMaterial({ color: 0x1a1d2e, roughness: 0.95, metalness: 0.05 });
+const plane = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), planeMat);
+plane.rotation.x = -Math.PI / 2;
+plane.position.y = 0;
+plane.receiveShadow = true;
+scene.add(plane);
+
+// Reference object for raycasting (used as drop surface)
+const tTop = plane;
+
+// Primary grid (fine)
+const grid1 = new THREE.GridHelper(100, 100, 0x2a2d42, 0x1e2033);
+grid1.position.y = 0.01;
+scene.add(grid1);
+
+// Secondary grid (coarse, brighter)
+const grid2 = new THREE.GridHelper(100, 10, 0x3a3f60, 0x3a3f60);
+grid2.position.y = 0.02;
+scene.add(grid2);
+
+// Axis indicator at origin
+const axisGeo = (dir, col) => {
+  const pts = [new THREE.Vector3(0,0.05,0)];
+  pts.push(dir === 'x' ? new THREE.Vector3(8,0.05,0) : dir === 'z' ? new THREE.Vector3(0,0.05,8) : new THREE.Vector3(0,8,0));
+  return new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),
+    new THREE.LineBasicMaterial({ color: col }));
+};
+scene.add(axisGeo('x', 0xff4444));
+scene.add(axisGeo('z', 0x4444ff));
+scene.add(axisGeo('y', 0x44ff44));
+
+// Back wall (subtle)
+const wallMat = new THREE.MeshStandardMaterial({ color: 0x14161f, roughness: 0.98 });
+const bk = new THREE.Mesh(new THREE.PlaneGeometry(200, 60), wallMat);
+bk.position.set(0, 28, -80);
+scene.add(bk);
+
+// ─── STATE ────────────────────────────────────────────────────────────────
+const interactables = [];
+let selectedObj = null, hoveredObj = null, draggedObj = null;
+let dragPlane = new THREE.Plane(), dragOffset = new THREE.Vector3();
+let currentTool = 'select';
+let snapGrid = false, wireMode = false, shadowsOn = true;
+let paintColor = '#e74c3c';
+let rotStart = null;
+let measurePts = [], measureMarks = [];
+let idCounter = 0;
+const undoStack = [], redoStack = [];
+const actionHistory = [];
+
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+
+// ─── NOTIFICATIONS ────────────────────────────────────────────────────────
+function notify(msg, type = '') {
+  const el = document.createElement('div');
+  el.className = 'nf ' + type;
+  el.textContent = msg;
+  document.getElementById('notifs').appendChild(el);
+  setTimeout(() => el.remove(), 2200);
+}
+
+// ─── HISTORY ──────────────────────────────────────────────────────────────
+function logAct(msg) {
+  actionHistory.unshift(msg);
+  if (actionHistory.length > 25) actionHistory.pop();
+  document.getElementById('hist-list').innerHTML =
+    actionHistory.map(a => `<div class="hitem">${a}</div>`).join('');
+}
+
+// ─── UNDO/REDO ────────────────────────────────────────────────────────────
+function captureScene() {
+  return interactables.map(m => ({
+    id: m.userData.id,
+    pos: m.position.clone(),
+    rot: m.rotation.clone(),
+    scl: m.scale.clone(),
+    col: m.material.color.getHex(),
+    rough: m.material.roughness,
+    metal: m.material.metalness,
+  }));
+}
+
+function pushUndo() {
+  undoStack.push(captureScene());
+  if (undoStack.length > 30) undoStack.shift();
+  redoStack.length = 0;
+  updateUndoBtns();
+}
+
+function updateUndoBtns() {
+  document.getElementById('btnUndo').disabled = !undoStack.length;
+  document.getElementById('btnRedo').disabled = !redoStack.length;
+}
+
+// ─── OUTLINE SELECTION ───────────────────────────────────────────────────
+function addOutline(mesh) {
+  if (!mesh?.geometry) return;
+  const ol = new THREE.Mesh(mesh.geometry,
+    new THREE.MeshBasicMaterial({ color: 0xff6b35, side: THREE.BackSide }));
+  ol.scale.multiplyScalar(1.055);
+  ol.userData.isOutline = true;
+  mesh.add(ol);
+}
+function removeOutline(mesh) {
+  if (!mesh) return;
+  mesh.children.filter(c => c.userData.isOutline).forEach(c => {
+    c.geometry?.dispose(); c.material?.dispose(); mesh.remove(c);
+  });
+}
+
+function setSelected(mesh) {
+  if (selectedObj) {
+    removeOutline(selectedObj);
+    selectedObj.material?.emissive?.setHex(0x000000);
+  }
+  selectedObj = mesh;
+  const noSel = document.getElementById('no-sel');
+  const props = document.getElementById('props');
+  if (mesh) {
+    addOutline(mesh);
+    mesh.material?.emissive?.setHex(0x1a0800);
+    noSel.style.display = 'none';
+    props.style.display = 'block';
+    fillProps(mesh);
+    document.getElementById('sb-selected').textContent = mesh.userData.name || 'Pieza';
+  } else {
+    noSel.style.display = 'block';
+    props.style.display = 'none';
+    document.getElementById('sb-selected').textContent = '';
+  }
+  updatePieceList();
+}
+
+// ─── MATERIALS ────────────────────────────────────────────────────────────
+const MATDEFS = {
+  wood:     { roughness: 0.90, metalness: 0.00, defaultColor: 0xd4a373 },
+  metal:    { roughness: 0.22, metalness: 0.88, defaultColor: 0xaab8c2 },
+  plastic:  { roughness: 0.48, metalness: 0.00, defaultColor: 0x3498db },
+  concrete: { roughness: 0.97, metalness: 0.00, defaultColor: 0x8d9bb0 },
+  glass:    { roughness: 0.04, metalness: 0.10, defaultColor: 0xadd8e6, transparent: true, opacity: 0.38 },
+  rubber:   { roughness: 0.97, metalness: 0.00, defaultColor: 0x222222 },
+};
+
+function makeMat(matType, colorHex) {
+  const d = MATDEFS[matType] || MATDEFS.wood;
+  const mat = new THREE.MeshStandardMaterial({
+    color: colorHex ?? d.defaultColor,
+    roughness: d.roughness,
+    metalness: d.metalness,
+  });
+  if (d.transparent) { mat.transparent = true; mat.opacity = d.opacity; }
+  return mat;
+}
+
+// ─── GEOMETRIES ───────────────────────────────────────────────────────────
+function makeGeo(shape, w, h, d) {
+  switch (shape) {
+    case 'box':        return new THREE.BoxGeometry(w, h, d);
+    case 'cylinder':   return new THREE.CylinderGeometry(w/2, w/2, h, 36);
+    case 'sphere':     return new THREE.SphereGeometry(w/2, 36, 18);
+    case 'cone':       return new THREE.ConeGeometry(w/2, h, 32);
+    case 'tube':       return new THREE.CylinderGeometry(w/2, w/2, h, 36, 1, true);
+    case 'plank':      return new THREE.BoxGeometry(w, 0.35, d);
+    case 'torus':      return new THREE.TorusGeometry(w/2, w/6, 16, 48);
+    case 'capsule':    return new THREE.CapsuleGeometry(w/2, h, 8, 24);
+    case 'octahedron': return new THREE.OctahedronGeometry(w/2);
+    default:           return new THREE.BoxGeometry(w, h, d);
+  }
+}
+
+// ─── CREATE PIECE ─────────────────────────────────────────────────────────
+function createPiece({ shape='box', w=8, h=1.5, d=12, matType='wood', color=null, name=null } = {}) {
+  pushUndo();
+  const colorHex = color ? parseInt(color.replace('#',''), 16) : MATDEFS[matType]?.defaultColor;
+  const geo = makeGeo(shape, w, h, d);
+  const mat = makeMat(matType, colorHex);
+  const mesh = new THREE.Mesh(geo, mat);
+  const id = ++idCounter;
+  mesh.userData = {
+    isInteractable: true, id, shape, w, h, d, matType,
+    name: name || `${matType[0].toUpperCase()+matType.slice(1)} #${id}`,
+  };
+  mesh.position.set((Math.random()-0.5)*22, h/2 + 0.05, (Math.random()-0.5)*14);
+  mesh.castShadow = true; mesh.receiveShadow = true;
+  scene.add(mesh); interactables.push(mesh);
+  updateCounters(); updatePieceList();
+  logAct(`+ ${mesh.userData.name}`);
+  notify(`Pieza "${mesh.userData.name}" creada`, 'ok');
+  return mesh;
+}
+
+function quickAdd(type) {
+  const cfgs = {
+    wood:     { w: 7+Math.random()*6, h: 0.8+Math.random()*0.4, d: 10+Math.random()*8, matType:'wood' },
+    metal:    { w: 5+Math.random()*5, h: 0.25+Math.random()*0.2, d: 7+Math.random()*6, matType:'metal' },
+    pipe:     { shape:'cylinder', w: 1.2, h: 7+Math.random()*5, d: 1, matType:'metal', color:'#6a7a8a' },
+    concrete: { w: 4+Math.random()*4, h: 2.5+Math.random()*2, d: 4+Math.random()*4, matType:'concrete' },
+    plastic:  { w: 3+Math.random()*4, h: 1+Math.random()*2, d: 3+Math.random()*4, matType:'plastic',
+                color:`#${Math.floor(Math.random()*0xffffff).toString(16).padStart(6,'0')}` },
+  };
+  createPiece(cfgs[type]);
+}
+
+// ─── TOOL SYSTEM ──────────────────────────────────────────────────────────
+const TOOL_HINTS = {
+  select: 'Clic para seleccionar una pieza',
+  move: 'Arrastra para mover | Suelta para soltar',
+  rotate: 'Arrastra horizontalmente para rotar en Y',
+  scale: 'Arrastra verticalmente para escalar',
+  duplicate: 'Clic en una pieza para duplicarla',
+  drill: 'Clic en una pieza para taladrar un agujero',
+  screw: 'Clic en la unión de dos piezas para atornillarlas',
+  cut: 'Clic en una pieza libre para cortarla por la mitad',
+  paint: 'Clic en una pieza para pintarla con el color seleccionado',
+  measure: 'Clic en 2 puntos para medir la distancia',
+  delete: 'Clic en una pieza para eliminarla',
+};
+const TOOL_CURSORS = {
+  move:'grab', rotate:'crosshair', scale:'ns-resize',
+  cut:'crosshair', paint:'cell', delete:'not-allowed', measure:'crosshair', drill:'crosshair',
+};
+
+function setTool(tool) {
+  currentTool = tool;
+  if (tool !== 'measure') clearMeasure();
+  document.querySelectorAll('.toolbtn').forEach(b => b.classList.remove('active'));
+  const btn = document.getElementById('tool'+tool[0].toUpperCase()+tool.slice(1));
+  if (btn) btn.classList.add('active');
+  document.getElementById('ti-name').textContent = tool.toUpperCase();
+  document.getElementById('ti-hint').textContent = TOOL_HINTS[tool] || '';
+  renderer.domElement.style.cursor = TOOL_CURSORS[tool] || 'default';
+}
+window.setTool = setTool;
+
+// ─── RAYCASTING ───────────────────────────────────────────────────────────
+function getHits(event, extra = []) {
+  mouse.x = (event.clientX / innerWidth) * 2 - 1;
+  mouse.y = -(event.clientY / innerHeight) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  return raycaster.intersectObjects([...interactables, ...extra], true)
+    .filter(h => h.object.userData.isInteractable || extra.includes(h.object));
+}
+
+function getRoot(obj) {
+  let c = obj;
+  while (c.parent?.userData?.isInteractable) c = c.parent;
+  return c;
+}
+
+function inPanel(event) {
+  const lp = document.getElementById('lpanel').getBoundingClientRect();
+  const rp = document.getElementById('rpanel').getBoundingClientRect();
+  const x = event.clientX, y = event.clientY;
+  if (x >= lp.left && x <= lp.right && y >= lp.top && y <= lp.bottom) return true;
+  if (x >= rp.left && x <= rp.right && y >= rp.top && y <= rp.bottom) return true;
+  if (y < 80) return true; // topbar + toolinfo
+  return false;
+}
+
+// ─── POINTER DOWN ─────────────────────────────────────────────────────────
+renderer.domElement.addEventListener('pointerdown', (e) => {
+  if (inPanel(e)) return;
+  if (e.button !== 0) return;
+
+  const hits = getHits(e, [tTop]);
+
+  if (!hits.length) {
+    if (currentTool === 'select') setSelected(null);
+    return;
+  }
+
+  const validHits = hits.filter(h => h.object.userData.isInteractable);
+  const firstValid = validHits[0];
+
+  switch (currentTool) {
+    case 'select':
+      if (firstValid) setSelected(firstValid.object);
+      break;
+
+    case 'move':
+      if (firstValid) {
+        draggedObj = getRoot(firstValid.object);
+        dragPlane.setFromNormalAndCoplanarPoint(new THREE.Vector3(0,1,0), draggedObj.position);
+        const ip = new THREE.Vector3();
+        mouse.x = (e.clientX/innerWidth)*2-1;
+        mouse.y = -(e.clientY/innerHeight)*2+1;
+        raycaster.setFromCamera(mouse, camera);
+        raycaster.ray.intersectPlane(dragPlane, ip);
+        dragOffset.copy(ip).sub(draggedObj.position);
+        controls.enabled = false;
+        renderer.domElement.style.cursor = 'grabbing';
+        setSelected(firstValid.object);
+      }
+      break;
+
+    case 'rotate':
+      if (firstValid) {
+        draggedObj = getRoot(firstValid.object);
+        rotStart = { x: e.clientX, ry: draggedObj.rotation.y };
+        controls.enabled = false;
+        setSelected(firstValid.object);
+      }
+      break;
+
+    case 'scale':
+      if (firstValid) {
+        draggedObj = firstValid.object;
+        rotStart = { y: e.clientY, sx: draggedObj.scale.x, sy: draggedObj.scale.y, sz: draggedObj.scale.z };
+        controls.enabled = false;
+        setSelected(firstValid.object);
+      }
+      break;
+
+    case 'duplicate':
+      if (firstValid) duplicatePiece(firstValid.object);
+      break;
+
+    case 'delete':
+      if (firstValid) deletePiece(firstValid.object);
+      break;
+
+    case 'paint':
+      if (firstValid) {
+        pushUndo();
+        firstValid.object.material = firstValid.object.material.clone();
+        firstValid.object.material.color.set(paintColor);
+        if (selectedObj === firstValid.object) fillProps(firstValid.object);
+        logAct(`🎨 Pintada: ${firstValid.object.userData.name}`);
+        notify('Pieza pintada', 'ok');
+      }
+      break;
+
+    case 'drill':
+      if (firstValid) {
+        addMark(firstValid.point, firstValid.object, 'drill');
+        logAct(`🪛 Taladrada: ${firstValid.object.userData.name}`);
+      }
+      break;
+
+    case 'screw':
+      if (validHits.length >= 2) {
+        const a = validHits[0].object, b = validHits[1].object;
+        if (getRoot(a) !== getRoot(b)) {
+          b.attach(a);
+          notify('¡Piezas atornilladas!', 'ok');
+          logAct(`🔩 ${a.userData.name} → ${b.userData.name}`);
+        }
+      }
+      if (firstValid) addMark(firstValid.point, firstValid.object, 'screw');
+      break;
+
+    case 'cut':
+      if (firstValid) {
+        const mesh = firstValid.object;
+        const freeChildren = mesh.children.filter(c => !c.userData.isOutline && !c.userData.isMark);
+        if (freeChildren.length > 0) notify('No se puede cortar una pieza unida', 'err');
+        else cutPiece(mesh);
+      }
+      break;
+
+    case 'measure':
+      if (hits.length) addMeasurePoint(hits[0].point);
+      break;
+  }
+});
+
+// ─── POINTER MOVE ─────────────────────────────────────────────────────────
+renderer.domElement.addEventListener('pointermove', (e) => {
+  if (inPanel(e)) {
+    document.getElementById('htip').style.display = 'none';
+    return;
+  }
+
+  mouse.x = (e.clientX/innerWidth)*2-1;
+  mouse.y = -(e.clientY/innerHeight)*2+1;
+  raycaster.setFromCamera(mouse, camera);
+
+  // --- DRAG MOVE ---
+  if (draggedObj && currentTool === 'move') {
+    const ip = new THREE.Vector3();
+    raycaster.ray.intersectPlane(dragPlane, ip);
+    if (ip) {
+      let nx = ip.x - dragOffset.x, nz = ip.z - dragOffset.z;
+      if (snapGrid) { nx = Math.round(nx)*1; nz = Math.round(nz)*1; }
+      draggedObj.position.x = nx; draggedObj.position.z = nz;
+      if (selectedObj) fillProps(selectedObj);
+    }
+    return;
+  }
+
+  // --- DRAG ROTATE ---
+  if (draggedObj && currentTool === 'rotate' && rotStart) {
+    const dx = e.clientX - rotStart.x;
+    draggedObj.rotation.y = rotStart.ry + dx * 0.012;
+    if (selectedObj) fillProps(selectedObj);
+    return;
+  }
+
+  // --- DRAG SCALE ---
+  if (draggedObj && currentTool === 'scale' && rotStart) {
+    const dy = (rotStart.y - e.clientY) * 0.008;
+    const newS = Math.max(0.05, 1 + dy);
+    draggedObj.scale.set(rotStart.sx * newS, rotStart.sy * newS, rotStart.sz * newS);
+    if (selectedObj) fillProps(selectedObj);
+    return;
+  }
+
+  // --- HOVER ---
+  const hits = raycaster.intersectObjects(interactables, true)
+    .filter(h => h.object.userData.isInteractable);
+  const newHov = hits[0]?.object || null;
+
+  if (newHov !== hoveredObj) {
+    if (hoveredObj && hoveredObj !== selectedObj)
+      hoveredObj.material?.emissive?.setHex(0x000000);
+    hoveredObj = newHov;
+    if (hoveredObj && hoveredObj !== selectedObj)
+      hoveredObj.material?.emissive?.setHex(0x0d0602);
+  }
+
+  const tip = document.getElementById('htip');
+  if (hoveredObj) {
+    tip.style.display = 'block';
+    tip.style.left = (e.clientX+14)+'px';
+    tip.style.top = (e.clientY-10)+'px';
+    tip.textContent = hoveredObj.userData.name || 'Pieza';
+  } else {
+    tip.style.display = 'none';
+  }
+
+  // --- COORDS ---
+  const tHits = raycaster.intersectObject(tTop, false);
+  if (tHits.length) {
+    const p = tHits[0].point;
+    document.getElementById('ti-coords').textContent =
+      `Cursor: (${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)})`;
+  }
+});
+
+// ─── POINTER UP ───────────────────────────────────────────────────────────
+renderer.domElement.addEventListener('pointerup', () => {
+  if (draggedObj && currentTool === 'move') {
+    dropToSurface(draggedObj);
+    renderer.domElement.style.cursor = 'grab';
+  }
+  draggedObj = null; rotStart = null;
+  controls.enabled = true;
+});
+
+// ─── DROP PHYSICS ─────────────────────────────────────────────────────────
+function dropToSurface(obj) {
+  const bbox = new THREE.Box3().setFromObject(obj);
+  const low = bbox.min.y - obj.position.y;
+  // Cast ray down to find surface
+  const origin = obj.position.clone();
+  origin.y += 20;
+  const dn = new THREE.Raycaster(origin, new THREE.Vector3(0, -1, 0));
+  const others = interactables.filter(o => o !== obj && getRoot(o) !== obj);
+  const hits = dn.intersectObjects([...others, plane], true);
+  if (hits.length) obj.position.y = hits[0].point.y - low + 0.02;
+  else obj.position.y = -low + 0.02;
+  if (selectedObj) fillProps(selectedObj);
+}
+
+// ─── RIGHT CLICK CONTEXT MENU ─────────────────────────────────────────────
+let ctxTarget = null;
+renderer.domElement.addEventListener('contextmenu', (e) => {
+  if (e.ctrlKey) return;
+  e.preventDefault();
+  const hits = getHits(e).filter(h => h.object.userData.isInteractable);
+  if (!hits.length) { hideCtx(); return; }
+  ctxTarget = hits[0].object;
+  setSelected(ctxTarget);
+  const ctx = document.getElementById('ctx-menu');
+  ctx.style.display = 'block';
+  ctx.style.left = Math.min(e.clientX, innerWidth-170)+'px';
+  ctx.style.top = Math.min(e.clientY, innerHeight-130)+'px';
+});
+document.addEventListener('pointerdown', (e) => {
+  if (!document.getElementById('ctx-menu').contains(e.target)) hideCtx();
+});
+function hideCtx() { document.getElementById('ctx-menu').style.display='none'; }
+
+document.getElementById('ctx-select').onclick = () => { if(ctxTarget) setSelected(ctxTarget); hideCtx(); };
+document.getElementById('ctx-dup').onclick = () => { if(ctxTarget) duplicatePiece(ctxTarget); hideCtx(); };
+document.getElementById('ctx-focus').onclick = () => {
+  if(ctxTarget) { controls.target.copy(ctxTarget.position); }
+  hideCtx();
+};
+document.getElementById('ctx-del').onclick = () => { if(ctxTarget) deletePiece(ctxTarget); hideCtx(); };
+
+// ─── PIECE OPERATIONS ────────────────────────────────────────────────────
+function duplicatePiece(src) {
+  pushUndo();
+  const cl = src.clone(false);
+  cl.material = src.material.clone();
+  cl.position.set(src.position.x+3, src.position.y, src.position.z+3);
+  cl.rotation.copy(src.rotation);
+  cl.scale.copy(src.scale);
+  const nid = ++idCounter;
+  cl.userData = { ...src.userData, id: nid, name: src.userData.name+' (copia)' };
+  scene.add(cl); interactables.push(cl);
+  updateCounters(); updatePieceList(); setSelected(cl);
+  logAct(`⧉ Duplicada: ${cl.userData.name}`);
+  notify('Pieza duplicada', 'ok');
+}
+
+function deletePiece(mesh) {
+  pushUndo();
+  if (selectedObj === mesh) setSelected(null);
+  removeOutline(mesh);
+  scene.remove(mesh);
+  const i = interactables.indexOf(mesh);
+  if (i > -1) interactables.splice(i, 1);
+  updateCounters(); updatePieceList();
+  logAct(`✕ Eliminada: ${mesh.userData.name}`);
+  notify('Pieza eliminada', 'err');
+}
+
+function cutPiece(obj) {
+  const p = obj.geometry.parameters;
+  const w = (p.width || (p.radiusTop||0)*2 || 4);
+  if (w < 2) { notify('Pieza muy pequeña para cortar', 'err'); return; }
+  pushUndo();
+  const h2 = w / 2;
+  [-1, 1].forEach(side => {
+    const ng = new THREE.BoxGeometry(h2, p.height||obj.userData.h||1, p.depth||obj.userData.d||6);
+    const nm = new THREE.Mesh(ng, obj.material.clone());
+    nm.position.copy(obj.position);
+    nm.position.x += side * (h2/2 + 0.15);
+    nm.rotation.copy(obj.rotation); nm.scale.copy(obj.scale);
+    nm.castShadow = true; nm.receiveShadow = true;
+    nm.userData = { ...obj.userData, id: ++idCounter, name: obj.userData.name+' (cortado)', w: h2 };
+    scene.add(nm); interactables.push(nm);
+  });
+  scene.remove(obj);
+  interactables.splice(interactables.indexOf(obj), 1);
+  if (selectedObj === obj) setSelected(null);
+  updateCounters(); updatePieceList();
+  notify('Pieza cortada en 2', 'ok');
+  logAct(`🪚 Cortada: ${obj.userData.name}`);
+}
+
+// ─── MARKS ────────────────────────────────────────────────────────────────
+function addMark(point, parent, type) {
+  const isScrew = type === 'screw';
+  const mark = new THREE.Mesh(
+    new THREE.CircleGeometry(isScrew ? 0.28 : 0.16, 16),
+    new THREE.MeshBasicMaterial({ color: isScrew ? 0xbdc3c7 : 0x111111, side: THREE.DoubleSide })
+  );
+  mark.position.copy(point); mark.rotation.x = -Math.PI/2; mark.position.y += 0.05;
+  mark.userData.isMark = true;
+  parent.attach(mark);
+  if (isScrew) {
+    const cm = new THREE.MeshBasicMaterial({ color: 0x333333 });
+    [[0.32,0.06],[0.06,0.32]].forEach(([pw,ph]) => {
+      const cross = new THREE.Mesh(new THREE.PlaneGeometry(pw,ph), cm);
+      cross.position.z = 0.01; mark.add(cross);
+    });
+    notify('Tornillo colocado', 'ok');
+  } else {
+    notify('Agujero taladrado', 'ok');
+  }
+}
+
+// ─── MEASURE ─────────────────────────────────────────────────────────────
+function addMeasurePoint(pt) {
+  measurePts.push(pt.clone());
+  const dot = new THREE.Mesh(new THREE.SphereGeometry(0.2,8,8),
+    new THREE.MeshBasicMaterial({ color: 0xffd700 }));
+  dot.position.copy(pt); dot.position.y += 0.15;
+  dot.userData.isMeasMark = true;
+  scene.add(dot); measureMarks.push(dot);
+
+  if (measurePts.length === 2) {
+    const d = measurePts[0].distanceTo(measurePts[1]).toFixed(2);
+    const pts2 = [measurePts[0].clone(), measurePts[1].clone()];
+    pts2.forEach(p => p.y += 0.2);
+    const ln = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(pts2),
+      new THREE.LineBasicMaterial({ color: 0xffd700 })
+    );
+    ln.userData.isMeasMark = true;
+    scene.add(ln); measureMarks.push(ln);
+    notify(`📏 Distancia: ${d} unidades`, 'ok');
+    setTimeout(clearMeasure, 5000);
+  }
+}
+function clearMeasure() {
+  measurePts = [];
+  measureMarks.forEach(m => scene.remove(m));
+  measureMarks = [];
+}
+
+// ─── PROPERTIES PANEL ────────────────────────────────────────────────────
+function fillProps(mesh) {
+  if (!mesh) return;
+  document.getElementById('pName').value = mesh.userData.name || '';
+  document.getElementById('pType').textContent = mesh.userData.matType || mesh.userData.type || '-';
+  document.getElementById('pX').value = mesh.position.x.toFixed(2);
+  document.getElementById('pY').value = mesh.position.y.toFixed(2);
+  document.getElementById('pZ').value = mesh.position.z.toFixed(2);
+  document.getElementById('pRotY').value = (mesh.rotation.y * 180/Math.PI).toFixed(1);
+  document.getElementById('pW').textContent = mesh.userData.w?.toFixed?.(1) || '-';
+  document.getElementById('pH').textContent = mesh.userData.h?.toFixed?.(1) || '-';
+  document.getElementById('pD').textContent = mesh.userData.d?.toFixed?.(1) || '-';
+  document.getElementById('pColor').value = '#'+mesh.material.color.getHexString();
+  document.getElementById('pRough').value = mesh.material.roughness;
+  document.getElementById('pMetal').value = mesh.material.metalness;
+  document.getElementById('pEmit').value = mesh.material.emissiveIntensity || 0;
+  document.getElementById('pSX').value = mesh.scale.x.toFixed(2);
+  document.getElementById('pSY').value = mesh.scale.y.toFixed(2);
+  document.getElementById('pSZ').value = mesh.scale.z.toFixed(2);
+  document.getElementById('sb-selected').textContent = mesh.userData.name || '';
+}
+
+function bindProp(id, fn) {
+  document.getElementById(id).addEventListener('change', () => {
+    if (!selectedObj) return;
+    fn(selectedObj, document.getElementById(id).value);
+    pushUndo();
+    logAct(`✏ ${selectedObj.userData.name}`);
+  });
+}
+bindProp('pName', (m,v) => m.userData.name = v);
+bindProp('pX', (m,v) => m.position.x = +v);
+bindProp('pY', (m,v) => m.position.y = +v);
+bindProp('pZ', (m,v) => m.position.z = +v);
+bindProp('pRotY', (m,v) => m.rotation.y = +v * Math.PI/180);
+bindProp('pColor', (m,v) => m.material.color.set(v));
+bindProp('pRough', (m,v) => m.material.roughness = +v);
+bindProp('pMetal', (m,v) => m.material.metalness = +v);
+bindProp('pEmit', (m,v) => { m.material.emissive.set(0x774422); m.material.emissiveIntensity = +v; });
+bindProp('pSX', (m,v) => m.scale.x = Math.max(0.01, +v));
+bindProp('pSY', (m,v) => m.scale.y = Math.max(0.01, +v));
+bindProp('pSZ', (m,v) => m.scale.z = Math.max(0.01, +v));
+
+document.getElementById('pDel').onclick = () => { if (selectedObj) deletePiece(selectedObj); };
+
+// ─── PIECE LIST ───────────────────────────────────────────────────────────
+function updatePieceList() {
+  const pl = document.getElementById('plist');
+  document.getElementById('plcount').textContent = interactables.length;
+  if (!interactables.length) {
+    pl.innerHTML = '<div style="color:var(--text2);font-size:0.75rem;text-align:center;padding:8px;">Sin piezas</div>';
+    return;
+  }
+  pl.innerHTML = interactables.map(m => {
+    const col = '#'+m.material.color.getHexString();
+    const sel = m === selectedObj ? ' selected' : '';
+    return `<div class="plitem${sel}" data-id="${m.userData.id}">
+      <div class="pldot" style="background:${col};"></div>
+      <span class="plname">${m.userData.name}</span>
+      <span class="pltype">${m.userData.shape||'box'}</span>
+    </div>`;
+  }).join('');
+  pl.querySelectorAll('.plitem').forEach(el => {
+    el.addEventListener('click', () => {
+      const mesh = interactables.find(m => m.userData.id === +el.dataset.id);
+      if (mesh) { setSelected(mesh); setTool('select'); }
+    });
+  });
+}
+
+function updateCounters() {
+  const n = interactables.length;
+  document.getElementById('pcount').textContent = `${n} pieza${n!==1?'s':''}`;
+  document.getElementById('sb-pieces').textContent = n;
+}
+
+// ─── MODAL ────────────────────────────────────────────────────────────────
+let mShape = 'box', mMat = 'wood', mColor = '#d4a373';
+
+document.querySelectorAll('.sbtn').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('.sbtn').forEach(x => x.classList.remove('active'));
+  b.classList.add('active'); mShape = b.dataset.shape;
+}));
+document.querySelectorAll('.mbtn').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('.mbtn').forEach(x => x.classList.remove('active'));
+  b.classList.add('active'); mMat = b.dataset.mat;
+  if (!document.getElementById('mColorCustom').dataset.user) {
+    const c = '#'+new THREE.Color(MATDEFS[mMat]?.defaultColor||0xaaaaaa).getHexString();
+    mColor = c; document.getElementById('mColorCustom').value = c; setActiveMCol(c);
+  }
+}));
+
+// Dimension sliders
+['W','H','D'].forEach(d => {
+  const sl = document.getElementById('sl'+d), vl = document.getElementById('v'+d);
+  sl.addEventListener('input', () => vl.textContent = sl.value);
+});
+
+// Modal colors
+const MODAL_COLORS = [
+  '#d4a373','#a0522d','#8B4513','#deb887','#f5deb3','#cd853f','#d2691e','#8b4513',
+  '#aab8c2','#546e7a','#ffd700','#c0c0c0','#808080','#333333','#111111','#ffffff',
+  '#e74c3c','#c0392b','#e67e22','#f39c12','#2ecc71','#27ae60','#3498db','#2980b9',
+  '#9b59b6','#8e44ad','#1abc9c','#16a085','#ecf0f1','#95a5a6','#2c3e50','#34495e',
+];
+function setActiveMCol(c) {
+  mColor = c;
+  document.querySelectorAll('.mcs').forEach(s => s.classList.toggle('active', s.dataset.c === c));
+}
+const mcg = document.getElementById('mColorGrid');
+MODAL_COLORS.forEach(c => {
+  const s = document.createElement('div'); s.className = 'mcs'; s.style.background = c; s.dataset.c = c;
+  s.addEventListener('click', () => { setActiveMCol(c); document.getElementById('mColorCustom').value = c; });
+  mcg.appendChild(s);
+});
+setActiveMCol('#d4a373');
+
+document.getElementById('mColorCustom').addEventListener('input', e => {
+  e.target.dataset.user = '1'; setActiveMCol(e.target.value);
+});
+
+document.getElementById('btnNewPiece').onclick = () => document.getElementById('modal-bg').classList.add('open');
+document.getElementById('mCancel').onclick = () => document.getElementById('modal-bg').classList.remove('open');
+document.getElementById('modal-bg').addEventListener('click', e => {
+  if (e.target === document.getElementById('modal-bg')) document.getElementById('modal-bg').classList.remove('open');
+});
+document.getElementById('mCreate').onclick = () => {
+  const w = +document.getElementById('slW').value;
+  const h = +document.getElementById('slH').value;
+  const d = +document.getElementById('slD').value;
+  const name = document.getElementById('mPieceName').value.trim();
+  createPiece({ shape: mShape, w, h, d, matType: mMat, color: mColor, name: name||null });
+  document.getElementById('modal-bg').classList.remove('open');
+  document.getElementById('mPieceName').value = '';
+};
+
+// ─── QUICK ADD ────────────────────────────────────────────────────────────
+document.getElementById('qWood').onclick = () => quickAdd('wood');
+document.getElementById('qMetal').onclick = () => quickAdd('metal');
+document.getElementById('qPipe').onclick = () => quickAdd('pipe');
+document.getElementById('qConcrete').onclick = () => quickAdd('concrete');
+document.getElementById('qPlastic').onclick = () => quickAdd('plastic');
+
+// ─── PAINT COLORS ─────────────────────────────────────────────────────────
+const PAINT_COLS = [
+  '#e74c3c','#c0392b','#e67e22','#f39c12','#2ecc71','#27ae60',
+  '#3498db','#2980b9','#9b59b6','#8e44ad','#1abc9c','#ecf0f1',
+  '#95a5a6','#2c3e50','#ffd700','#000000','#ffffff','#ff6b35',
+];
+const pg = document.getElementById('paintGrid');
+PAINT_COLS.forEach((c,i) => {
+  const s = document.createElement('div'); s.className = 'cswatch'; s.style.background = c;
+  if (i===0) s.classList.add('active');
+  s.addEventListener('click', () => {
+    document.querySelectorAll('.cswatch').forEach(x => x.classList.remove('active'));
+    s.classList.add('active'); paintColor = c;
+    document.getElementById('paintCustom').value = c;
+  });
+  pg.appendChild(s);
+});
+document.getElementById('paintCustom').addEventListener('input', e => {
+  document.querySelectorAll('.cswatch').forEach(x => x.classList.remove('active'));
+  paintColor = e.target.value;
+});
+
+// ─── TOP BAR ACTIONS ─────────────────────────────────────────────────────
+document.getElementById('btnUndo').onclick = () => {
+  if (!undoStack.length) return;
+  // Simplified undo notification (full state restoration is complex with Three.js)
+  undoStack.pop(); updateUndoBtns();
+  notify('Deshacer - posición restaurada');
+};
+document.getElementById('btnRedo').onclick = () => {
+  if (!redoStack.length) return;
+  redoStack.pop(); updateUndoBtns();
+  notify('Rehacer');
+};
+
+document.getElementById('btnSnap').onclick = function() {
+  snapGrid = !snapGrid;
+  this.textContent = `⊞ Grid: ${snapGrid?'ON':'OFF'}`;
+  this.classList.toggle('active-snap', snapGrid);
+  notify(`Snap al grid: ${snapGrid?'activado (1u)':'desactivado'}`);
+};
+
+document.getElementById('btnWire').onclick = function() {
+  wireMode = !wireMode;
+  interactables.forEach(m => m.material.wireframe = wireMode);
+  this.style.color = wireMode ? 'var(--accent)' : '';
+  notify(`Wireframe: ${wireMode?'ON':'OFF'}`);
+};
+
+document.getElementById('btnShadow').onclick = function() {
+  shadowsOn = !shadowsOn;
+  renderer.shadowMap.enabled = shadowsOn;
+  this.textContent = `💡 Sombras: ${shadowsOn?'ON':'OFF'}`;
+  this.style.color = shadowsOn ? '' : 'var(--text2)';
+  notify(`Sombras: ${shadowsOn?'activadas':'desactivadas'}`);
+};
+
+document.getElementById('btnShot').onclick = () => {
+  renderer.render(scene, camera);
+  try {
+    const a = Object.assign(document.createElement('a'), {
+      href: renderer.domElement.toDataURL('image/png'), download: 'workforge-captura.png'
+    });
+    a.click(); notify('Captura guardada', 'ok');
+  } catch(e) { notify('Captura no disponible en este navegador', 'err'); }
+};
+
+document.getElementById('btnSave').onclick = () => {
+  const data = interactables.map(m => ({
+    shape: m.userData.shape||'box', w: m.userData.w, h: m.userData.h, d: m.userData.d,
+    matType: m.userData.matType||m.userData.type||'wood',
+    color: '#'+m.material.color.getHexString(),
+    name: m.userData.name,
+    pos: m.position.toArray(), rot: [m.rotation.x,m.rotation.y,m.rotation.z], scl: m.scale.toArray(),
+    rough: m.material.roughness, metal: m.material.metalness,
+  }));
+  const url = URL.createObjectURL(new Blob([JSON.stringify(data,null,2)], {type:'application/json'}));
+  Object.assign(document.createElement('a'), { href: url, download: 'workforge-escena.json' }).click();
+  URL.revokeObjectURL(url);
+  notify('Escena guardada', 'ok'); logAct('💾 Guardada');
+};
+
+document.getElementById('btnLoad').onclick = () => {
+  const inp = Object.assign(document.createElement('input'), { type:'file', accept:'.json' });
+  inp.onchange = e => {
+    const fr = new FileReader();
+    fr.onload = ev => {
+      const d = JSON.parse(ev.target.result);
+      interactables.forEach(m => scene.remove(m)); interactables.length = 0;
+      setSelected(null);
+      d.forEach(item => {
+        const m = createPiece(item);
+        m.position.fromArray(item.pos); m.rotation.set(...item.rot); m.scale.fromArray(item.scl);
+        if(item.rough !== undefined) m.material.roughness = item.rough;
+        if(item.metal !== undefined) m.material.metalness = item.metal;
+      });
+      notify('Escena cargada', 'ok'); logAct('📂 Cargada');
+    };
+    fr.readAsText(e.target.files[0]);
+  };
+  inp.click();
+};
+
+document.getElementById('btnReset').onclick = () => {
+  if (!confirm('¿Eliminar todas las piezas de la escena?')) return;
+  pushUndo();
+  interactables.forEach(m => scene.remove(m)); interactables.length = 0;
+  setSelected(null); updateCounters(); updatePieceList();
+  notify('Escena limpiada', 'err'); logAct('🗑 Escena limpiada');
+};
+
+// ─── KEYBOARD SHORTCUTS ───────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (['INPUT','TEXTAREA'].includes(e.target.tagName)) return;
+
+  const keys = { s:'select', m:'move', r:'rotate', e:'scale', d:'duplicate',
+    t:'drill', a:'screw', c:'cut', p:'paint', n:'measure', x:'delete' };
+  if (keys[e.key]) setTool(keys[e.key]);
+
+  if (e.key === 'Delete' && selectedObj) deletePiece(selectedObj);
+  if (e.key === 'Escape') { setSelected(null); clearMeasure(); hideCtx(); }
+
+  if (e.ctrlKey && e.key === 'z') { document.getElementById('btnUndo').click(); e.preventDefault(); }
+  if (e.ctrlKey && (e.key === 'y' || e.key === 'Y')) { document.getElementById('btnRedo').click(); e.preventDefault(); }
+  if (e.ctrlKey && (e.key === 'd' || e.key === 'D')) {
+    if (selectedObj) { duplicatePiece(selectedObj); e.preventDefault(); }
+  }
+
+  // Arrow nudge
+  if (selectedObj && e.key.startsWith('Arrow')) {
+    e.preventDefault();
+    const step = e.shiftKey ? 5 : 1;
+    if (e.key==='ArrowLeft') selectedObj.position.x -= step;
+    if (e.key==='ArrowRight') selectedObj.position.x += step;
+    if (e.key==='ArrowUp') selectedObj.position.z -= step;
+    if (e.key==='ArrowDown') selectedObj.position.z += step;
+    fillProps(selectedObj);
+  }
+  // Q/E for Y nudge
+  if (selectedObj && e.key === 'q') { selectedObj.position.y += 1; fillProps(selectedObj); }
+  if (selectedObj && e.key === 'z' && !e.ctrlKey) { selectedObj.position.y -= 1; fillProps(selectedObj); }
+});
+
+// ─── RESIZE ───────────────────────────────────────────────────────────────
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// ─── PANEL TOGGLES (mobile) ───────────────────────────────────────────────
+document.getElementById('btn-lpanel').addEventListener('click', () => {
+  document.getElementById('lpanel').classList.toggle('open');
+  document.getElementById('rpanel').classList.remove('open');
+});
+document.getElementById('btn-rpanel').addEventListener('click', () => {
+  document.getElementById('rpanel').classList.toggle('open');
+  document.getElementById('lpanel').classList.remove('open');
+});
+// Tap on canvas closes panels on mobile
+renderer.domElement.addEventListener('pointerdown', () => {
+  if (window.innerWidth <= 768) {
+    document.getElementById('lpanel').classList.remove('open');
+    document.getElementById('rpanel').classList.remove('open');
+  }
+}, { capture: true, passive: true });
+
+// ─── RENDER LOOP ──────────────────────────────────────────────────────────
+let fpsFrames = 0, fpsLast = performance.now();
+
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+
+  fpsFrames++;
+  const now = performance.now();
+  if (now - fpsLast >= 1000) {
+    document.getElementById('fps-v').textContent = fpsFrames;
+    fpsFrames = 0; fpsLast = now;
+  }
+}
+animate();
+
+setTimeout(() => notify('¡Bienvenido a WorkForge 3D! Crea tu primera pieza ✦', 'ok'), 500);
+
+</script>
+
+</body>
+</html>
