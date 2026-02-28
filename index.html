@@ -7,330 +7,248 @@
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg: #0a0b10;
-  --panel: #12141c;
-  --panel2: #1a1c27;
-  --border: #252838;
-  --accent: #ff6b35;
-  --accent2: #ffd700;
-  --text: #c8cdd8;
-  --text2: #565c6e;
-  --success: #22c55e;
-  --danger: #ef4444;
-  /* Tap-target mínimo 44px */
-  --tap: 44px;
-  --lw: 230px;
-  --rw: 270px;
-  --tbh: 52px;
-  --sbh: 36px;
+  --bg:      #0d0e14;
+  --panel:   #13151f;
+  --panel2:  #1c1f2e;
+  --panel3:  #242840;
+  --border:  #2a2d44;
+  --accent:  #e8622a;
+  --text:    #c4c9d8;
+  --text2:   #4f556e;
+  --text3:   #7a819a;
+  --success: #27ae60;
+  --danger:  #c0392b;
+  --lw: 220px; --rw: 260px; --tbh: 48px; --tih: 24px; --sbh: 32px;
 }
-* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-body { background: var(--bg); color: var(--text); font-family: 'Rajdhani', sans-serif; overflow: hidden; user-select: none; touch-action: none; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body { width: 100%; height: 100%; overflow: hidden; }
+body { background: var(--bg); color: var(--text); font-family: 'Rajdhani', sans-serif; user-select: none; touch-action: none; }
 
 #canvas-container { position: fixed; inset: 0; z-index: 1; }
 
-/* ── TOP BAR ── */
+/* TOPBAR */
 #topbar {
 position: fixed; top: 0; left: 0; right: 0; height: var(–tbh);
-background: var(–panel); border-bottom: 1px solid var(–border);
-display: flex; align-items: center; padding: 0 10px; gap: 5px; z-index: 100;
-overflow-x: auto; overflow-y: hidden;
+background: var(–panel); border-bottom: 2px solid var(–border);
+display: flex; align-items: center; padding: 0 8px; gap: 4px;
+z-index: 100; overflow-x: auto; overflow-y: hidden;
 }
 #topbar::-webkit-scrollbar { display: none; }
-.tb-title { font-size: 1rem; font-weight: 700; color: var(–accent); letter-spacing: 2px; margin-right: 6px; flex-shrink: 0; }
-.tb-sep { width: 1px; height: 26px; background: var(–border); margin: 0 2px; flex-shrink: 0; }
-.tb-spacer { flex: 1; min-width: 8px; }
+.tb-logo {
+font-weight: 700; font-size: 0.95rem; color: var(–accent);
+letter-spacing: 3px; padding: 0 10px 0 4px; flex-shrink: 0;
+border-right: 1px solid var(–border); margin-right: 4px;
+display: flex; flex-direction: column; justify-content: center;
+}
+.tb-logo small { color: var(–text3); font-size: 0.55rem; letter-spacing: 1px; }
 .tbtn {
-background: var(–panel2); border: 1px solid var(–border); color: var(–text);
-padding: 0 11px; height: 36px; border-radius: 6px; cursor: pointer;
-font-family: ‘Rajdhani’, sans-serif; font-size: 0.82rem; font-weight: 600;
-transition: background 0.13s, border-color 0.13s; display: flex; align-items: center;
-gap: 5px; flex-shrink: 0; white-space: nowrap; min-width: var(–tap);
+height: 32px; padding: 0 10px; border-radius: 5px;
+background: var(–panel2); border: 1px solid var(–border);
+color: var(–text3); cursor: pointer;
+font-family: ‘Rajdhani’, sans-serif; font-weight: 600; font-size: 0.8rem;
+display: flex; align-items: center; gap: 5px; flex-shrink: 0;
+white-space: nowrap; transition: all 0.1s; min-width: 44px;
 }
-.tbtn:hover, .tbtn:active { border-color: var(–accent); color: var(–accent); }
-.tbtn:disabled { opacity: 0.3; cursor: not-allowed; }
-.tbtn.active-snap { border-color: var(–accent); color: var(–accent); background: rgba(255,107,53,.12); }
-.tbtn.danger { color: var(–danger); }
-.tbtn.danger:hover, .tbtn.danger:active { border-color: var(–danger); }
+.tbtn:hover, .tbtn:active { background: var(–panel3); border-color: var(–accent); color: var(–text); }
+.tbtn:disabled { opacity: 0.25; pointer-events: none; }
+.tbtn.on   { background: rgba(232,98,42,.15); border-color: var(–accent); color: var(–accent); }
+.tbtn.warn { color: #c0392b; }
+.tbtn.warn:hover { border-color: #c0392b; color: #e05040; }
+.tb-div  { width: 1px; height: 22px; background: var(–border); flex-shrink: 0; margin: 0 2px; }
+.tb-fill { flex: 1; }
+.tb-info { font-family: “Share Tech Mono”, monospace; font-size: 0.65rem; color: var(–text2); padding: 0 6px; flex-shrink: 0; white-space: nowrap; }
 
-/* ── TOOL INFO ── */
+/* TOOL INFO */
 #toolinfo {
-position: fixed; top: var(–tbh); left: 0; right: 0; height: 26px;
-background: rgba(10,11,16,0.92); border-bottom: 1px solid var(–border);
-display: flex; align-items: center; padding: 0 10px; gap: 12px;
-font-family: ‘Share Tech Mono’, monospace; font-size: 0.68rem; color: var(–text2); z-index: 99;
-overflow: hidden;
+position: fixed; top: var(–tbh); left: var(–lw); right: var(–rw); height: var(–tih);
+background: var(–panel); border-bottom: 1px solid var(–border);
+display: flex; align-items: center; padding: 0 12px; gap: 10px;
+font-family: “Share Tech Mono”, monospace; font-size: 0.65rem; color: var(–text2); z-index: 80;
 }
-.ti-tool { color: var(–accent); font-weight: bold; }
-.ti-coords { margin-left: auto; font-size: 0.62rem; }
+.ti-badge { background: var(–accent); color: #fff; font-weight: 700; font-size: 0.58rem; padding: 1px 7px; border-radius: 3px; letter-spacing: 1px; }
+#ti-hint { color: var(–text3); }
+#ti-coords { margin-left: auto; }
 
-/* ── LEFT PANEL ── */
-#lpanel {
-position: fixed; top: calc(var(–tbh) + 26px); left: 0;
-width: var(–lw); bottom: var(–sbh);
-background: var(–panel); border-right: 1px solid var(–border);
-overflow-y: auto; overflow-x: hidden; z-index: 50;
-display: flex; flex-direction: column;
-transition: transform 0.22s ease;
+/* PANELS */
+#lpanel, #rpanel {
+position: fixed; top: var(–tbh); bottom: var(–sbh);
+background: var(–panel); overflow-y: auto; overflow-x: hidden;
+z-index: 90; display: flex; flex-direction: column; transition: transform 0.2s ease;
 }
+#lpanel { left: 0; width: var(–lw); border-right: 1px solid var(–border); }
+#rpanel { right: 0; width: var(–rw); border-left: 1px solid var(–border); }
 
-/* ── RIGHT PANEL ── */
-#rpanel {
-position: fixed; top: calc(var(–tbh) + 26px); right: 0;
-width: var(–rw); bottom: var(–sbh);
-background: var(–panel); border-left: 1px solid var(–border);
-overflow-y: auto; z-index: 50;
-display: flex; flex-direction: column;
-transition: transform 0.22s ease;
-}
-
-/* ── PANEL TOGGLE BUTTONS (mobile) ── */
-#btn-lpanel, #btn-rpanel {
-display: none; position: fixed; z-index: 60;
-width: 40px; height: 40px; border-radius: 50%;
-background: var(–panel); border: 1px solid var(–border);
-color: var(–text); font-size: 1.1rem; cursor: pointer;
-align-items: center; justify-content: center;
-box-shadow: 0 3px 12px rgba(0,0,0,.5);
-}
-#btn-lpanel { bottom: calc(var(–sbh) + 10px); left: 10px; }
-#btn-rpanel { bottom: calc(var(–sbh) + 10px); right: 10px; }
-
-/* ── BOTTOM STATUS ── */
+/* STATUSBAR */
 #statusbar {
 position: fixed; bottom: 0; left: 0; right: 0; height: var(–sbh);
 background: var(–panel); border-top: 1px solid var(–border);
 display: flex; align-items: center; padding: 0 10px; gap: 10px;
-font-family: ‘Share Tech Mono’, monospace; font-size: 0.66rem; color: var(–text2); z-index: 100;
-overflow: hidden;
+font-family: “Share Tech Mono”, monospace; font-size: 0.63rem; color: var(–text2); z-index: 100;
 }
-.sb-sep { width: 1px; height: 14px; background: var(–border); }
-.kbkey { background: var(–panel2); border: 1px solid var(–border); padding: 1px 4px; border-radius: 2px; color: var(–text); font-size: 0.62rem; }
-#sb-selected { margin-left: auto; color: var(–accent); font-size: 0.7rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
-#sb-hints { display: flex; gap: 8px; }
+.sb-div { width: 1px; height: 12px; background: var(–border); }
+.kbkey { display: inline-block; background: var(–panel2); border: 1px solid var(–border); border-bottom-width: 2px; padding: 0 5px; border-radius: 3px; color: var(–text3); font-size: 0.58rem; line-height: 16px; }
+#sb-sel { margin-left: auto; color: var(–accent); font-size: 0.68rem; max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#sb-hints { display: flex; gap: 8px; align-items: center; }
 
-/* ── PANEL SECTIONS ── */
-.ps { padding: 10px 12px; border-bottom: 1px solid var(–border); }
+/* PANEL SECTIONS */
+.ps { padding: 10px 10px; border-bottom: 1px solid var(–border); }
 .ps:last-child { border-bottom: none; }
-.pt { font-size: 0.64rem; font-weight: 700; color: var(–text2); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 8px; }
+.pt { font-size: 0.58rem; font-weight: 700; color: var(–text2); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 8px; }
 
-/* ── TOOL BUTTONS (touch-friendly) ── */
-.toolbtn {
-width: 100%; min-height: var(–tap); padding: 0 10px; background: transparent;
-border: 1px solid transparent; border-radius: 6px;
-color: var(–text); cursor: pointer; font-family: ‘Rajdhani’, sans-serif;
-font-size: 0.92rem; font-weight: 600;
-display: flex; align-items: center; gap: 10px; margin-bottom: 2px; transition: all 0.12s;
+/* QUICK ADD */
+.qadd-new {
+width: 100%; height: 40px; padding: 0 10px; margin-bottom: 8px;
+background: rgba(232,98,42,.1); border: 1px solid rgba(232,98,42,.3); border-radius: 5px;
+color: var(–accent); cursor: pointer; font-family: “Rajdhani”, sans-serif;
+font-weight: 700; font-size: 0.85rem; letter-spacing: 1px;
+display: flex; align-items: center; gap: 8px; transition: all 0.1s;
 }
-.toolbtn:hover, .toolbtn:active { background: var(–panel2); border-color: var(–border); }
-.toolbtn.active { background: rgba(255,107,53,.13); border-color: var(–accent); color: var(–accent); }
-.toolbtn .ticon { width: 22px; text-align: center; font-size: 1.1rem; flex-shrink: 0; }
-.toolbtn .tshort { margin-left: auto; font-size: 0.62rem; color: var(–text2); font-family: ‘Share Tech Mono’, monospace; background: var(–panel2); border: 1px solid var(–border); padding: 1px 4px; border-radius: 2px; flex-shrink: 0; }
-
-/* ── INVENTORY BUTTONS (touch-friendly) ── */
-.invbtn {
-width: 100%; min-height: var(–tap); padding: 0 12px;
-background: var(–panel2); border: 1px solid var(–border);
-border-radius: 6px; color: var(–text); cursor: pointer;
-font-family: ‘Rajdhani’, sans-serif; font-size: 0.92rem; font-weight: 600;
-display: flex; align-items: center; gap: 10px; margin-bottom: 6px; transition: all 0.12s;
-}
-.invbtn:hover, .invbtn:active { border-color: var(–accent); color: var(–accent); }
-
-/* ── PROPERTIES ── */
-.prop-row { display: flex; align-items: center; gap: 6px; margin-bottom: 7px; }
-.prop-lbl { font-size: 0.7rem; color: var(–text2); width: 64px; flex-shrink: 0; }
-.prop-val {
-flex: 1; background: var(–bg); border: 1px solid var(–border); border-radius: 4px;
-padding: 6px 8px; font-family: ‘Share Tech Mono’, monospace; font-size: 0.75rem; color: var(–text);
-min-height: 34px;
-}
-.prop-val:focus { outline: none; border-color: var(–accent); }
-.prop-static { flex: 1; font-family: ‘Share Tech Mono’, monospace; font-size: 0.72rem; color: var(–text2); }
-.prop-sub { font-size: 0.62rem; color: var(–text2); text-transform: uppercase; letter-spacing: 1.5px; margin: 9px 0 5px 0; }
-
-/* ── COLOR SWATCHES ── */
-.cgrid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
-.cswatch {
-aspect-ratio: 1; border-radius: 4px; cursor: pointer; min-height: 28px;
-border: 2px solid transparent; transition: all 0.12s;
-}
-.cswatch:hover, .cswatch:active, .cswatch.active { border-color: white; transform: scale(1.12); }
-
-/* ── PIECE LIST ── */
-.plitem {
-display: flex; align-items: center; gap: 8px; padding: 9px 8px;
-border-radius: 4px; cursor: pointer; transition: all 0.12s; font-size: 0.85rem; margin-bottom: 1px;
-min-height: var(–tap);
-}
-.plitem:hover, .plitem:active { background: var(–panel2); }
-.plitem.selected { background: rgba(255,107,53,.1); border-left: 2px solid var(–accent); padding-left: 6px; }
-.pldot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-.plname { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pltype { font-size: 0.68rem; color: var(–text2); flex-shrink: 0; }
-
-/* ── RANGE SLIDERS (larger touch target) ── */
-input[type=range] {
--webkit-appearance: none; height: 4px; border-radius: 2px; background: var(–border);
-outline: none; cursor: pointer; width: 100%;
-}
-input[type=range]::-webkit-slider-thumb {
--webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%;
-background: var(–accent); cursor: pointer; border: 2px solid var(–panel);
-}
-
-/* ── MODAL ── */
-#modal-bg {
-display: none; position: fixed; inset: 0; background: rgba(0,0,0,.75);
-z-index: 200; align-items: center; justify-content: center;
-}
-#modal-bg.open { display: flex; }
-#modal {
-background: var(–panel); border: 1px solid var(–border); border-radius: 12px;
-padding: 20px; width: min(500px, 96vw); max-height: 90vh; overflow-y: auto;
-box-shadow: 0 24px 70px rgba(0,0,0,.85);
-}
-.m-title { font-size: 1.1rem; font-weight: 700; color: var(–accent); letter-spacing: 2px; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 1px solid var(–border); }
-.m-sec { margin-bottom: 14px; }
-.m-st { font-size: 0.63rem; color: var(–text2); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 8px; }
-
-/* ── SHAPE GRID ── */
-.shapegrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-.sbtn {
-padding: 12px 6px; background: var(–panel2); border: 1px solid var(–border);
-border-radius: 6px; color: var(–text); cursor: pointer; font-family: ‘Rajdhani’, sans-serif;
-font-size: 0.82rem; font-weight: 600; text-align: center; transition: all 0.12s;
-display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 64px; justify-content: center;
-}
-.sbtn:hover, .sbtn:active { border-color: var(–accent); }
-.sbtn.active { border-color: var(–accent); background: rgba(255,107,53,.13); color: var(–accent); }
-.sbtn .si { font-size: 1.5rem; }
-
-/* ── MATERIAL GRID ── */
-.matgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-.mbtn {
-padding: 10px 4px; background: var(–panel2); border: 1px solid var(–border);
-border-radius: 6px; color: var(–text); cursor: pointer; font-family: ‘Rajdhani’, sans-serif;
-font-size: 0.82rem; font-weight: 600; text-align: center; transition: all 0.12s; min-height: var(–tap);
-}
-.mbtn:hover, .mbtn:active { border-color: var(–accent); }
-.mbtn.active { border-color: var(–accent); background: rgba(255,107,53,.13); color: var(–accent); }
-
-/* ── SLIDERS ── */
-.slrow { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
-.sllbl { width: 72px; font-size: 0.78rem; color: var(–text2); flex-shrink: 0; }
-.slval { width: 42px; text-align: right; font-family: ‘Share Tech Mono’, monospace; font-size: 0.78rem; color: var(–accent); flex-shrink: 0; font-weight: 600; }
-
-/* ── MODAL COLORS ── */
-.mcgrid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; }
-.mcs { aspect-ratio: 1; border-radius: 4px; cursor: pointer; border: 2px solid transparent; transition: all 0.12s; min-height: 24px; }
-.mcs:hover, .mcs:active, .mcs.active { border-color: white; transform: scale(1.1); }
-
-/* ── MODAL BUTTONS ── */
-.mfooter { display: flex; gap: 8px; margin-top: 16px; }
-.mbtn-primary {
-flex: 1; padding: 13px; background: var(–accent); border: none; border-radius: 6px;
-color: white; font-family: ‘Rajdhani’, sans-serif; font-size: 1rem; font-weight: 700;
-cursor: pointer; transition: all 0.13s; letter-spacing: 1px; min-height: var(–tap);
-}
-.mbtn-primary:hover, .mbtn-primary:active { background: #ff8c5a; }
-.mbtn-sec {
-padding: 13px 16px; background: var(–panel2); border: 1px solid var(–border);
-border-radius: 6px; color: var(–text); font-family: ‘Rajdhani’, sans-serif;
-font-size: 1rem; font-weight: 600; cursor: pointer; transition: all 0.12s; min-height: var(–tap);
-}
-.mbtn-sec:hover, .mbtn-sec:active { border-color: var(–text); }
-
-input[type=text], input[type=number] {
+.qadd-new:hover, .qadd-new:active { background: rgba(232,98,42,.2); border-color: var(–accent); }
+.qadd {
+width: 100%; height: 36px; padding: 0 10px; margin-bottom: 4px;
 background: var(–panel2); border: 1px solid var(–border); border-radius: 5px;
-color: var(–text); font-family: ‘Rajdhani’, sans-serif; font-size: 0.92rem; outline: none;
-min-height: 36px; padding: 6px 10px;
+color: var(–text3); cursor: pointer; font-family: “Rajdhani”, sans-serif;
+font-weight: 600; font-size: 0.83rem;
+display: flex; align-items: center; gap: 8px; transition: all 0.1s;
 }
+.qadd:hover, .qadd:active { border-color: var(–accent); color: var(–text); background: var(–panel3); }
+.qdot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+
+/* TOOL BUTTONS */
+.toolbtn {
+width: 100%; height: 40px; padding: 0 10px;
+background: transparent; border: 1px solid transparent; border-radius: 5px;
+color: var(–text3); cursor: pointer; margin-bottom: 2px;
+font-family: “Rajdhani”, sans-serif; font-weight: 600; font-size: 0.85rem;
+display: flex; align-items: center; gap: 9px; transition: all 0.1s; text-align: left;
+}
+.toolbtn:hover, .toolbtn:active  { background: var(–panel2); border-color: var(–border); color: var(–text); }
+.toolbtn.active { background: rgba(232,98,42,.12); border-color: rgba(232,98,42,.45); color: var(–accent); }
+.toolbtn.active .tshort { border-color: rgba(232,98,42,.35); color: var(–accent); }
+.toolbtn.del-btn { color: #8a3030; }
+.toolbtn.del-btn:hover { background: rgba(192,57,43,.09); border-color: rgba(192,57,43,.3); color: #e05040; }
+.toolbtn.del-btn.active { background: rgba(192,57,43,.15); border-color: #c0392b; color: #e05040; }
+.ticon { width: 18px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 13px; }
+.tshort {
+margin-left: auto; font-size: 0.58rem; color: var(–text2);
+font-family: “Share Tech Mono”, monospace; background: var(–panel2);
+border: 1px solid var(–border); padding: 0 4px; border-radius: 3px; line-height: 16px; flex-shrink: 0;
+}
+
+/* PAINT */
+.cgrid { display: grid; grid-template-columns: repeat(6,1fr); gap: 4px; }
+.cswatch { aspect-ratio: 1; border-radius: 4px; cursor: pointer; border: 2px solid transparent; transition: all 0.1s; min-height: 24px; }
+.cswatch:hover, .cswatch:active, .cswatch.active { border-color: #fff; transform: scale(1.1); }
+
+/* PROPERTIES */
+.prop-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.prop-lbl { font-size: 0.65rem; color: var(–text2); width: 66px; flex-shrink: 0; }
+.prop-val { flex: 1; background: var(–panel2); border: 1px solid var(–border); border-radius: 4px; padding: 5px 8px; font-family: “Share Tech Mono”, monospace; font-size: 0.7rem; color: var(–text); min-height: 30px; outline: none; }
+.prop-val:focus { border-color: var(–accent); }
+.prop-static { flex: 1; font-family: “Share Tech Mono”, monospace; font-size: 0.68rem; color: var(–text2); }
+.prop-sub { font-size: 0.56rem; color: var(–text2); text-transform: uppercase; letter-spacing: 1.5px; margin: 10px 0 6px; padding-top: 8px; border-top: 1px solid var(–border); }
+
+input[type=range] { -webkit-appearance: none; height: 3px; border-radius: 2px; background: var(–panel3); outline: none; cursor: pointer; width: 100%; }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: var(–accent); cursor: pointer; border: 2px solid var(–panel); }
+
+input[type=text], input[type=number] { background: var(–panel2); border: 1px solid var(–border); border-radius: 4px; color: var(–text); font-family: “Rajdhani”, sans-serif; font-size: 0.85rem; outline: none; }
 input[type=text]:focus, input[type=number]:focus { border-color: var(–accent); }
 
-/* ── NOTIFICATIONS ── */
-#notifs { position: fixed; bottom: 50px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 5px; z-index: 500; pointer-events: none; }
-.nf {
-background: rgba(10,11,16,0.95); border: 1px solid var(–border);
-border-left: 3px solid var(–accent); padding: 9px 16px; border-radius: 6px;
-font-family: ‘Share Tech Mono’, monospace; font-size: 0.75rem; color: var(–text);
-animation: nfin .18s ease, nfout .25s ease 1.75s forwards;
-white-space: nowrap; max-width: 90vw; overflow: hidden; text-overflow: ellipsis;
-}
-.nf.ok { border-left-color: var(–success); }
+#pDel { width: 100%; margin-top: 10px; padding: 8px; background: rgba(192,57,43,.12); border: 1px solid rgba(192,57,43,.35); border-radius: 5px; color: #e05040; font-family: “Rajdhani”, sans-serif; font-weight: 700; cursor: pointer; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; gap: 5px; transition: all 0.1s; }
+#pDel:hover, #pDel:active { background: rgba(192,57,43,.25); border-color: #c0392b; }
+
+/* PIECE LIST */
+.plitem { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; margin-bottom: 1px; transition: background 0.1s; min-height: 36px; }
+.plitem:hover, .plitem:active { background: var(–panel2); }
+.plitem.selected { background: rgba(232,98,42,.09); border-left: 2px solid var(–accent); padding-left: 6px; }
+.pldot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.plname { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pltype { font-size: 0.6rem; color: var(–text2); flex-shrink: 0; }
+
+/* MODAL */
+#modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.82); z-index: 200; align-items: center; justify-content: center; }
+#modal-bg.open { display: flex; }
+#modal { background: var(–panel); border: 1px solid var(–border); border-radius: 10px; padding: 20px; width: min(500px, 96vw); max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,.9); }
+.m-title { font-size: 0.95rem; font-weight: 700; color: var(–accent); letter-spacing: 2px; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid var(–border); }
+.m-sec { margin-bottom: 13px; }
+.m-st { font-size: 0.58rem; color: var(–text2); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 7px; }
+
+.shapegrid { display: grid; grid-template-columns: repeat(3,1fr); gap: 5px; }
+.sbtn { padding: 10px 5px; background: var(–panel2); border: 1px solid var(–border); border-radius: 6px; color: var(–text3); cursor: pointer; font-family: “Rajdhani”, sans-serif; font-size: 0.78rem; font-weight: 600; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 60px; justify-content: center; transition: all 0.1s; }
+.sbtn:hover, .sbtn:active { border-color: var(–accent); color: var(–text); }
+.sbtn.active { border-color: var(–accent); background: rgba(232,98,42,.12); color: var(–accent); }
+.sico { font-size: 1.2rem; line-height: 1; }
+
+.matgrid { display: grid; grid-template-columns: repeat(3,1fr); gap: 5px; }
+.mbtn { padding: 8px 4px; background: var(–panel2); border: 1px solid var(–border); border-radius: 5px; color: var(–text3); cursor: pointer; font-family: “Rajdhani”, sans-serif; font-size: 0.78rem; font-weight: 600; text-align: center; transition: all 0.1s; min-height: 38px; }
+.mbtn:hover, .mbtn:active { border-color: var(–accent); color: var(–text); }
+.mbtn.active { border-color: var(–accent); background: rgba(232,98,42,.12); color: var(–accent); }
+
+.slrow { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.sllbl { width: 70px; font-size: 0.73rem; color: var(–text2); flex-shrink: 0; }
+.slval { width: 38px; text-align: right; font-family: “Share Tech Mono”, monospace; font-size: 0.76rem; color: var(–accent); flex-shrink: 0; }
+
+.mcgrid { display: grid; grid-template-columns: repeat(8,1fr); gap: 4px; }
+.mcs { aspect-ratio: 1; border-radius: 3px; cursor: pointer; border: 2px solid transparent; transition: all 0.1s; min-height: 22px; }
+.mcs:hover, .mcs:active, .mcs.active { border-color: #fff; transform: scale(1.07); }
+
+.mfooter { display: flex; gap: 8px; margin-top: 14px; }
+.mbtn-primary { flex: 1; padding: 11px; background: var(–accent); border: none; border-radius: 5px; color: #fff; font-family: “Rajdhani”, sans-serif; font-size: 0.95rem; font-weight: 700; cursor: pointer; transition: background 0.1s; letter-spacing: 1px; min-height: 44px; }
+.mbtn-primary:hover, .mbtn-primary:active { background: #d4561f; }
+.mbtn-sec { padding: 11px 14px; background: var(–panel2); border: 1px solid var(–border); border-radius: 5px; color: var(–text3); font-family: “Rajdhani”, sans-serif; font-size: 0.9rem; font-weight: 600; cursor: pointer; transition: all 0.1s; min-height: 44px; }
+.mbtn-sec:hover, .mbtn-sec:active { border-color: var(–text); color: var(–text); }
+
+/* NOTIFICATIONS */
+#notifs { position: fixed; bottom: 44px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 4px; z-index: 500; pointer-events: none; }
+.nf { background: var(–panel); border: 1px solid var(–border); border-left: 3px solid var(–accent); padding: 8px 14px; border-radius: 5px; font-family: “Share Tech Mono”, monospace; font-size: 0.72rem; color: var(–text); animation: nfin .16s ease, nfout .22s ease 1.8s forwards; max-width: 90vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nf.ok  { border-left-color: var(–success); }
 .nf.err { border-left-color: var(–danger); }
-@keyframes nfin { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
-@keyframes nfout { from { opacity:1; } to { opacity:0; transform:translateY(-6px); } }
+@keyframes nfin  { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+@keyframes nfout { to { opacity:0; transform:translateY(-5px); } }
 
-/* ── CROSSHAIR ── */
-#xhair { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); pointer-events: none; z-index: 10; opacity: 0.35; }
-#xhair::before, #xhair::after { content:’’; position:absolute; background:white; }
-#xhair::before { top:10px; left:0; width:22px; height:2px; }
-#xhair::after { top:0; left:10px; width:2px; height:22px; }
+/* CROSSHAIR */
+#xhair { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); pointer-events: none; z-index: 10; opacity: 0.3; }
+#xhair::before, #xhair::after { content:””; position:absolute; background: var(–text); }
+#xhair::before { top:9px; left:0; width:20px; height:2px; }
+#xhair::after  { top:0; left:9px; width:2px; height:20px; }
 
-/* ── HOVER TOOLTIP ── */
-#htip {
-position: fixed; background: rgba(10,11,16,.95); border: 1px solid var(–border);
-padding: 5px 10px; border-radius: 5px; font-family: ‘Share Tech Mono’, monospace;
-font-size: 0.72rem; pointer-events: none; display: none; z-index: 150; color: var(–text);
-}
+#htip { position: fixed; background: var(–panel); border: 1px solid var(–border); padding: 4px 9px; border-radius: 4px; font-family: “Share Tech Mono”, monospace; font-size: 0.67rem; pointer-events: none; display: none; z-index: 150; color: var(–text); }
 
-/* ── CONTEXT MENU ── */
-#ctx-menu {
-position: fixed; background: var(–panel); border: 1px solid var(–border); border-radius: 8px;
-padding: 6px 0; min-width: 170px; z-index: 300; box-shadow: 0 8px 30px rgba(0,0,0,.6);
-display: none;
-}
-.ctx-item {
-padding: 12px 16px; font-size: 0.9rem; cursor: pointer; display: flex; align-items: center; gap: 10px;
-transition: background 0.1s; min-height: var(–tap);
-}
-.ctx-item:hover, .ctx-item:active { background: var(–panel2); color: var(–accent); }
-.ctx-item.danger:hover, .ctx-item.danger:active { color: var(–danger); }
+/* CONTEXT MENU */
+#ctx-menu { position: fixed; background: var(–panel); border: 1px solid var(–border); border-radius: 7px; padding: 5px 0; min-width: 162px; z-index: 300; box-shadow: 0 10px 35px rgba(0,0,0,.7); display: none; }
+.ctx-item { padding: 10px 14px; font-size: 0.85rem; cursor: pointer; display: flex; align-items: center; gap: 9px; min-height: 40px; color: var(–text3); transition: background 0.1s; }
+.ctx-item:hover, .ctx-item:active { background: var(–panel2); color: var(–text); }
+.ctx-item.danger:hover, .ctx-item.danger:active { color: #e05040; }
 .ctx-sep { height: 1px; background: var(–border); margin: 4px 0; }
 
-/* ── HIST ── */
-#hist-list { max-height: 100px; overflow-y: auto; font-family: ‘Share Tech Mono’, monospace; font-size: 0.65rem; color: var(–text2); }
+#hist-list { max-height: 90px; overflow-y: auto; font-family: “Share Tech Mono”, monospace; font-size: 0.62rem; color: var(–text2); }
 .hitem { padding: 3px 0; border-bottom: 1px solid var(–border); }
 
-/* ── SCROLLBAR ── */
-::-webkit-scrollbar { width: 4px; }
+/* MOBILE PANEL TOGGLES */
+#btn-lpanel, #btn-rpanel { display: none; position: fixed; z-index: 95; width: 42px; height: 42px; border-radius: 50%; background: var(–panel2); border: 1px solid var(–border); color: var(–text3); font-size: 1rem; cursor: pointer; align-items: center; justify-content: center; box-shadow: 0 3px 14px rgba(0,0,0,.6); }
+#btn-lpanel { bottom: calc(var(–sbh) + 12px); left: 12px; }
+#btn-rpanel { bottom: calc(var(–sbh) + 12px); right: 12px; }
+
+::-webkit-scrollbar { width: 3px; }
 ::-webkit-scrollbar-track { background: var(–panel); }
 ::-webkit-scrollbar-thumb { background: var(–border); border-radius: 2px; }
 
-/* ── MOBILE / TABLET RESPONSIVE ── */
 @media (max-width: 768px) {
-:root { –lw: 220px; –rw: 250px; –tbh: 52px; }
-
-/* Panels hidden off-screen by default on mobile */
+:root { –lw: 228px; –rw: 248px; }
 #lpanel { transform: translateX(-100%); }
 #rpanel { transform: translateX(100%); }
 #lpanel.open { transform: translateX(0); }
-#rpanel.open { transform: translateX(0); }
-
-/* Show toggle buttons on mobile */
+#rpanel.open  { transform: translateX(0); }
 #btn-lpanel, #btn-rpanel { display: flex; }
-
-/* Hide keyboard shortcuts in status bar on mobile */
 #sb-hints { display: none; }
-.tb-sep:not(:first-of-type) { display: none; }
-.tbtn .tbtn-txt { display: none; }
-
-/* Toolinfo more compact */
-#toolinfo .ti-coords { display: none; }
-
-/* Bigger taps on touch */
-.toolbtn { min-height: 50px; font-size: 1rem; }
-.invbtn { min-height: 50px; font-size: 1rem; }
-.tbtn { height: 40px; font-size: 0.85rem; }
-
-/* Modal full-width on mobile */
-#modal { border-radius: 12px 12px 0 0; position: fixed; bottom: 0; left: 0; right: 0; width: 100%; max-height: 85vh; border-left: none; border-right: none; border-bottom: none; }
+#toolinfo { left: 0; right: 0; }
+#ti-coords { display: none; }
+#modal { border-radius: 12px 12px 0 0; position: fixed; bottom: 0; left: 0; right: 0; width: 100%; max-height: 86vh; }
 #modal-bg.open { align-items: flex-end; }
+.toolbtn { height: 46px; }
+.qadd { height: 42px; }
 }
-
 @media (min-width: 769px) {
-/* Show keyboard shortcuts on desktop */
 #sb-hints { display: flex; }
 #btn-lpanel, #btn-rpanel { display: none !important; }
 }
@@ -340,108 +258,174 @@ transition: background 0.1s; min-height: var(–tap);
 
 </head>
 <body>
-
 <!-- CANVAS -->
-
 <div id="canvas-container"></div>
 <div id="xhair"></div>
 <div id="htip"></div>
 <div id="notifs"></div>
 
-<!-- PANEL TOGGLES (mobile) -->
+<!-- MOBILE PANEL TOGGLES -->
 
-<button id="btn-lpanel" title="Menú">☰</button>
-<button id="btn-rpanel" title="Propiedades">⚙</button>
+<button id="btn-lpanel">☰</button>
+<button id="btn-rpanel">⚙</button>
 
 <!-- TOP BAR -->
 
 <div id="topbar">
-  <div class="tb-title">⚙ WORKFORGE</div>
-  <div class="tb-sep"></div>
-  <button class="tbtn" id="btnUndo" disabled title="Ctrl+Z">↩ Deshacer</button>
-  <button class="tbtn" id="btnRedo" disabled title="Ctrl+Y">↪ Rehacer</button>
-  <div class="tb-sep"></div>
-  <button class="tbtn" id="btnSnap">⊞ Grid: OFF</button>
-  <button class="tbtn" id="btnWire">⬜ Wireframe</button>
-  <button class="tbtn" id="btnShadow">💡 Sombras: ON</button>
-  <div class="tb-sep"></div>
-  <button class="tbtn" id="btnShot">📸 Captura</button>
-  <button class="tbtn" id="btnSave">💾 Guardar</button>
-  <button class="tbtn" id="btnLoad">📂 Cargar</button>
-  <button class="tbtn danger" id="btnReset">🗑 Limpiar Todo</button>
-  <div class="tb-spacer"></div>
-  <span id="pcount" style="font-family:'Share Tech Mono',monospace;font-size:0.72rem;color:var(--text2);">0 piezas</span>
-  <span style="font-family:'Share Tech Mono',monospace;font-size:0.72rem;color:var(--text2);margin-left:8px;">FPS: <span id="fps-v" style="color:var(--accent)">60</span></span>
+  <div class="tb-logo">WORKFORGE<small>3D STUDIO</small></div>
+  <button class="tbtn" id="btnUndo" disabled>
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10h10c4 0 7 3 7 7v1"/><path d="M3 10l5-5M3 10l5 5"/></svg>
+    Deshacer
+  </button>
+  <button class="tbtn" id="btnRedo" disabled>
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10H11C7 10 4 13 4 17v1"/><path d="M21 10l-5-5M21 10l-5 5"/></svg>
+    Rehacer
+  </button>
+  <div class="tb-div"></div>
+  <button class="tbtn" id="btnSnap">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+    Grid: OFF
+  </button>
+  <button class="tbtn" id="btnWire">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 2l20 20M2 22L22 2"/><rect x="2" y="2" width="20" height="20" rx="1"/></svg>
+    Wireframe
+  </button>
+  <button class="tbtn" id="btnShadow">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/></svg>
+    Sombras: ON
+  </button>
+  <div class="tb-div"></div>
+  <button class="tbtn" id="btnShot">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+    Captura
+  </button>
+  <button class="tbtn" id="btnSave">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+    Guardar
+  </button>
+  <button class="tbtn" id="btnLoad">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+    Cargar
+  </button>
+  <button class="tbtn warn" id="btnReset">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
+    Limpiar
+  </button>
+  <div class="tb-fill"></div>
+  <span class="tb-info" id="pcount">0 piezas</span>
+  <div class="tb-div"></div>
+  <span class="tb-info">FPS <span id="fps-v" style="color:var(--accent)">60</span></span>
 </div>
 
 <!-- TOOL INFO -->
 
 <div id="toolinfo">
-  HERRAMIENTA: <span class="ti-tool" id="ti-name">SELECCIONAR</span>
-  <span>|</span>
+  <span class="ti-badge" id="ti-name">SELECCIONAR</span>
   <span id="ti-hint">Haz clic en una pieza para seleccionarla</span>
-  <span class="ti-coords" id="ti-coords">Cursor: (0, 0, 0)</span>
+  <span id="ti-coords">0, 0, 0</span>
 </div>
 
 <!-- LEFT PANEL -->
 
 <div id="lpanel">
+
   <div class="ps">
-    <div class="pt">Crear Pieza</div>
-    <button class="invbtn" id="btnNewPiece">✦ Nueva Pieza Personalizada</button>
-    <div style="font-size:0.68rem;color:var(--text2);margin-bottom:5px;">Acceso rápido:</div>
-    <button class="invbtn" id="qWood">🪵 Tabla de Madera</button>
-    <button class="invbtn" id="qMetal">⚙️ Placa de Metal</button>
-    <button class="invbtn" id="qPipe">🔧 Tubo de Metal</button>
-    <button class="invbtn" id="qConcrete">🧱 Bloque de Hormigón</button>
-    <button class="invbtn" id="qPlastic">🔵 Pieza de Plástico</button>
+    <div class="pt">Crear pieza</div>
+    <button class="qadd-new" id="btnNewPiece">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Nueva pieza personalizada
+    </button>
+    <div style="font-size:0.6rem;color:var(--text2);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px;">Acceso rapido</div>
+    <button class="qadd" id="qWood"><span class="qdot" style="background:#c8894a"></span>Tabla de madera</button>
+    <button class="qadd" id="qMetal"><span class="qdot" style="background:#8aa0b0"></span>Placa de metal</button>
+    <button class="qadd" id="qPipe"><span class="qdot" style="background:#607080"></span>Tubo metalico</button>
+    <button class="qadd" id="qConcrete"><span class="qdot" style="background:#7a8898"></span>Bloque de hormigon</button>
+    <button class="qadd" id="qPlastic"><span class="qdot" style="background:#3a78c0"></span>Pieza de plastico</button>
   </div>
 
   <div class="ps">
     <div class="pt">Herramientas</div>
-    <button class="toolbtn active" id="toolSelect"><span class="ticon">↖</span>Seleccionar<span class="tshort">S</span></button>
-    <button class="toolbtn" id="toolMove"><span class="ticon">🖐</span>Mover<span class="tshort">M</span></button>
-    <button class="toolbtn" id="toolRotate"><span class="ticon">🔄</span>Rotar<span class="tshort">R</span></button>
-    <button class="toolbtn" id="toolScale"><span class="ticon">⇱</span>Escalar<span class="tshort">E</span></button>
-    <button class="toolbtn" id="toolDuplicate"><span class="ticon">⧉</span>Duplicar<span class="tshort">D</span></button>
-    <button class="toolbtn" id="toolDrill"><span class="ticon">🪛</span>Taladrar<span class="tshort">T</span></button>
-    <button class="toolbtn" id="toolScrew"><span class="ticon">🔩</span>Atornillar<span class="tshort">A</span></button>
-    <button class="toolbtn" id="toolCut"><span class="ticon">🪚</span>Cortar<span class="tshort">C</span></button>
-    <button class="toolbtn" id="toolPaint"><span class="ticon">🎨</span>Pintar<span class="tshort">P</span></button>
-    <button class="toolbtn" id="toolMeasure"><span class="ticon">📏</span>Medir<span class="tshort">N</span></button>
-    <button class="toolbtn" id="toolDelete" style="color:var(--danger)"><span class="ticon">✕</span>Eliminar<span class="tshort">X</span></button>
+    <button class="toolbtn active" id="toolSelect" onclick="setTool('select')">
+      <span class="ticon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4l6 18 3-7 7-3z"/></svg></span>
+      Seleccionar <span class="tshort">S</span>
+    </button>
+    <button class="toolbtn" id="toolMove" onclick="setTool('move')">
+      <span class="ticon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M12 12h.01"/><path d="M2 12h20M12 2v20"/></svg></span>
+      Mover <span class="tshort">M</span>
+    </button>
+    <button class="toolbtn" id="toolRotate" onclick="setTool('rotate')">
+      <span class="ticon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6"/><path d="M22 11.5A10 10 0 003.2 7.2M2 12.5a10 10 0 0018.8 4.2"/></svg></span>
+      Rotar <span class="tshort">R</span>
+    </button>
+    <button class="toolbtn" id="toolScale" onclick="setTool('scale')">
+      <span class="ticon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></span>
+      Escalar <span class="tshort">E</span>
+    </button>
+    <button class="toolbtn" id="toolDuplicate" onclick="setTool('duplicate')">
+      <span class="ticon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="8" width="12" height="12" rx="1"/><path d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2"/></svg></span>
+      Duplicar <span class="tshort">D</span>
+    </button>
+    <button class="toolbtn" id="toolDrill" onclick="setTool('drill')">
+      <span class="ticon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="2" x2="12" y2="16"/><path d="M8 16h8l-2 6H10z"/><line x1="9" y1="6" x2="15" y2="6"/></svg></span>
+      Taladrar <span class="tshort">T</span>
+    </button>
+    <button class="toolbtn" id="toolScrew" onclick="setTool('screw')">
+      <span class="ticon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="3" x2="12" y2="21"/><path d="M8 7h8M8 12h8M8 17h8"/></svg></span>
+      Atornillar <span class="tshort">A</span>
+    </button>
+    <button class="toolbtn" id="toolCut" onclick="setTool('cut')">
+      <span class="ticon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg></span>
+      Cortar <span class="tshort">C</span>
+    </button>
+    <button class="toolbtn" id="toolPaint" onclick="setTool('paint')">
+      <span class="ticon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L4.22 13.45l6.33 6.33 8.84-8.84a5.5 5.5 0 000-7.78z"/><path d="M7.49 21.01c0 1.38-1.12 2.5-2.5 2.5A2.5 2.5 0 012.5 21c0-1.38 2.5-5 2.5-5s2.49 3.62 2.49 5.01z"/></svg></span>
+      Pintar <span class="tshort">P</span>
+    </button>
+    <button class="toolbtn" id="toolMeasure" onclick="setTool('measure')">
+      <span class="ticon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12h20M2 12l4-4M2 12l4 4M22 12l-4-4M22 12l-4 4"/></svg></span>
+      Medir <span class="tshort">N</span>
+    </button>
+    <button class="toolbtn del-btn" id="toolDelete" onclick="setTool('delete')">
+      <span class="ticon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg></span>
+      Eliminar <span class="tshort">X</span>
+    </button>
   </div>
 
   <div class="ps">
-    <div class="pt">Color de Pintura</div>
+    <div class="pt">Color de pintura</div>
     <div class="cgrid" id="paintGrid"></div>
-    <div style="display:flex;align-items:center;gap:7px;margin-top:7px;">
-      <label style="font-size:0.7rem;color:var(--text2);">Personalizado:</label>
-      <input type="color" id="paintCustom" value="#e74c3c" style="width:32px;height:24px;border:1px solid var(--border);border-radius:3px;padding:1px;background:var(--panel2);cursor:pointer;">
+    <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
+      <label style="font-size:0.62rem;color:var(--text2);">Personalizado</label>
+      <input type="color" id="paintCustom" value="#e74c3c" style="width:34px;height:26px;border:1px solid var(--border);border-radius:4px;padding:2px;background:var(--panel2);cursor:pointer;">
     </div>
   </div>
+
 </div>
 
 <!-- RIGHT PANEL -->
 
 <div id="rpanel">
+
   <div class="ps">
     <div class="pt">Propiedades</div>
-    <div id="no-sel" style="color:var(--text2);font-size:0.78rem;text-align:center;padding:12px 0;">Selecciona una pieza</div>
+    <div id="no-sel" style="color:var(--text2);font-size:0.75rem;text-align:center;padding:16px 0;">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:.3;display:block;margin:0 auto 8px;"><path d="M4 4l6 18 3-7 7-3z"/></svg>
+      Selecciona una pieza
+    </div>
     <div id="props" style="display:none;">
       <div class="prop-row">
         <span class="prop-lbl">Nombre</span>
-        <input class="prop-val" id="pName" type="text" style="padding:3px 7px;">
+        <input class="prop-val" id="pName" type="text">
       </div>
       <div class="prop-row">
         <span class="prop-lbl">Tipo</span>
         <span class="prop-static" id="pType">-</span>
       </div>
-      <div class="prop-sub">Posición</div>
+      <div class="prop-sub">Posicion</div>
       <div class="prop-row"><span class="prop-lbl">X</span><input class="prop-val" id="pX" type="number" step="0.5"></div>
       <div class="prop-row"><span class="prop-lbl">Y</span><input class="prop-val" id="pY" type="number" step="0.5"></div>
       <div class="prop-row"><span class="prop-lbl">Z</span><input class="prop-val" id="pZ" type="number" step="0.5"></div>
-      <div class="prop-sub">Rotación (°)</div>
+      <div class="prop-sub">Rotacion (grados)</div>
       <div class="prop-row"><span class="prop-lbl">Rot. Y</span><input class="prop-val" id="pRotY" type="number" step="5"></div>
       <div class="prop-sub">Dimensiones</div>
       <div class="prop-row"><span class="prop-lbl">Ancho</span><span class="prop-static" id="pW">-</span></div>
@@ -450,115 +434,129 @@ transition: background 0.1s; min-height: var(–tap);
       <div class="prop-sub">Material</div>
       <div class="prop-row">
         <span class="prop-lbl">Color</span>
-        <input type="color" id="pColor" style="flex:1;height:24px;border:1px solid var(--border);border-radius:3px;background:var(--panel2);cursor:pointer;padding:1px;">
+        <input type="color" id="pColor" style="flex:1;height:28px;border:1px solid var(--border);border-radius:4px;background:var(--panel2);cursor:pointer;padding:2px;">
       </div>
       <div class="prop-row"><span class="prop-lbl">Rugosidad</span><input type="range" id="pRough" min="0" max="1" step="0.05" style="flex:1;"></div>
       <div class="prop-row"><span class="prop-lbl">Metalicidad</span><input type="range" id="pMetal" min="0" max="1" step="0.05" style="flex:1;"></div>
-      <div class="prop-row"><span class="prop-lbl">Emisión</span><input type="range" id="pEmit" min="0" max="2" step="0.1" style="flex:1;"></div>
+      <div class="prop-row"><span class="prop-lbl">Emision</span><input type="range" id="pEmit" min="0" max="2" step="0.1" style="flex:1;"></div>
       <div class="prop-sub">Escala</div>
       <div class="prop-row"><span class="prop-lbl">Escala X</span><input class="prop-val" id="pSX" type="number" step="0.1" min="0.01"></div>
       <div class="prop-row"><span class="prop-lbl">Escala Y</span><input class="prop-val" id="pSY" type="number" step="0.1" min="0.01"></div>
       <div class="prop-row"><span class="prop-lbl">Escala Z</span><input class="prop-val" id="pSZ" type="number" step="0.1" min="0.01"></div>
-      <button id="pDel" style="width:100%;margin-top:10px;padding:8px;background:var(--danger);border:none;border-radius:4px;color:white;font-family:'Rajdhani',sans-serif;font-weight:700;cursor:pointer;font-size:0.88rem;">🗑 Eliminar Pieza</button>
+      <button id="pDel">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
+        Eliminar pieza
+      </button>
     </div>
   </div>
 
   <div class="ps">
-    <div class="pt">Piezas en Escena (<span id="plcount">0</span>)</div>
-    <div id="plist" style="max-height:180px;overflow-y:auto;"></div>
+    <div class="pt">Piezas en escena (<span id="plcount">0</span>)</div>
+    <div id="plist" style="max-height:170px;overflow-y:auto;"></div>
   </div>
 
   <div class="ps">
     <div class="pt">Historial</div>
     <div id="hist-list"></div>
   </div>
+
 </div>
 
 <!-- STATUS BAR -->
 
 <div id="statusbar">
-  <span>WORKFORGE 3D v2.0</span>
-  <div class="sb-sep"></div>
-  <span>Piezas: <span id="sb-pieces" style="color:var(--text);">0</span></span>
-  <div class="sb-sep"></div>
-  <span id="sb-hints"><span class="kbkey">Clic der</span> rotar &nbsp;<span class="kbkey">Rueda</span> zoom &nbsp;<span class="kbkey">Del</span> eliminar &nbsp;<span class="kbkey">Ctrl+Z</span> deshacer &nbsp;<span class="kbkey">Flechas</span> mover</span>
-  <span id="sb-selected"></span>
+  <span style="color:var(--accent);font-weight:700;letter-spacing:1px;">WF3D</span>
+  <div class="sb-div"></div>
+  <span>Piezas: <span id="sb-pieces" style="color:var(--text)">0</span></span>
+  <div class="sb-div"></div>
+  <span id="sb-hints">
+    <span class="kbkey">Clic der</span> rotar &nbsp;
+    <span class="kbkey">Rueda</span> zoom &nbsp;
+    <span class="kbkey">Del</span> eliminar &nbsp;
+    <span class="kbkey">Ctrl+Z</span> deshacer &nbsp;
+    <span class="kbkey">Flechas</span> mover
+  </span>
+  <span id="sb-sel"></span>
 </div>
 
-<!-- CREATE PIECE MODAL -->
+<!-- MODAL: NUEVA PIEZA -->
 
 <div id="modal-bg">
   <div id="modal">
-    <div class="m-title">⚙ NUEVA PIEZA PERSONALIZADA</div>
-
-```
-<div class="m-sec">
-  <div class="m-st">Forma</div>
-  <div class="shapegrid">
-    <button class="sbtn active" data-shape="box"><span class="si">⬜</span>Bloque</button>
-    <button class="sbtn" data-shape="cylinder"><span class="si">⭕</span>Cilindro</button>
-    <button class="sbtn" data-shape="sphere"><span class="si">⚪</span>Esfera</button>
-    <button class="sbtn" data-shape="cone"><span class="si">△</span>Cono</button>
-    <button class="sbtn" data-shape="tube"><span class="si">○</span>Tubo/Caño</button>
-    <button class="sbtn" data-shape="plank"><span class="si">▬</span>Tablón</button>
-    <button class="sbtn" data-shape="torus"><span class="si">🔘</span>Toro/Aro</button>
-    <button class="sbtn" data-shape="capsule"><span class="si">💊</span>Cápsula</button>
-    <button class="sbtn" data-shape="octahedron"><span class="si">♦</span>Octaedro</button>
-  </div>
-</div>
-
-<div class="m-sec">
-  <div class="m-st">Dimensiones</div>
-  <div class="slrow"><span class="sllbl">Ancho (cm):</span><input type="range" id="slW" min="0.5" max="30" value="8" step="0.5"><span class="slval" id="vW">8</span></div>
-  <div class="slrow"><span class="sllbl">Alto (cm):</span><input type="range" id="slH" min="0.2" max="20" value="1.5" step="0.2"><span class="slval" id="vH">1.5</span></div>
-  <div class="slrow"><span class="sllbl">Largo (cm):</span><input type="range" id="slD" min="0.5" max="30" value="12" step="0.5"><span class="slval" id="vD">12</span></div>
-  <div style="font-size:0.68rem;color:var(--text2);margin-top:4px;">* Para esferas y cilindros, Ancho = diámetro</div>
-</div>
-
-<div class="m-sec">
-  <div class="m-st">Material</div>
-  <div class="matgrid">
-    <button class="mbtn active" data-mat="wood">🪵 Madera</button>
-    <button class="mbtn" data-mat="metal">⚙ Metal</button>
-    <button class="mbtn" data-mat="plastic">🔵 Plástico</button>
-    <button class="mbtn" data-mat="concrete">🧱 Hormigón</button>
-    <button class="mbtn" data-mat="glass">🔲 Vidrio</button>
-    <button class="mbtn" data-mat="rubber">⚫ Goma</button>
-  </div>
-</div>
-
-<div class="m-sec">
-  <div class="m-st">Color</div>
-  <div class="mcgrid" id="mColorGrid"></div>
-  <div style="display:flex;align-items:center;gap:8px;margin-top:7px;">
-    <input type="color" id="mColorCustom" value="#d4a373" style="width:36px;height:26px;border:1px solid var(--border);border-radius:3px;padding:1px;background:var(--panel2);cursor:pointer;">
-    <span style="font-size:0.75rem;color:var(--text2);">Color personalizado</span>
-  </div>
-</div>
-
-<div class="m-sec">
-  <div class="m-st">Nombre de la Pieza (opcional)</div>
-  <input type="text" id="mPieceName" placeholder="Ej: Pata izquierda de la mesa"
-    style="width:100%;padding:7px 10px;border-radius:4px;font-size:0.88rem;">
-</div>
-
-<div class="mfooter">
-  <button class="mbtn-sec" id="mCancel">Cancelar</button>
-  <button class="mbtn-primary" id="mCreate">+ CREAR PIEZA</button>
-</div>
-```
-
+    <div class="m-title">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      NUEVA PIEZA PERSONALIZADA
+    </div>
+    <div class="m-sec">
+      <div class="m-st">Forma</div>
+      <div class="shapegrid">
+        <button class="sbtn active" data-shape="box"><span class="sico">&#9634;</span>Bloque</button>
+        <button class="sbtn" data-shape="cylinder"><span class="sico">&#9711;</span>Cilindro</button>
+        <button class="sbtn" data-shape="sphere"><span class="sico">&#9679;</span>Esfera</button>
+        <button class="sbtn" data-shape="cone"><span class="sico">&#9650;</span>Cono</button>
+        <button class="sbtn" data-shape="tube"><span class="sico">&#9312;</span>Tubo</button>
+        <button class="sbtn" data-shape="plank"><span class="sico">&#9644;</span>Tablon</button>
+        <button class="sbtn" data-shape="torus"><span class="sico">&#9678;</span>Aro</button>
+        <button class="sbtn" data-shape="capsule"><span class="sico">&#11835;</span>Capsula</button>
+        <button class="sbtn" data-shape="octahedron"><span class="sico">&#9670;</span>Octaedro</button>
+      </div>
+    </div>
+    <div class="m-sec">
+      <div class="m-st">Dimensiones</div>
+      <div class="slrow"><span class="sllbl">Ancho:</span><input type="range" id="slW" min="0.5" max="30" value="8" step="0.5"><span class="slval" id="vW">8</span></div>
+      <div class="slrow"><span class="sllbl">Alto:</span><input type="range" id="slH" min="0.2" max="20" value="1.5" step="0.2"><span class="slval" id="vH">1.5</span></div>
+      <div class="slrow"><span class="sllbl">Largo:</span><input type="range" id="slD" min="0.5" max="30" value="12" step="0.5"><span class="slval" id="vD">12</span></div>
+    </div>
+    <div class="m-sec">
+      <div class="m-st">Material</div>
+      <div class="matgrid">
+        <button class="mbtn active" data-mat="wood">Madera</button>
+        <button class="mbtn" data-mat="metal">Metal</button>
+        <button class="mbtn" data-mat="plastic">Plastico</button>
+        <button class="mbtn" data-mat="concrete">Hormigon</button>
+        <button class="mbtn" data-mat="glass">Vidrio</button>
+        <button class="mbtn" data-mat="rubber">Goma</button>
+      </div>
+    </div>
+    <div class="m-sec">
+      <div class="m-st">Color</div>
+      <div class="mcgrid" id="mColorGrid"></div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:7px;">
+        <input type="color" id="mColorCustom" value="#d4a373" style="width:36px;height:26px;border:1px solid var(--border);border-radius:4px;padding:2px;background:var(--panel2);cursor:pointer;">
+        <span style="font-size:0.72rem;color:var(--text2);">Color personalizado</span>
+      </div>
+    </div>
+    <div class="m-sec">
+      <div class="m-st">Nombre (opcional)</div>
+      <input type="text" id="mPieceName" placeholder="Ej: Pata izquierda" style="width:100%;padding:7px 10px;border-radius:4px;font-size:0.85rem;">
+    </div>
+    <div class="mfooter">
+      <button class="mbtn-sec" id="mCancel">Cancelar</button>
+      <button class="mbtn-primary" id="mCreate">CREAR PIEZA</button>
+    </div>
   </div>
 </div>
 
 <!-- CONTEXT MENU -->
 
 <div id="ctx-menu">
-  <div class="ctx-item" id="ctx-select">↖ Seleccionar</div>
-  <div class="ctx-item" id="ctx-dup">⧉ Duplicar</div>
-  <div class="ctx-item" id="ctx-focus">🎯 Enfocar cámara</div>
+  <div class="ctx-item" id="ctx-select">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4l6 18 3-7 7-3z"/></svg>
+    Seleccionar
+  </div>
+  <div class="ctx-item" id="ctx-dup">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="8" width="12" height="12" rx="1"/><path d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2"/></svg>
+    Duplicar
+  </div>
+  <div class="ctx-item" id="ctx-focus">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="9"/></svg>
+    Enfocar camara
+  </div>
   <div class="ctx-sep"></div>
-  <div class="ctx-item danger" id="ctx-del">✕ Eliminar</div>
+  <div class="ctx-item danger" id="ctx-del">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
+    Eliminar
+  </div>
 </div>
 
 <script type="module">
@@ -742,11 +740,11 @@ function setSelected(mesh) {
     noSel.style.display = 'none';
     props.style.display = 'block';
     fillProps(mesh);
-    document.getElementById('sb-selected').textContent = mesh.userData.name || 'Pieza';
+    document.getElementById('sb-sel').textContent = mesh.userData.name || 'Pieza';
   } else {
     noSel.style.display = 'block';
     props.style.display = 'none';
-    document.getElementById('sb-selected').textContent = '';
+    document.getElementById('sb-sel').textContent = '';
   }
   updatePieceList();
 }
@@ -1231,7 +1229,7 @@ function fillProps(mesh) {
   document.getElementById('pSX').value = mesh.scale.x.toFixed(2);
   document.getElementById('pSY').value = mesh.scale.y.toFixed(2);
   document.getElementById('pSZ').value = mesh.scale.z.toFixed(2);
-  document.getElementById('sb-selected').textContent = mesh.userData.name || '';
+  document.getElementById('sb-sel').textContent = mesh.userData.name || '';
 }
 
 function bindProp(id, fn) {
