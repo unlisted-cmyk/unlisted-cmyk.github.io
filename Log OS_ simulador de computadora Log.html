@@ -1,0 +1,880 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Log OS: simulador de computadora Log</title>
+<style>
+:root{--bg:#eceae4;--pn:#f7f6f2;--fg:#1d1c1a;--mu:#716e66;--ln:#d3d0c7;--ac:#b4570a;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#14120f;--pn:#1b1814;--fg:#e8e2d6;--mu:#948c7c;--ln:#2d2820;--ac:#ffb454;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#14120f;--pn:#1b1814;--fg:#e8e2d6;--mu:#948c7c;--ln:#2d2820;--ac:#ffb454;color-scheme:dark}
+*,*:before,*:after{box-sizing:inherit}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:13px/1.5 ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+#app{display:grid;grid-template-columns:210px 1fr;height:100%}
+#app.o{grid-template-columns:210px 1fr 1fr}
+aside{background:var(--pn);border-right:1px solid var(--ln);padding:14px;overflow:auto}
+.t{font-size:17px;font-weight:700;letter-spacing:.02em}.mu{color:var(--mu)}
+.r{display:flex;justify-content:space-between;margin-top:10px}
+.bar{height:6px;background:var(--ln);border-radius:3px;overflow:hidden;margin-top:3px}
+.bar u{display:block;height:100%;width:0;background:var(--ac);transition:width .4s}
+hr{border:0;border-top:1px solid var(--ln);margin:14px 0 8px}
+main{position:relative;min-width:0;min-height:0}
+#term,#ed{position:absolute;inset:0;background:#000;color:#ffb454;overflow:auto;padding:12px;font-size:13px}
+#term div{white-space:pre-wrap;word-break:break-word}
+#term .p{color:#8a6a35}#term .ok{color:#7fe3a1}#term .err{color:#ff6b6b}#term .mu2{color:#8a6a35}
+#pr{display:flex}#pr span{white-space:pre;color:#8a6a35}
+input,textarea{font:inherit;color:inherit;background:transparent;border:0;outline:0;caret-color:#ffb454}
+#in{flex:1;min-width:0;padding:0}
+#ed[hidden],#out[hidden],[hidden]{display:none!important}
+#ed{display:flex;flex-direction:column;padding:0;z-index:2}
+#eh{display:flex;gap:8px;align-items:center;background:#241c0f;padding:8px 12px;color:#ffb454;flex-wrap:wrap}
+#eh b{flex:1;min-width:90px}
+button{font:inherit;background:#ffb454;color:#1a1204;border:0;border-radius:4px;padding:5px 10px;cursor:pointer}
+button.g{background:transparent;color:#ffb454;border:1px solid #6b5220}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid #fff;outline-offset:1px}
+#ea{flex:1;resize:none;padding:12px;color:#ffe2b0;tab-size:4;white-space:pre;overflow:auto}
+#ef{padding:6px 12px;color:#8a6a35;font-size:12px}
+#out{background:#05080c;color:#cfe6ff;display:flex;flex-direction:column;min-width:0;min-height:0;border-left:1px solid var(--ln)}
+#oh{display:flex;gap:8px;align-items:center;padding:8px 12px;background:#0c1520;flex-wrap:wrap}
+#oh b{flex:1;min-width:80px}#os{color:#7fe3a1}
+#cw{padding:10px 12px 0}
+canvas{display:block;width:100%;image-rendering:pixelated;background:#000;border:1px solid #1d2b3b}
+#pins{padding:8px 12px 0}
+#pins i{display:inline-block;width:14px;height:14px;border-radius:50%;background:#16212d;margin:2px}
+#pins i.on{background:#7fe3a1;box-shadow:0 0 8px #7fe3a1}
+#sb{margin:8px 12px 0}
+#ol{flex:1;overflow:auto;padding:10px 12px;min-height:90px}
+#ol div{white-space:pre-wrap;word-break:break-word}
+#ol .err{color:#ff6b6b}#ol .wrn{color:#ffcf5c}#ol .ok{color:#7fe3a1}#ol .src{color:#8aa4c0}#ol .hint{color:#ffcf5c}#hdmi{padding:6px 12px;background:#0c1520;color:#7fe3a1;font-size:12px;letter-spacing:.08em;border-top:1px solid #1d2b3b}#dev{display:flex;gap:8px;padding:6px 12px;background:#0c1520}#pad{padding:6px 12px;display:flex;gap:8px;align-items:stretch}#pd{flex:1;height:84px;border:1px dashed #2a3b4f;border-radius:6px;color:#8aa4c0;display:flex;align-items:center;justify-content:center;touch-action:none;user-select:none;-webkit-user-select:none;font-size:12px}#pad button{width:56px}#vk{padding:6px 12px}#vk .vr{display:flex;gap:3px;margin-bottom:3px}#vk button{flex:1;padding:8px 0;min-width:0;font-size:12px}#ui{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 12px}#ui label{display:flex;gap:6px;align-items:center}#ui input[type=text],#ini{background:#0c1520;border:1px solid #2a3b4f;color:#cfe6ff;padding:5px 7px;border-radius:4px;min-width:0}#inw{display:flex;gap:6px;flex-wrap:wrap;padding:8px 12px;background:#0c1520}#inw span{flex:1 1 100%;white-space:pre-wrap}#ini{flex:1}#sa{display:flex;gap:8px;padding:6px 12px;background:#241c0f}#san{flex:1;min-width:0;background:#000;border:1px solid #6b5220!important;color:#ffe2b0;padding:5px 7px;border-radius:4px}
+@media(max-width:760px){#app,#app.o{display:block;height:auto;min-height:100%}aside{border:0;border-bottom:1px solid var(--ln)}main{height:58vh}#out{height:auto;min-height:60vh}#in,#ea{font-size:16px}}
+</style></head><body>
+<input type="file" id="upl" hidden multiple>
+<div id="app">
+<aside>
+<div class="t">Log-SoC</div><div class="mu">sin sistema operativo</div>
+<div class="r"><span>CPU 3.0 GHz</span><span id="cp">0%</span></div><div class="bar"><u id="cb"></u></div>
+<div class="r"><span>RAM 4096 MB</span><span id="rp"></span></div><div class="bar"><u id="rb"></u></div>
+<div class="r"><span>Framebuffer</span><span id="vp">-</span></div><div class="bar"><u id="vb"></u></div>
+<div class="r"><span>Temperatura</span><span id="tp"></span></div>
+<div class="r"><span>Encendido</span><span id="up"></span></div>
+<hr><div class="mu">Lenguajes en silicio</div>
+<div>✔ Log-</div><div>✔ Log+</div><div>✔ Log++</div><div>✔ LogAll</div>
+<hr><div class="mu">Proceso activo</div><div id="pc">ninguno</div>
+</aside>
+<main>
+<div id="term"><div id="pr"><span>log@chip:~$ </span><input id="in" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Terminal"></div></div>
+<div id="ed" hidden>
+<div id="eh"><b id="en"></b><button id="bs" class="g">Guardar</button><button id="bsa" class="g">Guardar como</button><button id="br">Correr</button><button id="bx" class="g">Salir</button></div>
+<textarea id="ea" spellcheck="false" aria-label="Editor"></textarea>
+<div id="sa" hidden><input id="san" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Nombre del archivo" placeholder="nombre.log+"><button id="sao">Guardar</button></div>
+<div id="ef">Ctrl+S guardar · Mayús+Ctrl+S guardar como · Ctrl+R correr · Esc guardar y salir</div>
+</div>
+</main>
+<section id="out" hidden>
+<div id="oh"><b id="on"></b><span id="os"></span><button id="bd" class="g">Detener</button><button id="bc" class="g">Cerrar</button></div>
+<div id="cw" hidden><canvas id="cv" width="320" height="180"></canvas></div>
+<div id="pins" hidden></div>
+<div id="ui" hidden></div>
+<button id="sb" class="g">START_BUTTON (pin 5)</button>
+<div id="inw" hidden><span id="inp"></span><input id="ini" autocomplete="off" aria-label="Respuesta"></div>
+<div id="dev" hidden><button id="bk" class="g">Teclado</button><button id="bm" class="g">Mouse</button></div>
+<div id="pad" hidden><div id="pd">arrastra aquí para mover el mouse</div><button id="pl" class="g">Izq</button><button id="pr2" class="g">Der</button></div>
+<div id="vk" hidden></div>
+<div id="ol"></div>
+<div id="hdmi" hidden>HDMI EMULATED · <span id="hr"></span></div>
+</section>
+</div>
+<script>
+const $=s=>document.querySelector(s),sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const T=$('#term'),PR=$('#pr'),IN=$('#in'),ED=$('#ed'),EA=$('#ea'),OUT=$('#out'),OL=$('#ol'),CV=$('#cv'),cx=CV.getContext('2d');
+let files=(()=>{try{return JSON.parse(localStorage.getItem('logfs')||'{}')}catch(_){return{}}})(),cur=null,R=null,res=null,t0=Date.now(),cpu=3,PIN=Array(32).fill(0),V={},TY={},CC={},port=null,wr=null,AC=null;
+const add=(box,t,c,before)=>{const d=document.createElement('div');d.textContent=t;if(c)d.className=c;box.insertBefore(d,before||null);box.scrollTop=box.scrollHeight};
+const pr=(t,c)=>add(T,t,c,PR),op=(t,c)=>add(OL,t,c);
+const LG=/^<\s*(log\+\+|log\+-|log\+|log-|logall|log\*)\s*>$/i,norm=s=>(s=s.toLowerCase())==='log*'?'logall':s;
+const TPL={
+'log-':`<log->
+// Log-: cada pixel se escribe de forma explicita
+Screen:Resolution("W;32","H;18","Bits;24")
+Screen:Clear("Color;#101820")
+Var:U8:r("Value;250")
+Repeat(10)
+{
+    Set:r("Value;r+1")
+}
+Print("r (U8) desbordo y ahora vale {r}")
+For:i(0,18)
+{
+    Screen:Pixel(i,i)("Color;hsl;i*20")
+}
+Screen:Pixel(16,9)("Color;rgb;255;60;0")
+Screen:Pixel(17,9)("Color;rgb;0;200;120")
+Expect:Pixel(16,9)("Equals;R=255;G=60;B=0") Else:Halt("ERR_PIXEL")
+Print("Pixel (16,9) verificado")
+`,
+'log+':`<log+>
+// Log+: corto, con valores por defecto (pantalla 320x180)
+Screen:Clear("Color;black")
+Print("Dibujando una espiral...")
+For:i(0,300)
+{
+    Screen:Circle(160+i*0.45*cos(i/6),90+i*0.28*sin(i/6),2)("Color;hsl;i*1.2")
+    Wait("ms;4")
+}
+Print("Listo")
+`,
+'log++':`<log++>
+// Log++: estilo microcontrolador, sin pantalla
+Setup
+{
+    Pin:5("Input;PullDown")
+    Pin:13("Output")
+    Print("Setup listo")
+}
+Loop
+{
+    Pin:13("Set;High")
+    Wait("ms;300")
+    Pin:13("Set;Low")
+    Wait("ms;300")
+}
+`,
+'log+-':`<log+->
+#- Screen:Resolution("W;160","H;90","Bits;24")
+#+ Screen:Clear("Color;black")
+#+ Screen:Rect(20,20,120,50)("Color;rgb;255;60;0")
+#- Expect:Pixel(30,30)("Equals;R=255;G=60;B=0") Else:Halt("ERR_PIXEL")
+#+ Print("Log- y Log+ conviviendo en un archivo")
+`,
+'logall':`<logall>
+// Pulsa START_BUTTON en el panel de salida
+#++ Setup
+{
+    Pin:13("Output")
+}
+#- Screen:Resolution("W;160","H;90","Bits;24")
+#+ Screen:Clear("Color;black")
+#+ On:START_BUTTON("Press")
+{
+    Screen:Rect(20,20,120,50)("Color;rgb;255;60;0")
+    #- Expect:Pixel(30,30)("Equals;R=255;G=60;B=0") Else:Halt("ERR_PIXEL")
+    #++ Pin:13("Set;High")
+    Print("Pixel pintado y LED encendido")
+}
+`};
+/* ---------- parser ---------- */
+const KN=['use','print','var','set','repeat','for','if','wait','screen','display','reg','pin','on','loop','setup','expect','sound','serial','else','while','break','continue','input','ui','store','g3d','push','pop','remove','insert','sort','shuffle','each','def','call','return','elseif','console','mem','disk','exec','panic','stop'],OPS=['pixel','rect','line','circle','clear','resolution','text'],TYP=['u8','u16','u32','i32','str'];
+const CAST={u8:v=>v&255,u16:v=>v&65535,u32:v=>v>>>0,i32:v=>v|0,str:v=>String(v).slice(0,255)};
+function sp(s){const a=[];let d=0,q=0,b=0;for(let i=0;i<=s.length;i++){const c=s[i];if(c==='"')q^=1;if(!q){if(c==='('||c==='[')d++;if(c===')'||c===']')d--}if(i===s.length||(c===','&&!d&&!q)){a.push(s.slice(b,i).trim());b=i+1}}return a}
+function grp(s){const g=[];let d=0,b=0;for(let i=0;i<s.length;i++){const c=s[i];if(c==='"'){if(!d)return null;const j=s.indexOf('"',i+1);if(j<0)return null;i=j}else if(c==='('){if(d++===0)b=i+1}else if(c===')'){if(--d<0)return null;if(d===0)g.push(s.slice(b,i))}else if(!d&&c!==' ')return null}return d?null:g}
+function stm(t,n,lg){let els=null;const ei=t.indexOf(' Else:');if(ei>0){els=t.slice(ei+6);t=t.slice(0,ei)}
+const hm=t.match(/^[A-Za-z_][\w:]*/);if(!hm)return{n,lg,h:['?'],bad:1,why:'La linea debe empezar con el nombre de una instruccion (ver Apendice A)'};
+const x={n,lg,h:hm[0].split(':'),els,a:[],q:[]},g=grp(t.slice(hm[0].length).trim());if(!g){x.bad=1;x.why=diag(t);return x}
+g.forEach(s=>{if(s.includes('"'))(s.match(/"[^"]*"/g)||[]).forEach(m=>x.q.push(m.slice(1,-1)));else x.a=s.trim()?sp(s):[]});
+x.o=x.q.map(s=>s.split(';').map(v=>v.trim()));return x}
+function parse(src,name){const E=[],W=[],L=[];
+src.split('\n').forEach((r,i)=>{let t=r.replace(/\/\/.*$/,'').trim();if(!t)return;if(t==='{'){L.length&&(L[L.length-1].o=1);return}let o=0;if(t.length>1&&t.endsWith('{')){t=t.slice(0,-1).trim();o=1}L.push({n:i+1,t,o})});
+const h=L.shift(),hm=h&&h.t.match(LG);if(!hm){E.push([h?h.n:1,'Falta la cabecera de lenguaje, por ejemplo <log+>']);return{E,W}}
+const fl=norm(hm[1]),ext=name.split('.').pop();if(ext!==fl)W.push([h.n,`La cabecera <${fl}> no coincide con la extension .${ext}`]);
+let i=0,w=0;
+const blk=(lg,ol)=>{const o=[];while(i<L.length){const x=L[i++];if(x.t==='}'){if(ol===undefined){E.push([x.n,'Llave } sin su { de apertura','Falta la { justo despues de la instruccion que abre este bloque (If, For, While, Def...)']);continue}return o}let t=x.t,l=lg;const tg=t.match(/^#(\+\+|\+|-)\s*(.*)$/);if(tg){l='log'+tg[1];t=tg[2]}else if(!l){l='log+';if(fl==='logall'&&!w++)W.push([x.n,'Linea sin etiqueta #-, #+ o #++: se asume #+'])}const s=stm(t,x.n,l);if(x.o)s.body=blk(l,x.n);const hn=s.h[0].toLowerCase();
+if(hn==='else'||hn==='elseif'){let q=o[o.length-1];while(q&&q.alt&&q.alt.length===1&&q.alt[0].elif)q=q.alt[0];
+if(q&&q.h[0].toLowerCase()==='if'&&!q.alt){if(hn==='else')q.alt=s.body||[];else{s.h=['If'];s.elif=1;q.alt=[s]}}
+else E.push([x.n,hn==='else'?'Else sin un If justo antes':'ElseIf sin un If justo antes','Va en su propia linea, justo despues del } de un If']);continue}
+o.push(s)}if(ol!==undefined)E.push([ol,'Esta llave { nunca se cierra','Falta un } mas abajo para cerrar este bloque']);return o};
+const nodes=blk(fl==='logall'||fl==='log+-'?null:fl);
+
+return{E,W,nodes}}
+const hw=ns=>ns.some(x=>x.h[0].toLowerCase()==='wait'||hw(x.body||[]));
+function chk(ns,E,W,s){for(const x of ns){const k=x.h[0].toLowerCase(),l=x.lg,n=x.n;
+if(x.bad){E.push([n,'Sintaxis incorrecta en la instruccion',x.why]);continue}
+if(!KN.includes(k)){E.push([n,`Instruccion desconocida: ${x.h[0]}`,sug(x.h[0])||'Instrucciones: '+KN.join(', ')]);continue}
+if(k==='reg'&&l!=='log-')E.push([n,'Reg: es exclusivo de Log- (usa Screen: o Display:)']);
+if(['screen','display','reg'].includes(k)){const p=x.h.map(v=>v.toLowerCase()).find(v=>OPS.includes(v));
+if(!p)E.push([n,'Operacion de pantalla desconocida (Pixel, Rect, Line, Circle, Clear, Resolution)']);
+else if(l==='log++')E.push([n,'Log++ no tiene pantalla: usa Log+ o Log-']);
+else if(p==='resolution')s.res=1;
+else if(l==='log-'&&!s.res)E.push([n,'Log- exige Resolution antes de dibujar']);}
+if(k==='var'){const t=x.h.length>2?x.h[1].toLowerCase():null;
+if(l==='log-'&&!t)E.push([n,'Log- exige tipo: Var:U8:nombre("Value;0")']);
+if(t&&!TYP.includes(t))E.push([n,`Tipo desconocido: ${x.h[1]} (usa U8, U16, U32, I32 o STR)`]);
+if(t&&l==='log+')W.push([n,`Log+ infiere el tipo: puedes quitar ${x.h[1]}`])}
+if(k==='expect'&&l!=='log-')E.push([n,'Expect es exclusivo de Log-']);
+if(k==='loop'&&(x.h.length===1||x.h[1].toLowerCase()==='forever')&&!hw(x.body||[]))W.push([n,'Loop sin Wait: la CPU quedara al 100%']);
+if(x.body)chk(x.body,E,W,s);if(x.alt)chk(x.alt,E,W,s)}}
+/* ---------- intérprete ---------- */
+const MF=Object.getOwnPropertyNames(Math);
+function ev(e){const k=Object.keys(V),key=k+'|'+e;let f=CC[key];
+if(!f){try{f=CC[key]=new Function(...MF,...k,'pin','t','rnd','peek','peek16','peek32','peekstr','return('+e+')')}catch(_){throw 'Expresion invalida: '+e}}
+try{return f(...MF.map(m=>Math[m]),...k.map(m=>V[m]),n=>PIN[n]|0,Date.now()-R.t0,(a,b)=>a+Math.floor(Math.random()*(b-a+1)),pk,pk16,pk32,pks)}catch(_){throw 'No se pudo evaluar: '+e}}
+const fm=s=>s.replace(/\{([^}]+)\}/g,(_,e)=>ev(e));
+const kv=a=>{const r={};a.slice(1).forEach(p=>{const[m,v]=p.split('=');r[m.trim().toUpperCase()]=ev(v)});return r};
+function cs(p){if(p[0]==='hsl')return`hsl(${ev(p[1])} 90% ${p[2]?ev(p[2]):55}%)`;if(p[0]==='rgb')p=p.slice(1);if(p.length>=3)return`rgb(${p.slice(0,3).map(e=>ev(e)&255)})`;return p[0]}
+function col(o){const c=o.find(a=>a[0].toLowerCase()==='color');if(c)return cs(c.slice(1));const w=o.find(a=>a[0].toLowerCase()==='write');if(w){const k=kv(w);return`rgb(${k.R},${k.G},${k.B})`}return'#fff'}
+function setRes(w,h){w=Math.max(1,Math.min(1920,w|0));h=Math.max(1,Math.min(1080,h|0));CV.width=w;CV.height=h;res={w,h};cx.fillStyle='#000';cx.fillRect(0,0,w,h);$('#cw').hidden=false;hd()}
+function scr(x){const p=x.h.map(v=>v.toLowerCase()).find(v=>OPS.includes(v)),a=x.a.map(e=>ev(e)),o=x.o;
+if(p==='resolution'){let w=320,h=180;if(o[0][0].toLowerCase()==='set'){w=ev(o[0][1]);h=ev(o[0][2])}else o.forEach(q=>{const m=q[0].toLowerCase();if(m==='w')w=ev(q[1]);if(m==='h')h=ev(q[1])});return setRes(w,h)}
+if(!res)setRes(320,180);Con.sus=1;cx.fillStyle=cx.strokeStyle=col(o);
+if(p==='clear')cx.fillRect(0,0,res.w,res.h);
+if(p==='pixel')cx.fillRect(a[0],a[1],1,1);
+if(p==='rect')cx.fillRect(a[0],a[1],a[2],a[3]);
+if(p==='circle'){cx.beginPath();cx.arc(a[0],a[1],a[2],0,7);cx.fill()}
+if(p==='line'){cx.beginPath();cx.moveTo(a[0],a[1]);cx.lineTo(a[2],a[3]);cx.stroke()}
+if(p==='text'){const tq=x.q.find(s=>/^text;/i.test(s));cx.font='8px ui-monospace,Menlo,Consolas,monospace';cx.textBaseline='top';cx.fillText(fm(tq?tq.slice(5):''),a[0],a[1])}}
+const led=n=>{const e=$('#pins').children[n];if(e)e.className=PIN[n]?'on':''};
+async function ex(ns){for(const x of ns){if(R.stop)throw'STOP';if(++R.st%(R.k?20000:2500)===0)await(R.k?tick():sleep(0));
+try{await one(x)}catch(e){if(e==='STOP'||e===BRK||e===CNT||e instanceof Ret||/^l\.\d+:/.test(e))throw e;throw`l.${x.n}: ${typeof e==='string'?e:e.message}`}}}
+async function one(x){const k=x.h[0].toLowerCase();
+switch(k){
+case'use':if(x.q[0]){const f=x.q[0];if(!files[f])throw'Use: no existe el archivo '+f;if((R.inc=(R.inc||0)+1)>8)throw'Use: demasiados niveles';const p=parse(files[f],f);if(p.nodes){chk(p.nodes,p.E,p.W,{});chkx(p.nodes,p.E,p.W,{},0)}if(p.E.length)throw`${f} l.${p.E[0][0]}: ${p.E[0][1]}`;op(`[use] ${f} incluido`);reg(p.nodes);await ex(p.nodes);R.inc--}else op(`[lib] ${x.h[1]||''} cargada desde el silicio`);break;
+case'sound':{const g=k=>ev((x.o.find(a=>a[0].toLowerCase()===k)||['',k==='ms'?200:440])[1]),m=g('ms');beep(g('freq'),m);R.waiting=1;await sleep(m);R.waiting=0;break}
+case'serial':send(fm((x.q[0]||'').replace(/^write;/i,'')));break;
+case'g3d':g3(x);break;
+case'push':case'pop':case'remove':case'insert':case'sort':case'shuffle':{const n=x.h[1],a=V[n];if(k==='remove'&&a&&typeof a==='object'&&!Array.isArray(a)){delete a[fm(og(x,'key')||'')];break}if(!Array.isArray(a))throw(n||'?')+' no es una lista (declarala con Var:lista("List;1,2,3"))';const t=TY[n],ci=v=>t?CAST[t](v):v;
+if(k==='push')a.push(ci(valOf(x)));
+else if(k==='insert'){const i=+ev(og(x,'index'));if(!(i>=0&&i<=a.length))throw'Indice fuera de rango: '+i;a.splice(i,0,ci(valOf(x)))}
+else if(k==='remove'){const i=+ev(og(x,'index'));if(!(i>=0&&i<a.length))throw'Indice fuera de rango: '+i;a.splice(i,1)}
+else if(k==='pop'){if(!a.length)throw'La lista esta vacia';const v=a.pop(),to=og(x,'into');if(to!==null){if(!(to in V))throw'Variable no declarada: '+to;V[to]=cv(TY[to],v)}}
+else if(k==='sort'){a.sort((p,q)=>typeof p==='number'&&typeof q==='number'?p-q:String(p).localeCompare(String(q)));if(/^desc/i.test(og(x,'order')||''))a.reverse()}
+else for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}
+break}
+case'each':{const a=ev(x.a[0]);if(!Array.isArray(a))throw'Each necesita una lista';for(const el of a.slice()){V[x.h[1]]=el;if(await lp(x.body))break}break}
+case'def':R.fn[x.h[1]]=x;break;
+case'call':{const f=R.fn[x.h[1]];if(!f)throw'Funcion no definida: '+x.h[1];if((R.dp=(R.dp||0)+1)>200){R.dp=0;throw'Demasiada recursion (limite 200)'}
+const ps=f.a,args=x.a.map(e=>ev(e));if(args.length!==ps.length)throw`${x.h[1]} espera ${ps.length} argumento(s) y recibio ${args.length}`;
+const old=ps.map(p=>[p in V,V[p],TY[p]]);ps.forEach((p,i)=>{V[p]=args[i];TY[p]=undefined});let rv;
+try{await ex(f.body)}catch(e){if(e instanceof Ret)rv=e.v;else throw e}finally{ps.forEach((p,i)=>{if(old[i][0]){V[p]=old[i][1];TY[p]=old[i][2]}else{delete V[p];delete TY[p]}});if(R.dp>0)R.dp--}
+const to=og(x,'into');if(to!==null){if(!(to in V))throw'Variable no declarada: '+to;V[to]=cv(TY[to],rv)}break}
+case'return':throw new Ret(x.q.length?valOf(x):undefined);
+case'console':{const w=(x.h[1]||'').toLowerCase(),cc=x.o.find(q=>q[0].toLowerCase()==='color'),col=cc?cs(cc.slice(1)):undefined,tq=x.q.find(s=>/^text;/i.test(s)),tx=tq?fm(tq.slice(5)):'';
+if(w==='init'){const b=x.o.find(q=>q[0].toLowerCase()==='bg');Con.cols=Math.max(10,Math.min(160,+ev(og(x,'cols')??'53')));Con.rows=Math.max(5,Math.min(60,+ev(og(x,'rows')??'20')));if(col)Con.fg=col;if(b)Con.bg=cs(b.slice(1));setRes(Con.cols*Con.cw,Con.rows*Con.ch);Con.on=1;CV.style.imageRendering='auto';conClear()}
+else{conEns();if(w==='clear')conClear();else if(w==='refresh'){Con.sus=0;conMark()}else if(w==='at'){Con.cx=+ev(og(x,'col')??'0');Con.cy=+ev(og(x,'row')??'0')}else if(w==='print'||w==='put')conPut(tx+(w==='print'?'\n':''),col);
+else if(w==='read'){const n=og(x,'into');if(n===null||!(n in V))throw'Variable no declarada: '+(n||'(falta Into)');const pm=fm(og(x,'prompt')??'');conPut(pm?pm+' ':'',Con.fg);R.waiting=1;const s=await ask(pm||'Escribe y pulsa Enter');R.waiting=0;conPut(s+'\n',Con.fg);const num=(TY[n]&&TY[n]!=='str')||typeof V[n]==='number';V[n]=cv(TY[n],num?(Number(s)||0):s)}else throw'Console: operacion desconocida: '+x.h[1]}break}
+case'mem':{const w=(x.h[1]||'').toLowerCase(),g=k=>{const v=og(x,k);return v===null?undefined:+ev(v)},a=g('addr');
+if(w==='write'){const v=g('value')??0,sz=g('size')??1;for(let i=0;i<sz;i++)MEM[mc(a+i)]=(v>>>(8*i))&255}
+else if(w==='read'){const sz=g('size')??1;let v=0;for(let i=sz-1;i>=0;i--)v=v*256+MEM[mc(a+i)];const to=og(x,'into');if(to===null||!(to in V))throw'Variable no declarada: '+(to||'(falta Into)');V[to]=cv(TY[to],v)}
+else if(w==='fill'){const n=g('len')??0,v=g('value')??0;mc(a);mc(a+n-1);for(let i=0;i<n;i++)MEM[a+i]=v&255}
+else if(w==='copy'){const f=g('from'),t=g('to'),n=g('len')??0;mc(f);mc(f+n-1);mc(t);mc(t+n-1);MEM.copyWithin(t,f,f+n)}
+else if(w==='writetext'){const s=String(valOf(x));for(let i=0;i<=s.length;i++)MEM[mc(a+i)]=i<s.length?s.charCodeAt(i)&255:0}
+else throw'Mem: usa Write, Read, Fill, Copy o WriteText';break}
+case'disk':{const w=(x.h[1]||'').toLowerCase(),f=fm(og(x,'file')||''),pv=()=>{if(!R.k)throw'Operacion privilegiada: Disk:'+x.h[1]+' solo funciona con run # archivo (modo kernel)'},into=v=>{const to=og(x,'into');if(to!==null){if(!(to in V))throw'Variable no declarada: '+to;V[to]=cv(TY[to],v)}};
+if(w==='list')into(Object.keys(files).sort());
+else if(w==='read'){if(files[f]===undefined)throw'Disk: no existe '+f;into(files[f])}
+else if(w==='exists')into(files[f]!==undefined?1:0);
+else if(w==='write'){pv();if(!f)throw'Disk: falta File';files[f]=String(valOf(x)).split('\\n').join(String.fromCharCode(10));sv()}
+else if(w==='delete'){pv();delete files[f];sv()}
+else throw'Disk: usa List, Read, Exists, Write o Delete';break}
+case'exec':{const f=fm(og(x,'file')||''),to=og(x,'into');if(files[f]===undefined)throw'Exec: no existe '+f;
+const p=parse(files[f],f);if(p.nodes){chk(p.nodes,p.E,p.W,{});chkx(p.nodes,p.E,p.W,{ids:new Set(ids(p.nodes)),fns:new Set(fnn(p.nodes))},0)}
+let code=0;if(p.E.length){code=1;p.E.forEach(e=>op(`[${f}] ERROR l.${e[0]}: ${e[1]}`,'err'))}
+else{const sV=V,sT=TY,sf=R.fn;V={};TY={};R.fn={};V.args=fm(og(x,'args')||'');R.xd=(R.xd||0)+1;reg(p.nodes);
+try{await ex(p.nodes)}catch(e){if(e==='STOP')throw e;if(!(e instanceof Ret)&&e!==BRK&&e!==CNT){code=1;op(`[${f}] ERROR ${typeof e==='string'?e:e.message}`,'err')}}finally{V=sV;TY=sT;R.fn=sf;R.xd--}}
+if(to!==null){if(!(to in V))throw'Variable no declarada: '+to;V[to]=cv(TY[to],code)}break}
+case'panic':{const m=fm(x.q.length?x.q[0].replace(/^text;/i,''):'sin mensaje');if(!res)setRes(318,180);Con.on=0;clearTimeout(Con.t);Con.t=0;cx.fillStyle='#7a0000';cx.fillRect(0,0,res.w,res.h);cx.fillStyle='#ffffff';cx.font='8px ui-monospace,Menlo,Consolas,monospace';cx.textBaseline='top';cx.fillText('KERNEL PANIC',6,6);const ln=(m.match(/.{1,48}/g)||['']);ln.forEach((s,i)=>cx.fillText(s,6,22+i*10));cx.fillText('Sistema detenido.',6,28+ln.length*10);throw'KERNEL PANIC: '+m}
+case'stop':if(R.xd>0)throw new Ret();R.stop=1;R.fin&&R.fin();throw'STOP';
+case'input':{const n=x.h[1];if(!(n in V))throw`Variable no declarada: ${n} (declarala antes con Var)`;const pq=fm((x.q[0]||'').replace(/^prompt;/i,''));R.waiting=1;
+for(;;){const s=await ask(pq);op('> '+s,'ok');if(TY[n]==='str'||typeof V[n]==='string'){V[n]=TY[n]?CAST[TY[n]](s):s;break}const v=Number(s);if(s.trim()===''||isNaN(v)){op('Escribe un numero','wrn');continue}V[n]=TY[n]?CAST[TY[n]](v):v;break}R.waiting=0;break}
+case'ui':{R.ui=1;const U=$('#ui'),id=og(x,'id'),w=(x.h[1]||'').toLowerCase();U.hidden=false;hd();
+if(w==='clear'){U.innerHTML='';break}
+if(!id||!/^[A-Za-z_]\w*$/.test(id))throw'UI: falta un Id valido, por ejemplo "Id;boton1"';
+const lb=fm(og(x,'label')??og(x,'text')??'');
+if(w==='set'){const e=document.getElementById('u_'+id);if(!e)throw'UI: no existe el widget '+id;const v=og(x,'value'),tx=og(x,'text'),i=e.querySelector('input');if(tx!==null)(e.querySelector('span')||e).textContent=fm(tx);if(v!==null&&i){V[id]=ev(v);if(i.type==='checkbox')i.checked=!!V[id];else i.value=V[id]}break}
+const old=document.getElementById('u_'+id);old&&old.remove();
+const mk=(t,h)=>{const e=document.createElement(t);e.id='u_'+id;if(h!==undefined)e.textContent=h;U.appendChild(e);return e};
+if(w==='button')mk('button',lb||id).onclick=()=>fire(id.toLowerCase());
+else if(w==='label')mk('span',lb);
+else if(['slider','check','textbox'].includes(w)){const e=mk('label'),s=document.createElement('span'),i=document.createElement('input');s.textContent=lb;
+i.type=w==='slider'?'range':w==='check'?'checkbox':'text';
+if(w==='slider'){i.min=og(x,'min')??0;i.max=og(x,'max')??100;i.value=V[id]=+ev(og(x,'value')??String(i.min))}
+else if(w==='check')i.checked=!!(V[id]=+ev(og(x,'value')??'0'));
+else i.value=V[id]=fm(og(x,'value')??'');
+i.oninput=()=>{V[id]=w==='slider'?+i.value:w==='check'?+i.checked:i.value;fire(id.toLowerCase())};e.append(s,i)}
+else throw'UI: widget desconocido: '+x.h[1]+' (Button, Label, Slider, Check, TextBox, Set, Clear)';
+break}
+case'store':{const w=(x.h[1]||'').toLowerCase(),key='logdata:'+og(x,'key');try{if(w==='save')localStorage.setItem(key,JSON.stringify(ev(og(x,'value'))));else if(w==='load'){const r=localStorage.getItem(key),to=og(x,'into'),df=og(x,'default');if(!(to in V))throw'Variable no declarada: '+to;const v=r===null?(df===null?V[to]:ev(df)):JSON.parse(r);V[to]=cv(TY[to],v)}else throw'Store: usa Save o Load'}catch(e){if(typeof e==='string')throw e;op('Store: el navegador no permite guardar datos','wrn')}break}
+case'print':op(fm(x.q[0]||''));break;
+case'var':case'set':{const n=x.h[x.h.length-1];if(k==='set'&&!(n in V))throw'Variable no declarada: '+n;
+if(k==='var')TY[n]=x.h.length>2?x.h[1].toLowerCase():undefined;const ix=og(x,'index'),lst=og(x,'list'),sz=og(x,'size');let v;
+const dc=og(x,'dict'),ky=og(x,'key');
+if(k==='var'&&dc!==null)v=Object.fromEntries((dc.trim()?sp(dc):[]).map(e=>{const i=e.indexOf('=');return[e.slice(0,i).trim(),ev(e.slice(i+1))]}));else if(k==='var'&&(lst!==null||sz!==null))v=lst!==null?(lst.trim()?sp(lst).map(e=>ev(e)):[]):Array.from({length:+ev(sz)},()=>ev(og(x,'fill')??'0'));else v=valOf(x);
+if(ky!==null){const o=V[n];if(!o||typeof o!=='object'||Array.isArray(o))throw n+' no es un diccionario';o[fm(ky)]=v;break}
+if(ix!==null){let a=V[n];if(!Array.isArray(a))throw n+' no es una lista';const p=sp(ix).map(e=>ev(e));for(let i=0;i<p.length-1;i++)a=a[p[i]];const li=p[p.length-1];if(!Array.isArray(a)||!Number.isInteger(li)||li<0||li>=a.length)throw'Indice fuera de rango: '+p.join(',');a[li]=TY[n]?CAST[TY[n]](v):v;break}
+V[n]=cv(TY[n],v);break}
+case'wait':R.waiting=1;if(/^press$/i.test(x.o[0][0]))await new Promise((f,j)=>{R.pw=f;R.pj=j});else await sleep(ev(x.o[0][1]));R.waiting=0;break;
+case'repeat':{const n=ev(x.a[0]);for(let i=0;i<n;i++)if(await lp(x.body))break;break}
+case'for':{const v=x.h[1],a=ev(x.a[0]),b=ev(x.a[1]),s=x.a[2]?ev(x.a[2]):1;if(!s)throw'El paso de For no puede ser 0';for(let i=a;s>0?i<b:i>b;i+=s){V[v]=i;if(await lp(x.body))break}break}
+case'if':if(ev(x.a[0]))await ex(x.body);else if(x.alt)await ex(x.alt);break;
+case'while':while(ev(x.a[0])){if(R.stop)throw'STOP';if(await lp(x.body))break;if(++R.st%2500===0)await sleep(0)}break;
+case'break':throw BRK;
+case'continue':throw CNT;
+case'setup':await ex(x.body);break;
+case'loop':while(!R.stop){if(await lp(x.body))break;await(R.k?tick():sleep(1))}break;
+case'on':{let nm=(x.h[1]||'').toLowerCase();const sc={v:V,t:TY,f:R.fn};if(nm==='mouse')nm='mouse'+(((x.o[0]||[])[0])||'move').toLowerCase();if(/^(key|canvas|mouse)/.test(nm))showDev();if(nm==='timer'){const ms=Math.max(10,+ev(og(x,'every')??'1000'));(R.tm=R.tm||[]).push(setInterval(()=>{if(R&&R.on&&!R.stop)runIn(sc,x.body)},ms))}else R.hd.push({n:nm,b:x.body,sc});break}
+case'pin':{const n=+x.h[1],a=x.o[0]||['?'],c=a[0].toLowerCase();$('#pins').hidden=false;if(c==='set'){PIN[n]=/^(high|1)$/i.test(a[1])?1:0;led(n);send(`${n}=${PIN[n]}`)}break}
+case'screen':case'display':case'reg':scr(x);break;
+case'expect':{if(!res)throw'Pantalla sin inicializar';const a=x.a.map(e=>ev(e)),d=cx.getImageData(a[0],a[1],1,1).data,e=kv(x.o[0]);
+if(d[0]!=e.R||d[1]!=e.G||d[2]!=e.B){const m=(x.els||'').match(/"([^"]*)"/);throw`HALT ${m?m[1]:'EXPECT'}: en el pixel (${a}) esperaba R${e.R} G${e.G} B${e.B} y leyo R${d[0]} G${d[1]} B${d[2]}`}
+op(`Expect OK: pixel (${a}) verificado`,'ok');break}}}
+const ss=t=>{$('#os').textContent=(kmode?'KERNEL · ':'')+t;if(t!=='CORRIENDO')$('#inw').hidden=true};
+async function runFile(n,o){kmode=!!(o&&o.k);
+if(R&&R.on){R.stop=1;R.fin&&R.fin();R.pj&&R.pj('STOP');await new Promise(f=>R.dn=f)}
+OL.innerHTML='';G3.o={};Con.on=0;Con.sus=0;CV.style.imageRendering='';MEM.fill(0);$('#dev').hidden=true;$('#vk').hidden=true;$('#pad').hidden=true;CV.style.touchAction='';$('#ui').innerHTML='';$('#ui').hidden=true;$('#inw').hidden=true;$('#app').classList.add('o');OUT.hidden=false;$('#on').textContent=n;res=null;$('#cw').hidden=true;$('#pins').hidden=true;hd();
+PIN.fill(0);[...$('#pins').children].forEach(e=>e.className='');V={};TY={};
+SL=files[n].split('\n');const p=parse(files[n],n);if(p.nodes){chk(p.nodes,p.E,p.W,{});chkx(p.nodes,p.E,p.W,{ids:new Set(ids(p.nodes)),fns:new Set(fnn(p.nodes))},0)}
+p.E.sort((a,b)=>a[0]-b[0]);p.W.forEach(w=>show('ADVERTENCIA',w,'wrn'));p.E.forEach(e=>show('ERROR',e,'err'));
+if(p.E.length){op(`Compilacion abortada: ${p.E.length} error(es)`,'err');ss('ERROR');return}
+op(`Compilado sin errores (${p.W.length} advertencia(s)). Ejecutando...`,'ok');
+const r=R={on:1,stop:0,st:0,hd:[],t0:Date.now(),n,fn:{},k:kmode};reg(p.nodes);if(kmode)showDev();ss('CORRIENDO');let bad=0;
+try{await ex(p.nodes);if((r.hd.length||r.ui||r.tm)&&!r.stop){op('Esperando eventos (Detener para salir)','ok');await new Promise(f=>r.fin=f)}}
+catch(e){if(e!=='STOP'){bad=1;const m=String(e).match(/^l\.(\d+): ([\s\S]*)$/);if(m)show('ERROR',[+m[1],m[2]],'err');else op('ERROR '+e,'err')}}
+r.on=0;(r.tm||[]).forEach(clearInterval);ss(bad?'ERROR':r.stop?'DETENIDO':'TERMINADO');r.dn&&r.dn()}
+const stopRun=()=>{if(R&&R.on){R.stop=1;R.fin&&R.fin();R.pj&&R.pj('STOP')}};
+/* ---------- terminal y editor ---------- */
+for(let i=0;i<16;i++){const e=document.createElement('i');e.title='pin '+i;$('#pins').appendChild(e)}
+function openEd(n){cur=n;EA.value=files[n];$('#en').textContent=n;ED.hidden=false;EA.focus()}
+function closeEd(){files[cur]=EA.value;sv();$('#sa').hidden=true;ED.hidden=true;IN.focus()}
+function runCur(){files[cur]=EA.value;runFile(cur)}
+function cmd(s){pr('log@chip:~$ '+s,'p');s=s.trim();if(!s)return;
+const m=s.match(/^start\s+<?\s*(log\+\+|log\+-|log\+|log-|logall|log\*)\s*>?\s*(\S+)?/i);
+if(m){const k=norm(m[1]);let n=m[2]||'main.'+k;if(!n.includes('.'))n+='.'+k;if(!files[n]){files[n]=TPL[k];fresh=n;pr('archivo creado: '+n,'ok')}return openEd(n)}
+const tk=s.split(/\s+/);if(tk[1]==='#'&&tk[0]!=='run')tk.splice(1,1);const[c,a,b]=tk;
+if(c==='help')return['Comandos:','  Start <Log-> | <Log+> | <Log++> | <LogAll> [archivo]  crea y abre el editor','  edit <archivo>   abrir     run <archivo>   ejecutar','  ls   cat <a>   rm <a>   cp <a> <b>   mv <a> <b>   echo texto   stop   clear   reboot','  upload   cargar archivos de tu dispositivo (se guardan solos)','  connect [baudios]   enlazar un microcontrolador real por USB   disconnect','  pkg list | install <nombre> | remove <nombre> | info <nombre>   extensiones (UIVisuals, Storage, Graphics3D)','  run # <archivo>   ejecutar como kernel (modo privilegiado)    boot <archivo> | boot off   kernel de arranque','  En codigo: Use("archivo")  Sound("Freq;440","ms;200")  Serial("Write;hola")'].forEach(l=>pr(l));
+if(c==='ls')return pr(Object.keys(files).join('   ')||'(sin archivos: prueba Start <Log+>)');
+if(c==='echo')return pr(s.slice(5));
+if(c==='cp'||c==='mv'){if(!files[a]||!b)return pr(`uso: ${c} <origen> <destino>`,'err');files[b]=files[a];if(c==='mv')delete files[a];return pr('listo: '+b,'ok')}
+if(c==='upload')return $('#upl').click();
+if(c==='connect')return connect(+a||115200);
+if(c==='disconnect')return disc();
+if(c==='pkg')return pkg(a,b);
+if(c==='run'&&a==='#'){if(!files[b])return pr('run #: no existe '+(b||'(falta el nombre)'),'err');return runFile(b,{k:1})}
+if(c==='boot'){if(!a)return pr(BOOT?'kernel de arranque: '+BOOT:'sin kernel de arranque (usa: boot archivo)');if(a==='off'){BOOT='';lsB();return pr('arranque normal')}if(!files[a])return pr('boot: no existe '+a,'err');BOOT=a;lsB();return pr('kernel de arranque: '+a+' (se ejecuta al iniciar y con reboot)','ok')}
+if(c==='clear')return[...T.children].forEach(e=>e!==PR&&e.remove());
+if(c==='stop'){stopRun();return pr('proceso detenido')}
+if(c==='reboot')return boot();
+if(['cat','edit','run','rm'].includes(c)){if(!files[a])return pr(`${c}: no existe ${a||'(falta el nombre)'}`+(a&&sug(a,Object.keys(files))?'. '+sug(a,Object.keys(files)):''),'err');
+if(c==='cat')return files[a].split('\n').forEach(l=>pr(l));if(c==='edit')return openEd(a);if(c==='run')return runFile(a);delete files[a];return pr('borrado '+a)}
+pr('comando no encontrado: '+c+'  (escribe help)','err')}
+async function boot(){stopRun();[...T.children].forEach(e=>e!==PR&&e.remove());PR.hidden=true;t0=Date.now();
+for(const l of['LOG-ROM v0.1  (sin sistema operativo)','CPU  3.0 GHz ............ OK','RAM  4096 MB ........... OK','ROM  Log-, Log+, Log++ y LogAll en silicio ... OK','HDMI framebuffer 1280x720 ... OK','GPIO 32 pines ........... OK','','Escribe help para ver los comandos.']){pr(l,l.includes('OK')?'ok':'');await sleep(110)}
+PR.hidden=false;IN.focus();if(BOOT&&files[BOOT]){pr('Cargando kernel: '+BOOT+' ...','ok');await sleep(300);runFile(BOOT,{k:1})}}
+IN.addEventListener('keydown',e=>{if(e.key==='Enter'){const v=IN.value;IN.value='';cmd(v)}if(e.ctrlKey&&e.key==='c')stopRun()});
+T.addEventListener('click',()=>{if(!getSelection().toString())IN.focus()});
+EA.addEventListener('keydown',e=>{if(e.key==='Tab'){e.preventDefault();document.execCommand('insertText',false,'    ')}
+if(e.key==='Escape')closeEd();const m=e.ctrlKey||e.metaKey,kk=e.key.toLowerCase();if(m&&kk==='s'){e.preventDefault();e.shiftKey?saveAs():save()}if(m&&kk==='r'){e.preventDefault();runCur()}});
+$('#bs').onclick=save;$('#bsa').onclick=saveAs;$('#sao').onclick=doSaveAs;$('#san').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();doSaveAs()}if(e.key==='Escape'){$('#sa').hidden=true;EA.focus()}};$('#br').onclick=runCur;$('#bx').onclick=closeEd;$('#bd').onclick=stopRun;
+$('#bc').onclick=()=>{stopRun();OUT.hidden=true;$('#app').classList.remove('o')};
+const sb=$('#sb');
+sb.onpointerdown=()=>{PIN[5]=1;led(5);if(R&&R.on){if(R.pw){const f=R.pw;R.pw=null;f()}fire('start_button')}};
+sb.onpointerup=sb.onpointerleave=()=>{PIN[5]=0;led(5)};
+setInterval(()=>{const on=R&&R.on,tg=on?(R.k?99:R.waiting?8:96):3;cpu=Math.max(1,Math.min(100,cpu+(tg-cpu)*.4+Math.random()*3-1.5));
+const fb=res?res.w*res.h*4/1048576:0,ram=38+fb+Object.keys(files).length*.3+(on?14:0)+Math.random(),s=Math.floor((Date.now()-t0)/1000);
+$('#cp').textContent=cpu.toFixed(0)+'%';$('#cb').style.width=cpu+'%';$('#rp').textContent=ram.toFixed(0)+' MB';$('#rb').style.width=ram/40.96+'%';
+$('#vp').textContent=res?res.w+'x'+res.h:'-';$('#vb').style.width=Math.min(100,fb*4)+'%';$('#tp').textContent=(36+cpu*.3).toFixed(0)+' °C';
+$('#up').textContent=(s/60|0)+'m '+s%60+'s';$('#pc').textContent=on?(R.k?'[K] ':'')+R.n:'ninguno'},500);
+const sv=()=>{try{localStorage.setItem('logfs',JSON.stringify(files))}catch(_){}};
+setInterval(sv,1500);EA.addEventListener('input',()=>{if(cur)files[cur]=EA.value});
+$('#upl').onchange=async e=>{for(const f of e.target.files){files[f.name]=await f.text();pr(`cargado ${f.name} (${f.size} bytes)`,'ok')}e.target.value='';sv()};
+function beep(f,ms){try{AC=AC||new(window.AudioContext||window.webkitAudioContext)();AC.resume&&AC.resume();const o=AC.createOscillator(),g=AC.createGain();o.frequency.value=f;g.gain.value=.15;o.connect(g);g.connect(AC.destination);o.start();o.stop(AC.currentTime+ms/1000)}catch(_){op('Sound: el navegador bloqueo el audio','wrn')}}
+const send=t=>{if(wr)wr.write(new TextEncoder().encode(t+'\n')).catch(()=>{})};
+async function connect(b){if(!navigator.serial)return pr('Este navegador no soporta Web Serial. Usa Chrome o Edge en computadora, o Chrome en Android.','err');
+try{port=await navigator.serial.requestPort();await port.open({baudRate:b});wr=port.writable.getWriter();pr(`conectado a un microcontrolador real (${b} baudios): Pin:N("Set;High") ahora mueve el pin real`,'ok');
+const rd=port.readable.getReader(),dec=new TextDecoder();let buf='';
+(async()=>{try{for(;;){const{value,done}=await rd.read();if(done)break;buf+=dec.decode(value);let i;while((i=buf.indexOf('\n'))>=0){const l=buf.slice(0,i).trim();buf=buf.slice(i+1);const m=l.match(/^(\d+)=([01])$/);if(m){PIN[+m[1]]=+m[2];led(+m[1])}else if(l)op('[serial] '+l)}}}catch(_){}})()}catch(e){pr('no se pudo conectar: '+(e.message||e),'err')}}
+function disc(){try{wr&&wr.releaseLock();port&&port.close()}catch(_){}port=wr=null;pr('desconectado')}
+const BRK={},CNT={};
+function runIn(sc,body){const a=V,b=TY,c=R.fn;V=sc.v;TY=sc.t;R.fn=sc.f;return ex(body).catch(e=>{if(e!=='STOP'&&e!==BRK&&e!==CNT&&!(e instanceof Ret))op('ERROR '+e,'err')}).finally(()=>{V=a;TY=b;R.fn=c})}
+async function lp(b){try{await ex(b)}catch(e){if(e===BRK)return 1;if(e!==CNT)throw e}return 0}
+const fire=n=>{if(!(R&&R.on))return Promise.resolve();return Promise.all(R.hd.filter(h=>h.n===n).map(h=>runIn(h.sc||{v:V,t:TY,f:R.fn},h.b)))};
+const ask=p=>new Promise((f,j)=>{R.pj=j;$('#inp').textContent=p;$('#inw').hidden=false;const i=$('#ini');i.value='';i.focus();i.onkeydown=e=>{if(e.key==='Enter'){$('#inw').hidden=true;f(i.value)}}});
+const og=(x,k)=>{const a=x.o.find(q=>q[0].toLowerCase()===k);return a?a.slice(1).join(';'):null};
+let SL=[];function show(t,e,c){op(`${t} l.${e[0]}: ${e[1]}`,c);if(SL[e[0]-1]!==undefined)op(`   ${e[0]} | ${SL[e[0]-1].trim()}`,'src');if(e[2])op('   -> '+e[2],'hint')}
+function lev(a,b){const m=[...Array(b.length+1).keys()];for(let i=1;i<=a.length;i++){let p=m[0];m[0]=i;for(let j=1;j<=b.length;j++){const t=m[j];m[j]=Math.min(m[j]+1,m[j-1]+1,p+(a[i-1]===b[j-1]?0:1));p=t}}return m[b.length]}
+function sug(w,L){L=L||KN;w=w.toLowerCase();let b='',d=9;for(const c of L){const m=lev(w,c);if(m<d){d=m;b=c}}return d<=2?'Quisiste decir "'+b+'"?':''}
+function diag(t){if(/^[A-Za-z_][\w:]*:\s+\S/.test(t))return'Hay un espacio despues de ":". Escribelo pegado: '+t.replace(/^([A-Za-z_][\w:]*:)\s+/,'$1');
+if((t.match(/"/g)||[]).length%2)return'Falta cerrar una comilla (")';const a=(t.match(/\(/g)||[]).length,b=(t.match(/\)/g)||[]).length;if(a>b)return'Falta cerrar un parentesis ")"';if(b>a)return'Sobra un parentesis ")"';return'Despues de los parentesis no puede haber texto suelto'}
+const ids=ns=>ns.flatMap(x=>[...(x.h[0].toLowerCase()==='ui'&&x.o?x.o.filter(q=>q[0].toLowerCase()==='id').map(q=>q[1].toLowerCase()):[]),...ids(x.body||[]),...ids(x.alt||[])]);
+const OA=(()=>{const S=['w','h','bits','set','color','write','text'];return{var:['value','text','list','size','fill','index','dict','key'],set:['value','text','index','key'],push:['value','text'],insert:['index','value','text'],remove:['index','key'],pop:['into'],sort:['order'],call:['into'],return:['value','text'],wait:['ms','press'],pin:['set','output','input','mode'],screen:S,display:S,reg:S,sound:['freq','ms'],expect:['equals'],input:['prompt'],ui:['id','label','text','min','max','value'],store:['key','value','into','default'],g3d:['id','x','y','z','size','color','rx','ry','rz','s','tx','ty','tz','fov','mode','bg'],console:['cols','rows','color','bg','text','col','row','into','prompt'],mem:['addr','value','size','len','from','to','text','into'],disk:['file','into','text','value'],exec:['file','args','into'],panic:['text']}})();
+const ARG={text:[2],each:[1],pixel:[2],rect:[4],line:[4],circle:[3],repeat:[1],if:[1],while:[1],for:[2,3]};
+function chkx(ns,E,W,s,lp){s.ids=s.ids||new Set();for(const x of ns){if(x.bad||!KN.includes(x.h[0].toLowerCase()))continue;const k=x.h[0].toLowerCase(),l=x.lg,n=x.n;
+if(!['print','serial','use'].includes(k))x.o.forEach(q=>{const a=q[0];if(/[:\s]/.test(a))E.push([n,`La orden "${q.join(';')}" no esta bien separada`,`Usa ";" para separar: "${a.split(/[:\s]+/).filter(Boolean).join(';')}"`]);else if(OA[k]&&!OA[k].includes(a.toLowerCase()))W.push([n,`Orden desconocida "${a}" en ${x.h[0]}`,sug(a,OA[k])||'Validas: '+OA[k].join(', ')])});
+const ck=['repeat','if','while','for','each'].includes(k)?k:k==='expect'?'pixel':['screen','display','reg'].includes(k)?x.h.map(v=>v.toLowerCase()).find(v=>OPS.includes(v)):null;
+if(ck&&ARG[ck]&&!ARG[ck].includes(x.a.length))E.push([n,`${ck} necesita ${ARG[ck].join(' o ')} argumentos y recibio ${x.a.length}`,'Los argumentos numericos van en el primer parentesis, separados por comas']);
+if((k==='break'||k==='continue')&&!lp)E.push([n,`${x.h[0]} solo puede usarse dentro de un bucle`,'Usalo dentro de Repeat, For, While o Loop']);
+if(k==='ui'){if(!EXT.has('uivisuals')&&!s.wu){s.wu=1;E.push([n,'UI necesita la extension UIVisuals','En la terminal escribe: pkg install UIVisuals'])}if(l!=='log+')E.push([n,'UIVisuals solo funciona en Log+ y en lineas #+ de archivos mixtos','Cambia la cabecera a <log+> o etiqueta la linea con #+'])}
+if(!EXT.has('storage')&&!s.ws&&k==='store'){s.ws=1;E.push([n,'Store necesita la extension Storage','En la terminal escribe: pkg install Storage'])}
+if(['screen','display','reg'].includes(k)&&x.h.some(v=>v.toLowerCase()==='resolution'))s.res=1;
+if(k==='g3d'){const o=(x.h[1]||'').toLowerCase();if(!EXT.has('graphics3d')&&!s.w3){s.w3=1;E.push([n,'G3D necesita la extension Graphics3D','En la terminal escribe: pkg install Graphics3D'])}if(l==='log++')E.push([n,'Log++ no tiene pantalla: G3D no puede usarse aqui','Usa Log+ o Log-']);else if(l==='log-'&&!s.res)E.push([n,'Log- exige Resolution antes de usar G3D','Agrega Screen:Resolution(...) arriba']);if(!G3O.includes(o))E.push([n,'Operacion G3D desconocida: '+(x.h[1]||''),sug(o,G3O)||'Validas: '+G3O.join(', ')])}
+if(k==='on'){const m=(x.h[1]||'').toLowerCase();if(m!=='start_button'&&m!=='key'&&m!=='canvas'&&m!=='timer'&&m!=='mouse'&&!s.ids.has(m))W.push([n,`On:${x.h[1]}: no existe ese evento ni un widget con ese Id`,'Eventos: START_BUTTON o el Id de un widget UI'])}
+if(k==='var'&&x.o[0]&&x.o[0][0].toLowerCase()==='text'&&l==='log-'&&x.h.length>2&&x.h[1].toLowerCase()!=='str')E.push([n,'Log- exige tipo STR para texto','Escribe Var:STR:nombre("Text;Hola")']);
+if(k==='console'){const o=(x.h[1]||'').toLowerCase(),CO=['init','clear','print','put','at','read','refresh'];if(l==='log++')E.push([n,'Log++ no tiene pantalla: Console no puede usarse aqui','Usa Log+ o Log-']);else if(o==='init')s.res=1;else if(l==='log-'&&!s.res)E.push([n,'Log- exige Console:Init (o Screen:Resolution) antes de usar la consola','Agrega Console:Init("Cols;53","Rows;20") arriba']);if(!CO.includes(o))E.push([n,'Operacion Console desconocida: '+(x.h[1]||''),sug(o,CO)||'Validas: '+CO.join(', ')])}
+if(k==='mem'&&!['write','read','fill','copy','writetext'].includes((x.h[1]||'').toLowerCase()))E.push([n,'Operacion Mem desconocida: '+(x.h[1]||''),'Validas: write, read, fill, copy, writetext']);
+if(k==='disk'&&!['list','read','exists','write','delete'].includes((x.h[1]||'').toLowerCase()))E.push([n,'Operacion Disk desconocida: '+(x.h[1]||''),'Validas: list, read, exists, write, delete']);
+if(['if','while','for','repeat','each','def','loop','setup','on'].includes(k)&&!x.body)E.push([n,'Falta el bloque { } de '+x.h[0],'Escribe { en la linea siguiente (o al final de esta) y cierralo con } mas abajo']);
+if(k==='return'&&!s.fn)E.push([n,'Return solo puede usarse dentro de una funcion (Def)','Mueve el Return dentro de Def:nombre(...){ ... }']);if(k==='call'&&s.fns&&!s.fns.has(x.h[1]))W.push([n,'Funcion no definida en este archivo: '+x.h[1],'Si viene de otro archivo con Use("...") ignora esta advertencia']);if(k==='def')s.fn=(s.fn||0)+1;if(x.body)chkx(x.body,E,W,s,lp||['repeat','for','while','loop','each'].includes(k));if(k==='def')s.fn--;if(x.alt)chkx(x.alt,E,W,s,lp)}}
+const CAT={uivisuals:{n:'UIVisuals',d:'Botones, etiquetas, deslizadores, casillas y cajas de texto. Solo Log+ y lineas #+ de archivos mixtos.',kb:14},storage:{n:'Storage',d:'Guardar y cargar datos entre ejecuciones con Store:Save y Store:Load. Todas las variantes.',kb:6},graphics3d:{n:'Graphics3D',d:'Motor 3D por software: cubo, esfera, toro y piramide, camara con lookAt, luz con brillo, caras ocultas y orden por profundidad. Log+ y Log- (Log++ no tiene pantalla).',kb:22}};
+const EXT=new Set((()=>{try{return JSON.parse(localStorage.getItem('logpkgs')||'[]')}catch(_){return[]}})());
+const svp=()=>{try{localStorage.setItem('logpkgs',JSON.stringify([...EXT]))}catch(_){}};
+async function pkg(a,b){const k=(b||'').toLowerCase(),p=CAT[k];
+if(!a||a==='list')return Object.entries(CAT).forEach(([i,c])=>pr(`${EXT.has(i)?'[instalada]':'[disponible]'} ${c.n} (${c.kb} KB)\n   ${c.d}`));
+if(!p)return pr('paquete no encontrado: '+(b||'(falta el nombre)')+'. Usa: pkg list','err');
+if(a==='install'){if(EXT.has(k))return pr(p.n+' ya esta instalada');pr('Descargando '+p.n+' ('+p.kb+' KB)...');for(let i=1;i<=10;i++){await sleep(90);if(i%5===0)pr('['+'#'.repeat(i)+'.'.repeat(10-i)+'] '+i*10+'%')}EXT.add(k);svp();return pr(p.n+' instalada','ok')}
+if(a==='remove'){EXT.delete(k);svp();return pr(p.n+' eliminada')}
+if(a==='info')return pr(p.n+': '+p.d);
+pr('uso: pkg list | install <nombre> | remove <nombre> | info <nombre>','err')}
+const EF0=$('#ef').textContent;
+function flash(t){const f=$('#ef');f.textContent=t;clearTimeout(flash.h);flash.h=setTimeout(()=>f.textContent=EF0,2200)}
+function save(){if(fresh===cur)fresh=null;files[cur]=EA.value;sv();flash('Guardado: '+cur)}
+function saveAs(){$('#sa').hidden=false;const i=$('#san');i.value=cur;i.focus();i.select&&i.select()}
+function doSaveAs(){let n=$('#san').value.trim().replace(/\s+/g,'_');if(!n)return flash('Escribe un nombre para el archivo');if(!n.includes('.'))n+='.'+cur.split('.').pop();const ow=files[n]!==undefined&&n!==cur;files[n]=EA.value;if(fresh===cur&&n!==cur)delete files[cur];fresh=null;cur=n;$('#en').textContent=n;$('#sa').hidden=true;sv();EA.focus();flash((ow?'Sobrescrito: ':'Guardado como: ')+n)}
+/* ---- Graphics3D ---- */
+const G3={o:{},c:{p:[0,2,6],t:[0,0,0],fov:60},l:[3,5,4],bg:[5,7,22],mode:'solid'};
+const G3O=['cube','sphere','torus','pyramid','set','render','clear','scene','camera','light'];
+const v3={sub:(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]],dot:(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2],cr:(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]],nm:a=>{const l=Math.hypot(...a)||1;return[a[0]/l,a[1]/l,a[2]/l]}};
+function rgbOf(p,d){p=p.map(s=>s.trim());if(p[0]==='hsl'){const h=((ev(p[1])%360)+360)%360,l=(p[2]?ev(p[2]):55)/100,a=.9*Math.min(l,1-l),f=n=>{const k=(n+h/30)%12;return Math.round(255*(l-a*Math.max(-1,Math.min(k-3,9-k,1))))};return[f(0),f(8),f(4)]}
+if(p[0]==='rgb')p=p.slice(1);if(p.length>=3)return p.slice(0,3).map(e=>ev(e)&255);const m=/^#?([0-9a-f]{6})$/i.exec(p[0]);return m?[0,2,4].map(i=>parseInt(m[1].substr(i,2),16)):d}
+function mesh(t,s){const V=[],F=[],h=s/2,P=Math.PI;let rf=c=>c;
+if(t==='cube'){for(let i=0;i<8;i++)V.push([i&1?h:-h,i&2?h:-h,i&4?h:-h]);[[0,1,3,2],[4,5,7,6],[0,1,5,4],[2,3,7,6],[0,2,6,4],[1,3,7,5]].forEach(q=>F.push([q[0],q[1],q[2]],[q[0],q[2],q[3]]))}
+else if(t==='pyramid'){V.push([-h,-h,-h],[h,-h,-h],[h,-h,h],[-h,-h,h],[0,h,0]);F.push([0,1,4],[1,2,4],[2,3,4],[3,0,4],[0,1,2],[0,2,3]);rf=c=>[c[0],c[1]+s/4,c[2]]}
+else if(t==='sphere'){const a=10,b=16;for(let i=0;i<=a;i++)for(let j=0;j<=b;j++){const p=P*i/a,q=2*P*j/b;V.push([h*Math.sin(p)*Math.cos(q),h*Math.cos(p),h*Math.sin(p)*Math.sin(q)])}for(let i=0;i<a;i++)for(let j=0;j<b;j++){const k=i*(b+1)+j;F.push([k,k+b+1,k+1],[k+1,k+b+1,k+b+2])}}
+else{const R_=s*.35,r_=s*.15,a=20,b=10;for(let i=0;i<=a;i++)for(let j=0;j<=b;j++){const u=2*P*i/a,v=2*P*j/b;V.push([(R_+r_*Math.cos(v))*Math.cos(u),r_*Math.sin(v),(R_+r_*Math.cos(v))*Math.sin(u)])}for(let i=0;i<a;i++)for(let j=0;j<b;j++){const k=i*(b+1)+j;F.push([k,k+b+1,k+1],[k+1,k+b+1,k+b+2])}rf=c=>{const l=Math.hypot(c[0],c[2])||1;return[c[0]-R_*c[0]/l,c[1],c[2]-R_*c[2]/l]}}
+F.forEach(f=>{const[A,B,C]=f.map(i=>V[i]),n=v3.cr(v3.sub(B,A),v3.sub(C,A)),m=[(A[0]+B[0]+C[0])/3,(A[1]+B[1]+C[1])/3,(A[2]+B[2]+C[2])/3];if(v3.dot(n,rf(m))<0){const t=f[1];f[1]=f[2];f[2]=t}});return{V,F}}
+function g3(x){const o=(x.h[1]||'').toLowerCase(),n=k=>{const v=og(x,k);return v===null?undefined:+ev(v)},id=og(x,'id'),cq=x.o.find(q=>q[0].toLowerCase()==='color');
+if(o==='render')return g3r();if(o==='clear'){G3.o={};return}
+if(o==='scene'){const b=x.o.find(q=>q[0].toLowerCase()==='bg');if(b)G3.bg=rgbOf(b.slice(1),G3.bg);const m=og(x,'mode');if(m)G3.mode=m.toLowerCase();const f=n('fov');if(f)G3.c.fov=f;if(!res)setRes(320,180);return}
+if(o==='camera'){const c=G3.c;c.p=[n('x')??c.p[0],n('y')??c.p[1],n('z')??c.p[2]];c.t=[n('tx')??c.t[0],n('ty')??c.t[1],n('tz')??c.t[2]];c.fov=n('fov')??c.fov;return}
+if(o==='light'){G3.l=[n('x')??G3.l[0],n('y')??G3.l[1],n('z')??G3.l[2]];return}
+if(!id)throw'G3D: falta el Id, por ejemplo "Id;caja"';
+if(o==='set'){const b=G3.o[id];if(!b)throw'G3D: no existe el objeto '+id;for(const k of['x','y','z','rx','ry','rz','s']){const v=n(k);if(v!==undefined)b[k]=v}if(cq)b.col=rgbOf(cq.slice(1),b.col);return}
+G3.o[id]={m:mesh(o,n('size')??1),x:n('x')??0,y:n('y')??0,z:n('z')??0,rx:n('rx')??0,ry:n('ry')??0,rz:n('rz')??0,s:1,col:cq?rgbOf(cq.slice(1),[74,163,255]):[74,163,255]}}
+function g3r(){if(!res)setRes(320,180);Con.sus=1;const{w:W,h:H}=res,c=G3.c,{sub,dot,cr,nm}=v3,f=nm(sub(c.t,c.p)),r=nm(cr(f,[0,1,0])),u=cr(r,f),F=H/2/Math.tan(c.fov*Math.PI/360),L=nm(G3.l),TR=[],cs=Math.cos,sn=Math.sin;
+for(const b of Object.values(G3.o)){const P=b.m.V.map(v=>{let[x,y,z]=[v[0]*b.s,v[1]*b.s,v[2]*b.s],t;t=y*cs(b.rx)-z*sn(b.rx);z=y*sn(b.rx)+z*cs(b.rx);y=t;t=x*cs(b.ry)+z*sn(b.ry);z=-x*sn(b.ry)+z*cs(b.ry);x=t;t=x*cs(b.rz)-y*sn(b.rz);y=x*sn(b.rz)+y*cs(b.rz);x=t;return[x+b.x,y+b.y,z+b.z]});
+for(const[i,j,k]of b.m.F){const A=P[i],B=P[j],C=P[k],N=nm(cr(sub(B,A),sub(C,A))),M=[(A[0]+B[0]+C[0])/3,(A[1]+B[1]+C[1])/3,(A[2]+B[2]+C[2])/3],E=nm(sub(c.p,M));if(dot(N,E)<=0)continue;
+const S=[A,B,C].map(p=>{const q=sub(p,c.p),z=dot(q,f);return[W/2+F*dot(q,r)/z,H/2-F*dot(q,u)/z,z]});if(S.some(s=>s[2]<.1))continue;
+const Hh=nm([L[0]+E[0],L[1]+E[1],L[2]+E[2]]);TR.push({S,z:(S[0][2]+S[1][2]+S[2][2])/3,d:.18+.82*Math.max(0,dot(N,L)),sp:.5*Math.pow(Math.max(0,dot(N,Hh)),30),col:b.col})}}
+TR.sort((a,b)=>b.z-a.z);cx.fillStyle=`rgb(${G3.bg})`;cx.fillRect(0,0,W,H);
+for(const t of TR){const s=`rgb(${t.col.map(v=>Math.min(255,v*t.d+255*t.sp|0))})`;cx.beginPath();cx.moveTo(t.S[0][0],t.S[0][1]);cx.lineTo(t.S[1][0],t.S[1][1]);cx.lineTo(t.S[2][0],t.S[2][1]);cx.closePath();
+if(G3.mode==='wire'){cx.strokeStyle=s;cx.stroke()}else{cx.fillStyle=cx.strokeStyle=s;cx.fill();cx.stroke()}}}
+class Ret{constructor(v){this.v=v}}
+const cv=(t,v)=>t?Array.isArray(v)?v.map(CAST[t]):(v&&typeof v==='object')?v:CAST[t](v):v;
+const valOf=x=>{const i=x.q.findIndex(s=>/^(value|text);/i.test(s));if(i<0)throw'Falta la orden Value o Text';return/^text;/i.test(x.q[i])?fm(x.q[i].slice(5)):ev(x.o[i][1])};
+const reg=ns=>ns.forEach(x=>{if(x.h[0].toLowerCase()==='def')R.fn[x.h[1]]=x});
+const fnn=ns=>ns.flatMap(x=>[...(x.h[0].toLowerCase()==='def'?[x.h[1]]:[]),...fnn(x.body||[]),...fnn(x.alt||[])]);
+document.addEventListener('keydown',e=>{if(R&&R.on&&!/INPUT|TEXTAREA/.test((e.target||{}).tagName||'')){V.key=e.key;fire('key')}});
+CV.addEventListener('pointerdown',e=>{if(R&&R.on&&res){const r=CV.getBoundingClientRect();V.mx=Math.floor((e.clientX-r.left)/r.width*res.w);V.my=Math.floor((e.clientY-r.top)/r.height*res.h);fire('canvas')}});
+let fresh=null;
+function hd(){const on=!$('#cw').hidden||!$('#ui').hidden;$('#hdmi').hidden=!on;$('#hr').textContent=res?res.w+'x'+res.h:'1280x720'}
+let kmode=false,BOOT=(()=>{try{return localStorage.getItem('logboot')||''}catch(_){return''}})();
+const lsB=()=>{try{localStorage.setItem('logboot',BOOT)}catch(_){}};
+const MEM=new Uint8Array(1<<20);
+const mc=a=>{a=+a|0;if(a<0||a>=MEM.length)throw'Direccion fuera de memoria: '+a;return a};
+const pk=a=>MEM[mc(a)],pk16=a=>pk(a)|pk(a+1)<<8,pk32=a=>(pk(a)|pk(a+1)<<8|pk(a+2)<<16|pk(a+3)<<24)>>>0;
+const pks=a=>{let s='';for(a=mc(a);a<MEM.length&&MEM[a];a++)s+=String.fromCharCode(MEM[a]);return s};
+const MC=new MessageChannel(),MQ=[];MC.port1.onmessage=()=>{const f=MQ.shift();f&&f()};MC.port1.unref&&MC.port1.unref();
+const tick=()=>new Promise(r=>{MQ.push(r);MC.port2.postMessage(0)});
+const Con={on:0,cols:53,rows:20,cw:6,ch:9,buf:[],cx:0,cy:0,fg:'#9be7b4',bg:'#04110a',t:0};
+function conClear(){Con.sus=0;Con.buf=Array.from({length:Con.rows},()=>Array(Con.cols).fill(null));Con.cx=0;Con.cy=0;conMark()}
+function conMark(){if(!Con.t)Con.t=setTimeout(()=>{Con.t=0;conR()},16)}
+function conR(){if(!Con.on||!res||Con.sus)return;cx.fillStyle=Con.bg;cx.fillRect(0,0,res.w,res.h);cx.font='8px ui-monospace,Menlo,Consolas,monospace';cx.textBaseline='top';for(let r=0;r<Con.rows;r++)for(let c=0;c<Con.cols;c++){const k=Con.buf[r]&&Con.buf[r][c];if(k&&k.c!==' '){cx.fillStyle=k.f;cx.fillText(k.c,c*Con.cw,r*Con.ch)}}cx.fillStyle=Con.fg;cx.fillRect(Con.cx*Con.cw,Con.cy*Con.ch+8,5,1)}
+function conEns(){if(!Con.on){const c=res?Math.floor(res.w/Con.cw):53,r=res?Math.floor(res.h/Con.ch):20;if(!res)setRes(c*Con.cw,r*Con.ch);Con.cols=c;Con.rows=r;Con.on=1;CV.style.imageRendering='auto';conClear()}}
+function conNl(){Con.cx=0;if(++Con.cy>=Con.rows){Con.buf.shift();Con.buf.push(Array(Con.cols).fill(null));Con.cy=Con.rows-1}}
+function conPut(s,f){for(const ch of String(s)){if(ch==='\n'){conNl();continue}if(Con.cx>=Con.cols)conNl();Con.buf[Con.cy][Con.cx++]={c:ch,f:f||Con.fg}}conMark()}
+const SEED={
+'kernel.log-':`<log->
+// KERNEL.LOG- - sistema operativo minimo para Log OS
+// Ejecutalo con:  run # kernel.log-   (modo kernel: prioridad absoluta)
+// Para que arranque solo:  boot kernel.log-
+// Mapa de memoria:  0x0010 ticks (32 bits)  |  0x0100 tabla de procesos (16 bytes c/u)
+Console:Init("Cols;53","Rows;20","Color;#9be7b4","Bg;#04110a")
+Var:U32:ticks("Value;0")
+Var:U8:procs("Value;0")
+Var:I32:codigo("Value;0")
+Var:I32:ok("Value;0")
+Var:I32:vivo("Value;1")
+Var:STR:linea("Text;")
+Var:STR:cmd("Text;")
+Var:STR:arg("Text;")
+Var:STR:txt("Text;")
+Var:STR:archivos("List;")
+
+// servicio del kernel: registra un proceso en la tabla (0x0100)
+Def:spawn(nombre)
+{
+    Mem:Write("Addr;256+procs*16","Value;procs+1")
+    Mem:Write("Addr;257+procs*16","Value;1")
+    Mem:WriteText("Addr;258+procs*16","Text;{nombre}")
+    Set:procs("Value;procs+1")
+}
+
+// interrupcion del reloj: una vez por segundo
+On:Timer("Every;1000")
+{
+    Set:ticks("Value;ticks+1")
+    Mem:Write("Addr;16","Value;ticks","Size;4")
+}
+
+// ---- arranque ----
+Console:Print("Text;LOGOS 0.1 - kernel en Log-","Color;#ffffff")
+Wait("ms;300")
+Console:Print("Text;CPU 3.0 GHz ............ OK")
+Mem:Fill("Addr;1024","Len;4096","Value;170")
+Mem:Read("Addr;3000","Into;ok")
+If(ok!=170)
+{
+    Panic("Text;fallo en la prueba de memoria")
+}
+Mem:Fill("Addr;1024","Len;4096","Value;0")
+Console:Print("Text;RAM 1024 KB ........... OK")
+Wait("ms;300")
+Disk:List("Into;archivos")
+Console:Print("Text;Disco: {archivos.length} archivos ... OK")
+Call:spawn('init')
+Call:spawn('shell')
+Console:Print("Text;Procesos iniciados: {procs}")
+Console:Print("Text;Escribe help para ver los comandos.")
+Console:Print("Text;")
+
+// ---- shell ----
+While(vivo)
+{
+    Console:Read("Into;linea","Prompt;logos>")
+    Set:cmd("Value;linea.trim().split(' ')[0].toLowerCase()")
+    Set:arg("Value;linea.trim().split(' ').slice(1).join(' ')")
+    If(cmd=='')
+    {
+        Continue
+    }
+    If(cmd=='help')
+    {
+        Console:Print("Text;help ver clear ls cat <f> echo <t> mem ps")
+        Console:Print("Text;uptime run <app> panic halt")
+    }
+    ElseIf(cmd=='ver')
+    {
+        Console:Print("Text;LOGOS 0.1 (kernel escrito en Log-)")
+    }
+    ElseIf(cmd=='clear')
+    {
+        Console:Clear
+    }
+    ElseIf(cmd=='ls')
+    {
+        Disk:List("Into;archivos")
+        Each:f(archivos)
+        {
+            Console:Print("Text;  {f}")
+        }
+    }
+    ElseIf(cmd=='cat')
+    {
+        Disk:Exists("File;{arg}","Into;ok")
+        If(ok==1)
+        {
+            Disk:Read("File;{arg}","Into;txt")
+            Console:Print("Text;{txt}")
+        }
+        Else
+        {
+            Console:Print("Text;cat: no existe {arg}","Color;#ff7b7b")
+        }
+    }
+    ElseIf(cmd=='echo')
+    {
+        Console:Print("Text;{arg}")
+    }
+    ElseIf(cmd=='mem')
+    {
+        Mem:Read("Addr;16","Into;ok","Size;4")
+        Console:Print("Text;RAM total: 1024 KB")
+        Console:Print("Text;ticks guardados en 0x10: {ok}")
+        Console:Print("Text;tabla de procesos (0x100): {procs} entradas")
+    }
+    ElseIf(cmd=='ps')
+    {
+        Console:Print("Text;PID  ESTADO  NOMBRE")
+        For:p(0,procs)
+        {
+            Console:Print("Text;{peek(256+p*16)}    {peek(257+p*16)}       {peekstr(258+p*16)}")
+        }
+    }
+    ElseIf(cmd=='uptime')
+    {
+        Console:Print("Text;encendido hace {ticks} s")
+    }
+    ElseIf(cmd=='run')
+    {
+        Call:spawn(arg)
+        Exec("File;{arg}","Into;codigo")
+        Console:Refresh
+        Console:Print("Text;proceso {arg} termino con codigo {codigo}")
+        Set:procs("Value;procs-1")
+    }
+    ElseIf(cmd=='panic')
+    {
+        Panic("Text;panico pedido desde el shell")
+    }
+    ElseIf(cmd=='halt')
+    {
+        Console:Print("Text;Apagando el sistema...")
+        Wait("ms;600")
+        Stop
+    }
+    Else
+    {
+        Console:Print("Text;comando desconocido: {cmd}","Color;#ff7b7b")
+    }
+}
+`,
+'hola.log+':`<log+>
+// Aplicacion de ejemplo. Desde el shell del kernel:  run hola.log+
+Console:Print("Text;Hola! Soy un proceso hijo (hola.log+)","Color;#ffd479")
+Console:Print("Text;args = [{args}]")
+`,
+'espiral.log+':`<log+>
+// Aplicacion grafica. Desde el shell del kernel:  run espiral.log+
+Screen:Clear("Color;black")
+For:i(0,300)
+{
+    Screen:Circle(160+i*0.45*cos(i/6),90+i*0.28*sin(i/6),2)("Color;hsl;i*1.2")
+}
+Wait("ms;1500")
+`,
+'LEEME.txt':`Archivos de ejemplo de Log OS
+kernel.log-   sistema operativo minimo (Log-)
+hola.log+     app de texto para el shell
+espiral.log+  app grafica para el shell
+Arrancar:  run # kernel.log-
+Autoarranque:  boot kernel.log-`};
+SEED['kernel.log-']=`<log->
+// KERNEL.LOG- v2 - sistema operativo minimo para Log OS
+// Ejecutalo con:  run # kernel.log-   (modo kernel: prioridad absoluta)
+// Para que arranque solo:  boot kernel.log-
+// Entradas: pulsa Teclado o Mouse debajo de la pantalla (o toca la pantalla).
+// Mapa de memoria:  0x0010 ticks (32 bits)  |  0x0100 tabla de procesos (16 bytes c/u)
+Screen:Resolution("W;318","H;180","Bits;24")
+Console:Init("Cols;53","Rows;20","Color;#9be7b4","Bg;#04110a")
+Var:U32:ticks("Value;0")
+Var:U8:procs("Value;0")
+Var:I32:codigo("Value;0")
+Var:I32:ok("Value;0")
+Var:I32:vivo("Value;1")
+Var:I32:modo("Value;0")
+Var:I32:mx("Value;159")
+Var:I32:my("Value;90")
+Var:I32:mb("Value;0")
+Var:I32:ox("Value;159")
+Var:I32:oy("Value;90")
+Var:STR:linea("Text;")
+Var:STR:cmd("Text;")
+Var:STR:arg("Text;")
+Var:STR:txt("Text;")
+Var:STR:archivos("List;")
+
+// servicio del kernel: registra un proceso en la tabla (0x0100)
+Def:spawn(nombre)
+{
+    Mem:Write("Addr;256+procs*16","Value;procs+1")
+    Mem:Write("Addr;257+procs*16","Value;1")
+    Mem:WriteText("Addr;258+procs*16","Text;{nombre}")
+    Set:procs("Value;procs+1")
+}
+
+// servicio del kernel: borra el cursor anterior y dibuja el nuevo
+Def:cursor()
+{
+    Screen:Rect(ox-1,oy-1,12,16)("Color;#000000")
+    Screen:Rect(0,0,60,10)("Color;#000000")
+    Screen:Line(mx,my,mx,my+11)("Color;#ffffff")
+    Screen:Line(mx,my,mx+8,my+8)("Color;#ffffff")
+    Screen:Line(mx,my+11,mx+3,my+8)("Color;#ffffff")
+    Screen:Line(mx+3,my+8,mx+8,my+8)("Color;#ffffff")
+    Screen:Text(2,1)("Text;{mx},{my}","Color;#9be7b4")
+    Set:ox("Value;mx")
+    Set:oy("Value;my")
+}
+
+// interrupcion del reloj: una vez por segundo
+On:Timer("Every;1000")
+{
+    Set:ticks("Value;ticks+1")
+    Mem:Write("Addr;16","Value;ticks","Size;4")
+}
+
+// interrupciones del mouse y del teclado (variables mx, my, mb y key)
+On:Mouse("Move")
+{
+    If(modo==1)
+    {
+        Call:cursor()
+    }
+}
+On:Mouse("Down")
+{
+    If(modo==1&&mb==2)
+    {
+        Set:modo("Value;0")
+        Console:Refresh
+    }
+}
+On:Key("Down")
+{
+    If(modo==1&&key=='Escape')
+    {
+        Set:modo("Value;0")
+        Console:Refresh
+    }
+}
+
+// ---- arranque ----
+Console:Print("Text;LOGOS 0.2 - kernel en Log-","Color;#ffffff")
+Wait("ms;300")
+Console:Print("Text;CPU 3.0 GHz ............ OK")
+Mem:Fill("Addr;1024","Len;4096","Value;170")
+Mem:Read("Addr;3000","Into;ok")
+If(ok!=170)
+{
+    Panic("Text;fallo en la prueba de memoria")
+}
+Mem:Fill("Addr;1024","Len;4096","Value;0")
+Console:Print("Text;RAM 1024 KB ........... OK")
+Wait("ms;300")
+Disk:List("Into;archivos")
+Console:Print("Text;Disco: {archivos.length} archivos ... OK")
+Console:Print("Text;Mouse y teclado ........ OK")
+Call:spawn('init')
+Call:spawn('shell')
+Console:Print("Text;Procesos iniciados: {procs}")
+Console:Print("Text;Escribe help para ver los comandos.")
+Console:Print("Text;")
+
+// ---- shell ----
+While(vivo)
+{
+    If(modo==1)
+    {
+        Wait("ms;30")
+        Continue
+    }
+    Console:Read("Into;linea","Prompt;logos>")
+    Set:cmd("Value;linea.trim().split(' ')[0].toLowerCase()")
+    Set:arg("Value;linea.trim().split(' ').slice(1).join(' ')")
+    If(cmd=='')
+    {
+        Continue
+    }
+    If(cmd=='help')
+    {
+        Console:Print("Text;help ver clear ls cat <f> echo <t> mem ps")
+        Console:Print("Text;uptime mouse gui run <app> panic halt")
+    }
+    ElseIf(cmd=='ver')
+    {
+        Console:Print("Text;LOGOS 0.2 (kernel escrito en Log-)")
+    }
+    ElseIf(cmd=='clear')
+    {
+        Console:Clear
+    }
+    ElseIf(cmd=='gui')
+    {
+        Set:modo("Value;1")
+        Set:ox("Value;mx")
+        Set:oy("Value;my")
+        Screen:Clear("Color;#000000")
+        Screen:Text(2,170)("Text;Esc o clic derecho: salir","Color;#7f8c85")
+        Call:cursor()
+    }
+    ElseIf(cmd=='mouse')
+    {
+        Console:Print("Text;mouse en {mx},{my} boton {mb}")
+    }
+    ElseIf(cmd=='ls')
+    {
+        Disk:List("Into;archivos")
+        Each:f(archivos)
+        {
+            Console:Print("Text;  {f}")
+        }
+    }
+    ElseIf(cmd=='cat')
+    {
+        Disk:Exists("File;{arg}","Into;ok")
+        If(ok==1)
+        {
+            Disk:Read("File;{arg}","Into;txt")
+            Console:Print("Text;{txt}")
+        }
+        Else
+        {
+            Console:Print("Text;cat: no existe {arg}","Color;#ff7b7b")
+        }
+    }
+    ElseIf(cmd=='echo')
+    {
+        Console:Print("Text;{arg}")
+    }
+    ElseIf(cmd=='mem')
+    {
+        Mem:Read("Addr;16","Into;ok","Size;4")
+        Console:Print("Text;RAM total: 1024 KB")
+        Console:Print("Text;ticks guardados en 0x10: {ok}")
+        Console:Print("Text;tabla de procesos (0x100): {procs} entradas")
+    }
+    ElseIf(cmd=='ps')
+    {
+        Console:Print("Text;PID  ESTADO  NOMBRE")
+        For:p(0,procs)
+        {
+            Console:Print("Text;{peek(256+p*16)}    {peek(257+p*16)}       {peekstr(258+p*16)}")
+        }
+    }
+    ElseIf(cmd=='uptime')
+    {
+        Console:Print("Text;encendido hace {ticks} s")
+    }
+    ElseIf(cmd=='run')
+    {
+        Call:spawn(arg)
+        Exec("File;{arg}","Into;codigo")
+        Console:Refresh
+        Console:Print("Text;proceso {arg} termino con codigo {codigo}")
+        Set:procs("Value;procs-1")
+    }
+    ElseIf(cmd=='panic')
+    {
+        Panic("Text;panico pedido desde el shell")
+    }
+    ElseIf(cmd=='halt')
+    {
+        Console:Print("Text;Apagando el sistema...")
+        Wait("ms;600")
+        Stop
+    }
+    Else
+    {
+        Console:Print("Text;comando desconocido: {cmd}","Color;#ff7b7b")
+    }
+}
+`;
+SEED['LEEME.txt']=`Archivos de ejemplo de Log OS\nkernel.log-   sistema operativo con cursor\nhola.log+     app de texto\nespiral.log+  app grafica\nArrancar:  run # kernel.log-\nAutoarranque:  boot kernel.log-\nEn el shell: help, gui`;
+try{if(localStorage.getItem('logseed3')!=='1'){const k0=files['kernel.log-'];if(k0!==undefined&&!k0.includes('On:Mouse'))files['kernel.v1.log-']=k0;files['kernel.log-']=SEED['kernel.log-'];files['LEEME.txt']=SEED['LEEME.txt'];for(const k in SEED)if(files[k]===undefined)files[k]=SEED[k];localStorage.setItem('logseed3','1');sv()}}catch(_){for(const k in SEED)if(files[k]===undefined)files[k]=SEED[k]}
+const PM={x:0,y:0,last:null};
+function showDev(){$('#dev').hidden=false;CV.style.touchAction='none'}
+function mev(k,x,y,b){V.mx=x;V.my=y;PM.x=x;PM.y=y;if(b!==undefined)V.mb=b;if(!(R&&R.on))return;if(k==='mousemove'){if(R.mm)return;R.mm=1;fire(k).finally(()=>{if(R)R.mm=0})}else fire(k)}
+const cpos=e=>{const r=CV.getBoundingClientRect();return[Math.floor((e.clientX-r.left)/r.width*(res?res.w:1)),Math.floor((e.clientY-r.top)/r.height*(res?res.h:1))]};
+CV.addEventListener('pointermove',e=>{if(!res)return;const[x,y]=cpos(e);mev('mousemove',x,y)});
+CV.addEventListener('pointerdown',e=>{if(!res)return;const[x,y]=cpos(e);try{CV.setPointerCapture(e.pointerId)}catch(_){}mev('mousedown',x,y,e.button===2?2:1)});
+CV.addEventListener('pointerup',e=>{if(!res)return;const[x,y]=cpos(e);mev('mouseup',x,y,0)});
+CV.oncontextmenu=e=>e.preventDefault();
+const pdv=$('#pd');
+pdv.addEventListener('pointerdown',e=>{PM.last=[e.clientX,e.clientY];try{pdv.setPointerCapture(e.pointerId)}catch(_){}});
+pdv.addEventListener('pointermove',e=>{if(!PM.last||!res)return;const k=1.6*res.w/Math.max(1,pdv.clientWidth);const x=Math.max(0,Math.min(res.w-1,PM.x+(e.clientX-PM.last[0])*k)),y=Math.max(0,Math.min(res.h-1,PM.y+(e.clientY-PM.last[1])*k));PM.last=[e.clientX,e.clientY];mev('mousemove',x|0,y|0)});
+pdv.addEventListener('pointerup',()=>{PM.last=null});
+const padBtn=(id,b)=>{const e=$(id);e.addEventListener('pointerdown',()=>mev('mousedown',PM.x|0,PM.y|0,b));e.addEventListener('pointerup',()=>{mev('mouseup',PM.x|0,PM.y|0,0);if(b===1)fire('canvas')})};padBtn('#pl',1);padBtn('#pr2',2);
+const VK=[['1','2','3','4','5','6','7','8','9','0','Backspace'],['q','w','e','r','t','y','u','i','o','p'],['a','s','d','f','g','h','j','k','l','Enter'],['Shift','z','x','c','v','b','n','m',',','.'],['Escape','ArrowLeft','ArrowUp','ArrowDown','ArrowRight',' ','Tab']];
+const VL={Backspace:'⌫',Enter:'↵',Shift:'⇧',Escape:'Esc',ArrowLeft:'←',ArrowUp:'↑',ArrowDown:'↓',ArrowRight:'→',' ':'Espacio',Tab:'Tab'};
+let vs=0;
+function vkey(k){const i=$('#ini'),act=!$('#inw').hidden;if(k==='Shift'){vs^=1;return}const c=k.length===1&&vs?k.toUpperCase():k;if(k.length===1)vs=0;
+if(act){if(k==='Backspace')i.value=i.value.slice(0,-1);else if(k==='Enter')i.onkeydown&&i.onkeydown({key:'Enter'});else if(c.length===1)i.value+=c;return}
+if(R&&R.on){V.key=c;fire('key')}}
+(function(){const v=$('#vk');VK.forEach(r=>{const d=document.createElement('div');d.className='vr';r.forEach(k=>{const b=document.createElement('button');b.className='g';b.textContent=VL[k]||k;b.onpointerdown=e=>{e.preventDefault();vkey(k)};d.appendChild(b)});v.appendChild(d)})})();
+$('#bk').onclick=()=>{const v=$('#vk');v.hidden=!v.hidden;$('#bk').textContent=v.hidden?'Teclado':'Ocultar teclado'};
+$('#bm').onclick=()=>{const p=$('#pad');p.hidden=!p.hidden;if(!p.hidden&&res){PM.x=res.w/2;PM.y=res.h/2}};
+boot();
+</script></body></html>
