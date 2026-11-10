@@ -1,956 +1,880 @@
 <!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-<title>Mecanismos 3D — CAD Simulator</title>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Log OS: simulador de computadora Log</title>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
-
-/* ─── THEME TOKENS ─────────────────────────────────── */
-:root{
-  --bg:#111318;--surface:#1a1e28;--surface2:#222736;--surface3:#2a3045;
-  --border:#2e3548;--border-hi:#3d4a65;
-  --text:#c8d4e8;--text2:#7a8aaa;--text3:#4a5a78;
-  --accent:#3b82f6;--accent-glow:rgba(59,130,246,0.25);
-  --green:#22c55e;--orange:#f97316;--amber:#f59e0b;
-  --purple:#a855f7;--teal:#14b8a6;--steel:#64748b;
-  --red:#ef4444;
-  --toolbar-h:52px; --topbar-h:32px; --sb-h:30px;
-  --shadow:0 8px 30px rgba(0,0,0,0.6);
-}
-.light{
-  --bg:#f0f2f5;--surface:#ffffff;--surface2:#f4f6fa;--surface3:#e8ecf4;
-  --border:#d1d9e6;--border-hi:#b0bcd4;
-  --text:#1e2535;--text2:#5a6a88;--text3:#9aaac2;
-  --accent:#2563eb;--accent-glow:rgba(37,99,235,0.18);
-  --surface:white;
-  --shadow:0 4px 20px rgba(0,0,0,0.12);
-}
-
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-html,body{height:100%;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;}
-body{background:var(--bg);font-family:'Inter',sans-serif;display:flex;flex-direction:column;}
-
-/* ─── TOP BAR (breadcrumb / file) ──────────────────── */
-#topbar{
-  height:var(--topbar-h);background:var(--surface);border-bottom:1px solid var(--border);
-  display:flex;align-items:center;padding:0 12px;gap:6px;flex-shrink:0;z-index:30;
-}
-.tb-logo{display:flex;align-items:center;gap:6px;margin-right:10px;}
-.tb-logo-icon{width:20px;height:20px;background:var(--accent);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:11px;color:white;font-weight:700;}
-.tb-logo-name{font-size:12px;font-weight:700;color:var(--text);letter-spacing:.02em;}
-.tb-logo-ver{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);margin-left:2px;}
-.tb-sep{width:1px;height:16px;background:var(--border);margin:0 4px;}
-.tb-crumb{font-size:11px;color:var(--text2);cursor:pointer;}
-.tb-crumb:hover{color:var(--text);}
-.tb-crumb-sep{font-size:10px;color:var(--text3);margin:0 2px;}
-.tb-spacer{flex:1;}
-.tb-action{display:flex;align-items:center;gap:3px;padding:3px 8px;border-radius:4px;border:none;background:transparent;font-size:11px;font-family:'Inter',sans-serif;color:var(--text2);cursor:pointer;gap:4px;transition:.12s;}
-.tb-action:hover{background:var(--surface2);color:var(--text);}
-.tb-action svg{flex-shrink:0;}
-
-/* ─── TOOLBAR ───────────────────────────────────────── */
-#toolbar{
-  height:var(--toolbar-h);background:var(--surface);border-bottom:1px solid var(--border);
-  display:flex;align-items:stretch;padding:0 8px;gap:2px;flex-shrink:0;z-index:25;
-  box-shadow:0 1px 0 var(--border);
-}
-.tg{display:flex;align-items:center;gap:1px;padding:0 4px;position:relative;}
-.tg+.tg::before{content:'';width:1px;height:28px;background:var(--border);margin:0 4px;align-self:center;}
-/* Tool button */
-.tb{
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  gap:2px;padding:5px 8px;border-radius:6px;border:none;background:transparent;
-  cursor:pointer;transition:.12s;min-width:46px;height:42px;
-  font-family:'Inter',sans-serif;font-size:9px;font-weight:500;color:var(--text2);
-  position:relative;
-}
-.tb:hover{background:var(--surface2);color:var(--text);}
-.tb.active{background:var(--accent-glow);color:var(--accent);}
-.tb.active svg path,.tb.active svg rect,.tb.active svg circle,.tb.active svg line,.tb.active svg polyline{stroke:var(--accent) !important;}
-.tb-icon{font-size:18px;line-height:1;display:flex;align-items:center;justify-content:center;width:20px;height:20px;}
-.tb-icon svg{width:18px;height:18px;}
-.tb-label{font-size:8.5px;white-space:nowrap;line-height:1;}
-/* Add button variant */
-.tb.add-btn{background:var(--surface2);}
-.tb.add-btn:hover{background:var(--surface3);}
-/* Dropdown trigger */
-.tb.has-drop::after{content:'▾';font-size:7px;position:absolute;bottom:3px;right:3px;color:var(--text3);}
-/* Dropdown panel */
-.drop-panel{
-  display:none;position:absolute;top:calc(100% + 6px);left:0;
-  background:var(--surface);border:1px solid var(--border-hi);border-radius:10px;
-  box-shadow:var(--shadow);padding:12px;z-index:200;min-width:220px;
-  animation:dropIn .15s ease;
-}
-.drop-panel.open{display:block;}
-.drop-panel.right{left:auto;right:0;}
-@keyframes dropIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
-.dp-title{font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:8px;font-family:'JetBrains Mono',monospace;}
-.dp-row{display:flex;gap:6px;align-items:center;margin-bottom:6px;}
-.dp-row:last-child{margin-bottom:0;}
-.dp-label{font-size:11px;font-weight:500;color:var(--text2);white-space:nowrap;width:72px;flex-shrink:0;}
-.dp-input{flex:1;background:var(--surface2);border:1px solid var(--border-hi);border-radius:5px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;padding:4px 7px;text-align:right;}
-.dp-input:focus{outline:none;border-color:var(--accent);}
-.dp-btn{width:100%;padding:7px 10px;border-radius:6px;border:none;font-family:'Inter',sans-serif;font-weight:600;font-size:11px;cursor:pointer;transition:.12s;display:flex;align-items:center;justify-content:center;gap:5px;margin-top:8px;}
-.dp-btn:active{transform:scale(.97);}
-.dp-btn-accent{background:var(--accent);color:white;}.dp-btn-accent:hover{filter:brightness(1.1);}
-.dp-btn-orange{background:var(--orange);color:white;}
-.dp-btn-purple{background:var(--purple);color:white;}
-.dp-btn-teal{background:var(--teal);color:white;}
-.dp-btn-steel{background:var(--steel);color:white;}
-.dp-btn-amber{background:var(--amber);color:#1a0e00;}
-.dp-btn-ghost{background:var(--surface2);color:var(--text);border:1px solid var(--border-hi);}
-.dp-btn-ghost:hover{background:var(--surface3);}
-.dp-btn-red{background:var(--red);color:white;}
-.dp-step-info{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--amber);background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:4px;padding:5px 8px;text-align:center;display:none;margin-top:6px;}
-.dp-step-info.show{display:block;}
-
-/* ─── VIEWPORT ──────────────────────────────────────── */
-#viewport{flex:1;position:relative;overflow:hidden;}
-#c{
-  width:100%;height:100%;display:block;cursor:crosshair;
-  background:#111318; /* fallback sólido para Safari */
-}
-.light #c{ background:#f0f2f5; }
-#c.cursor-grab{cursor:grab;}
-#c.cursor-grabbing{cursor:grabbing;}
-#c.cursor-crosshair{cursor:crosshair;}
-#c.cursor-spin{cursor:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Ctext y='20' font-size='20'%3E☝️%3C/text%3E%3C/svg%3E") 12 12, pointer;}
-#c.cursor-pointer{cursor:pointer;}
-
-/* ─── STATUS BAR ────────────────────────────────────── */
-#statusBar{
-  height:var(--sb-h);background:var(--surface);border-top:1px solid var(--border);
-  display:flex;align-items:center;padding:0 14px;gap:14px;flex-shrink:0;z-index:10;
-}
-.sb-mode{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;white-space:nowrap;
-  padding:2px 8px;border-radius:3px;background:var(--accent-glow);color:var(--accent);}
-.sb-mode.orange{background:rgba(249,115,22,.18);color:var(--orange);}
-.sb-mode.amber{background:rgba(245,158,11,.18);color:var(--amber);}
-.sb-mode.green{background:rgba(34,197,94,.18);color:var(--green);}
-.sb-mode.purple{background:rgba(168,85,247,.18);color:var(--purple);}
-.sb-hint{font-size:10px;color:var(--text2);flex:1;}
-kbd{background:var(--surface2);border:1px solid var(--border-hi);border-radius:3px;padding:1px 5px;font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text2);}
-
-/* ─── SNAP / TOOLTIP ─────────────────────────────────── */
-#snapIndicator{position:absolute;pointer-events:none;display:none;z-index:60;}
-#snapIndicator div{background:rgba(168,85,247,.15);border:2px solid var(--purple);border-radius:50%;width:44px;height:44px;transform:translate(-50%,-50%);}
-#tooltip{
-  position:absolute;pointer-events:none;
-  background:var(--surface);border:1px solid var(--border-hi);
-  border-radius:8px;padding:10px 13px;font-family:'JetBrains Mono',monospace;
-  font-size:10px;color:var(--text);line-height:1.9;
-  box-shadow:var(--shadow);display:none;z-index:50;min-width:170px;
-}
-.tt-title{font-size:9px;letter-spacing:.13em;color:var(--accent);text-transform:uppercase;margin-bottom:5px;font-weight:700;}
-.tt-row{display:flex;justify-content:space-between;gap:10px;}
-.tt-key{color:var(--text2);}.tt-val{color:var(--text);}.tt-val.hi{color:var(--accent);}
-.tt-footer{margin-top:6px;font-size:8px;color:var(--text3);border-top:1px solid var(--border);padding-top:5px;}
-
-/* ─── EDIT MODAL ─────────────────────────────────────── */
-#editOverlay{position:absolute;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:100;backdrop-filter:blur(4px);}
-#editModal{
-  background:var(--surface);border:1px solid var(--border-hi);border-radius:12px;
-  padding:22px 24px;box-shadow:var(--shadow);min-width:260px;display:flex;flex-direction:column;gap:14px;
-}
-#editModal h3{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-family:'JetBrains Mono',monospace;text-align:center;}
-.em-row{display:flex;justify-content:space-between;align-items:center;gap:14px;}
-.em-row label{font-size:12px;font-weight:500;color:var(--text);}
-.em-row input{width:90px;background:var(--surface2);border:1px solid var(--border-hi);border-radius:5px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;padding:5px 8px;}
-.em-row input:focus{outline:none;border-color:var(--accent);}
-.em-btns{display:flex;gap:8px;justify-content:center;}
-.em-btns button{padding:8px 16px;border-radius:5px;font-family:'Inter',sans-serif;font-weight:600;font-size:12px;border:none;cursor:pointer;transition:.12s;}
-.em-btns button:active{transform:scale(.96);}
-.b-save{background:var(--accent);color:white;}
-.b-del{background:var(--red);color:white;}
-.b-can{background:var(--surface2);color:var(--text);border:1px solid var(--border-hi);}
-
-/* ─── INTRO BANNER ───────────────────────────────────── */
-#introBanner{
-  position:absolute;top:50%;left:50%;transform:translate(-50%,-55%);
-  background:var(--surface);border:1px solid var(--border-hi);border-radius:16px;
-  padding:30px 40px;text-align:center;z-index:200;
-  box-shadow:0 30px 80px rgba(0,0,0,.5);max-width:440px;
-}
-#introBanner h2{font-size:24px;font-weight:700;color:var(--text);margin-bottom:8px;}
-#introBanner h2 span{color:var(--accent);}
-#introBanner p{font-size:12px;color:var(--text2);line-height:1.8;margin-bottom:22px;}
-.ib-btns{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;}
-.ib-btns button{padding:10px 20px;border-radius:7px;font-family:'Inter',sans-serif;font-weight:600;font-size:12px;cursor:pointer;border:none;transition:.15s;}
-.b-primary{background:var(--accent);color:white;}.b-primary:hover{filter:brightness(1.1);}
-.b-secondary{background:var(--surface2);color:var(--text);border:1px solid var(--border-hi);}
-.b-secondary:hover{background:var(--surface3);}
-.b-amber-btn{background:var(--amber);color:#1a0e00;}
-
-/* ─── SPIN-MODE OVERLAY HINT ─────────────────────────── */
-#spinHint{
-  position:absolute;bottom:44px;left:50%;transform:translateX(-50%);
-  background:rgba(168,85,247,.9);color:white;padding:6px 16px;
-  border-radius:20px;font-size:11px;font-weight:600;display:none;pointer-events:none;z-index:60;
-  font-family:'Inter',sans-serif;letter-spacing:.02em;
-}
-</style>
-
-</head>
-<body>
-
-<!-- ══════════════════════════════════════════════════
-     TOP BAR
-═══════════════════════════════════════════════════ -->
-
-<div id="topbar">
-  <div class="tb-logo">
-    <div class="tb-logo-icon">⚙</div>
-    <span class="tb-logo-name">Mecanismos 3D</span>
-    <span class="tb-logo-ver">v3.5</span>
-  </div>
-  <div class="tb-sep"></div>
-  <span class="tb-crumb">Proyecto</span>
-  <span class="tb-crumb-sep">›</span>
-  <span class="tb-crumb" style="color:var(--text)">Sin título</span>
-  <div class="tb-spacer"></div>
-  <button class="tb-action" onclick="loadDemoAndClose()">
-    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>
-    Demo
-  </button>
-  <button class="tb-action" onclick="clearAll()">
-    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="3,6 5,6 21,6"/><path d="M19,6l-1,14H6L5,6"/><path d="M10,11v6M14,11v6"/></svg>
-    Limpiar
-  </button>
-  <div class="tb-sep"></div>
-  <!-- Theme toggle -->
-  <button class="tb-action" id="themeBtn" onclick="toggleTheme()">
-    <svg id="themeIcon" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-    <span id="themeLabel">Claro</span>
-  </button>
+:root{--bg:#eceae4;--pn:#f7f6f2;--fg:#1d1c1a;--mu:#716e66;--ln:#d3d0c7;--ac:#b4570a;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#14120f;--pn:#1b1814;--fg:#e8e2d6;--mu:#948c7c;--ln:#2d2820;--ac:#ffb454;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#14120f;--pn:#1b1814;--fg:#e8e2d6;--mu:#948c7c;--ln:#2d2820;--ac:#ffb454;color-scheme:dark}
+*,*:before,*:after{box-sizing:inherit}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:13px/1.5 ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+#app{display:grid;grid-template-columns:210px 1fr;height:100%}
+#app.o{grid-template-columns:210px 1fr 1fr}
+aside{background:var(--pn);border-right:1px solid var(--ln);padding:14px;overflow:auto}
+.t{font-size:17px;font-weight:700;letter-spacing:.02em}.mu{color:var(--mu)}
+.r{display:flex;justify-content:space-between;margin-top:10px}
+.bar{height:6px;background:var(--ln);border-radius:3px;overflow:hidden;margin-top:3px}
+.bar u{display:block;height:100%;width:0;background:var(--ac);transition:width .4s}
+hr{border:0;border-top:1px solid var(--ln);margin:14px 0 8px}
+main{position:relative;min-width:0;min-height:0}
+#term,#ed{position:absolute;inset:0;background:#000;color:#ffb454;overflow:auto;padding:12px;font-size:13px}
+#term div{white-space:pre-wrap;word-break:break-word}
+#term .p{color:#8a6a35}#term .ok{color:#7fe3a1}#term .err{color:#ff6b6b}#term .mu2{color:#8a6a35}
+#pr{display:flex}#pr span{white-space:pre;color:#8a6a35}
+input,textarea{font:inherit;color:inherit;background:transparent;border:0;outline:0;caret-color:#ffb454}
+#in{flex:1;min-width:0;padding:0}
+#ed[hidden],#out[hidden],[hidden]{display:none!important}
+#ed{display:flex;flex-direction:column;padding:0;z-index:2}
+#eh{display:flex;gap:8px;align-items:center;background:#241c0f;padding:8px 12px;color:#ffb454;flex-wrap:wrap}
+#eh b{flex:1;min-width:90px}
+button{font:inherit;background:#ffb454;color:#1a1204;border:0;border-radius:4px;padding:5px 10px;cursor:pointer}
+button.g{background:transparent;color:#ffb454;border:1px solid #6b5220}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid #fff;outline-offset:1px}
+#ea{flex:1;resize:none;padding:12px;color:#ffe2b0;tab-size:4;white-space:pre;overflow:auto}
+#ef{padding:6px 12px;color:#8a6a35;font-size:12px}
+#out{background:#05080c;color:#cfe6ff;display:flex;flex-direction:column;min-width:0;min-height:0;border-left:1px solid var(--ln)}
+#oh{display:flex;gap:8px;align-items:center;padding:8px 12px;background:#0c1520;flex-wrap:wrap}
+#oh b{flex:1;min-width:80px}#os{color:#7fe3a1}
+#cw{padding:10px 12px 0}
+canvas{display:block;width:100%;image-rendering:pixelated;background:#000;border:1px solid #1d2b3b}
+#pins{padding:8px 12px 0}
+#pins i{display:inline-block;width:14px;height:14px;border-radius:50%;background:#16212d;margin:2px}
+#pins i.on{background:#7fe3a1;box-shadow:0 0 8px #7fe3a1}
+#sb{margin:8px 12px 0}
+#ol{flex:1;overflow:auto;padding:10px 12px;min-height:90px}
+#ol div{white-space:pre-wrap;word-break:break-word}
+#ol .err{color:#ff6b6b}#ol .wrn{color:#ffcf5c}#ol .ok{color:#7fe3a1}#ol .src{color:#8aa4c0}#ol .hint{color:#ffcf5c}#hdmi{padding:6px 12px;background:#0c1520;color:#7fe3a1;font-size:12px;letter-spacing:.08em;border-top:1px solid #1d2b3b}#dev{display:flex;gap:8px;padding:6px 12px;background:#0c1520}#pad{padding:6px 12px;display:flex;gap:8px;align-items:stretch}#pd{flex:1;height:84px;border:1px dashed #2a3b4f;border-radius:6px;color:#8aa4c0;display:flex;align-items:center;justify-content:center;touch-action:none;user-select:none;-webkit-user-select:none;font-size:12px}#pad button{width:56px}#vk{padding:6px 12px}#vk .vr{display:flex;gap:3px;margin-bottom:3px}#vk button{flex:1;padding:8px 0;min-width:0;font-size:12px}#ui{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 12px}#ui label{display:flex;gap:6px;align-items:center}#ui input[type=text],#ini{background:#0c1520;border:1px solid #2a3b4f;color:#cfe6ff;padding:5px 7px;border-radius:4px;min-width:0}#inw{display:flex;gap:6px;flex-wrap:wrap;padding:8px 12px;background:#0c1520}#inw span{flex:1 1 100%;white-space:pre-wrap}#ini{flex:1}#sa{display:flex;gap:8px;padding:6px 12px;background:#241c0f}#san{flex:1;min-width:0;background:#000;border:1px solid #6b5220!important;color:#ffe2b0;padding:5px 7px;border-radius:4px}
+@media(max-width:760px){#app,#app.o{display:block;height:auto;min-height:100%}aside{border:0;border-bottom:1px solid var(--ln)}main{height:58vh}#out{height:auto;min-height:60vh}#in,#ea{font-size:16px}}
+</style></head><body>
+<input type="file" id="upl" hidden multiple>
+<div id="app">
+<aside>
+<div class="t">Log-SoC</div><div class="mu">sin sistema operativo</div>
+<div class="r"><span>CPU 3.0 GHz</span><span id="cp">0%</span></div><div class="bar"><u id="cb"></u></div>
+<div class="r"><span>RAM 4096 MB</span><span id="rp"></span></div><div class="bar"><u id="rb"></u></div>
+<div class="r"><span>Framebuffer</span><span id="vp">-</span></div><div class="bar"><u id="vb"></u></div>
+<div class="r"><span>Temperatura</span><span id="tp"></span></div>
+<div class="r"><span>Encendido</span><span id="up"></span></div>
+<hr><div class="mu">Lenguajes en silicio</div>
+<div>✔ Log-</div><div>✔ Log+</div><div>✔ Log++</div><div>✔ LogAll</div>
+<hr><div class="mu">Proceso activo</div><div id="pc">ninguno</div>
+</aside>
+<main>
+<div id="term"><div id="pr"><span>log@chip:~$ </span><input id="in" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Terminal"></div></div>
+<div id="ed" hidden>
+<div id="eh"><b id="en"></b><button id="bs" class="g">Guardar</button><button id="bsa" class="g">Guardar como</button><button id="br">Correr</button><button id="bx" class="g">Salir</button></div>
+<textarea id="ea" spellcheck="false" aria-label="Editor"></textarea>
+<div id="sa" hidden><input id="san" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Nombre del archivo" placeholder="nombre.log+"><button id="sao">Guardar</button></div>
+<div id="ef">Ctrl+S guardar · Mayús+Ctrl+S guardar como · Ctrl+R correr · Esc guardar y salir</div>
 </div>
-
-<!-- ══════════════════════════════════════════════════
-     MAIN TOOLBAR
-═══════════════════════════════════════════════════ -->
-
-<div id="toolbar">
-
-  <!-- GROUP: VIEW TOOLS -->
-
-  <div class="tg" id="tg-view">
-    <!-- Orbit -->
-    <button class="tb active" id="tb-orbit" onclick="setMode('orbit')" title="Órbita (1)">
-      <span class="tb-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="9" ry="4"/><line x1="12" y1="3" x2="12" y2="21"/></svg></span>
-      <span class="tb-label">Órbita</span>
-    </button>
-    <!-- Pan -->
-    <button class="tb" id="tb-pan" onclick="setMode('pan')" title="Pan (2)">
-      <span class="tb-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M12 12h.01"/></svg></span>
-      <span class="tb-label">Pan</span>
-    </button>
-    <!-- Zoom reset -->
-    <button class="tb" onclick="resetCamera()" title="Centrar vista">
-      <span class="tb-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></span>
-      <span class="tb-label">Centrar</span>
-    </button>
-  </div>
-
-  <!-- GROUP: INTERACTION TOOLS -->
-
-  <div class="tg" id="tg-interact">
-    <!-- Gizmo / Mover -->
-    <button class="tb" id="tb-gizmo" onclick="setMode('gizmo')" title="Mover pieza (3)">
-      <span class="tb-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="12" y1="2" x2="12" y2="22"/><polyline points="9,5 12,2 15,5"/><polyline points="9,19 12,22 15,19"/><line x1="2" y1="12" x2="22" y2="12"/><polyline points="5,9 2,12 5,15"/><polyline points="19,9 22,12 19,15"/></svg></span>
-      <span class="tb-label">Mover</span>
-    </button>
-    <!-- Spin / Manual rotate -->
-    <button class="tb" id="tb-spin" onclick="setMode('spin')" title="Girar engranaje (4)">
-      <span class="tb-icon" style="font-size:20px;">☝️</span>
-      <span class="tb-label">Girar</span>
-    </button>
-  </div>
-
-  <!-- GROUP: COMPONENTS -->
-
-  <div class="tg" id="tg-motor" style="position:relative;">
-    <button class="tb add-btn has-drop" onclick="toggleDrop('drop-motor')" title="Motor">
-      <span class="tb-icon" style="color:var(--orange);font-size:18px;">⚡</span>
-      <span class="tb-label">Motor</span>
-    </button>
-    <div class="drop-panel" id="drop-motor">
-      <div class="dp-title">⚡ Añadir Motor</div>
-      <div class="dp-row"><label class="dp-label">RPM</label><input type="number" class="dp-input" id="motorRPM" value="60" min="1" max="600"></div>
-      <div class="dp-row"><label class="dp-label">Torque Nm</label><input type="number" class="dp-input" id="motorTorque" value="10" min="1"></div>
-      <button class="dp-btn dp-btn-orange" onclick="addMotorBtn();closeDrop()">⚡ Añadir Motor</button>
-    </div>
-  </div>
-
-  <div class="tg" id="tg-gear" style="position:relative;">
-    <button class="tb add-btn has-drop" onclick="toggleDrop('drop-gear')" title="Engranaje">
-      <span class="tb-icon" style="font-size:18px;">⚙</span>
-      <span class="tb-label">Engranaje</span>
-    </button>
-    <div class="drop-panel" id="drop-gear">
-      <div class="dp-title">⚙ Añadir Engranaje</div>
-      <div class="dp-row"><label class="dp-label">Dientes</label><input type="number" class="dp-input" id="teethCount" value="12" min="6" max="60"></div>
-      <button class="dp-btn dp-btn-accent" onclick="addGearBtn();closeDrop()">⚙ Añadir Engranaje</button>
-    </div>
-  </div>
-
-  <div class="tg" id="tg-shaft" style="position:relative;">
-    <button class="tb add-btn has-drop" onclick="toggleDrop('drop-shaft')" title="Eje">
-      <span class="tb-icon" style="color:var(--purple);font-size:18px;">|</span>
-      <span class="tb-label">Eje</span>
-    </button>
-    <div class="drop-panel" id="drop-shaft">
-      <div class="dp-title">| Añadir Eje</div>
-      <div class="dp-row"><label class="dp-label">Longitud</label><input type="number" class="dp-input" id="shaftLen" value="16" min="4" max="80" step="2"></div>
-      <div class="dp-row"><label class="dp-label">Grosor</label><input type="number" class="dp-input" id="shaftR" value="0.4" min="0.1" max="3" step="0.1"></div>
-      <div style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3);margin-top:6px;line-height:1.6;">Acerca un engranaje → snap auto</div>
-      <button class="dp-btn dp-btn-purple" onclick="addShaftBtn();closeDrop()">| Añadir Eje</button>
-    </div>
-  </div>
-
-  <div class="tg" id="tg-rack" style="position:relative;">
-    <button class="tb add-btn has-drop" onclick="toggleDrop('drop-rack')" title="Cremallera">
-      <span class="tb-icon" style="color:var(--steel);font-size:18px;">⊟</span>
-      <span class="tb-label">Cremallera</span>
-    </button>
-    <div class="drop-panel" id="drop-rack">
-      <div class="dp-title">⊟ Cremallera</div>
-      <div class="dp-row"><label class="dp-label">Dientes</label><input type="number" class="dp-input" id="rackTeeth" value="16" min="4" max="60"></div>
-      <div style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3);margin-top:6px;line-height:1.6;">Se acopla en Z con engranajes cercanos</div>
-      <button class="dp-btn dp-btn-steel" onclick="addRackBtn();closeDrop()">⊟ Añadir Cremallera</button>
-    </div>
-  </div>
-
-  <div class="tg" id="tg-mech" style="position:relative;">
-    <button class="tb add-btn has-drop" onclick="toggleDrop('drop-mech')" title="Mecanismos">
-      <span class="tb-icon" style="font-size:18px;">⊙</span>
-      <span class="tb-label">Mecanismos</span>
-    </button>
-    <div class="drop-panel" id="drop-mech">
-      <div class="dp-title">Pasador</div>
-      <div class="dp-row"><label class="dp-label">Radio</label><input type="number" class="dp-input" id="pinRadius" value="3" min="0.5" max="20" step="0.5"></div>
-      <button class="dp-btn dp-btn-amber" id="btnPin" onclick="togglePinMode()">⊙ Activar Pasador</button>
-      <div class="dp-step-info" id="pinInfo" style="color:var(--amber);"></div>
-      <div style="border-top:1px solid var(--border);margin:10px 0;"></div>
-      <div class="dp-title">Biela &amp; Corredera</div>
-      <button class="dp-btn dp-btn-amber" id="btnRod" onclick="toggleRodMode()" style="margin-bottom:6px;">↔ Activar Biela</button>
-      <div class="dp-step-info" id="rodInfo"></div>
-      <div class="dp-row" style="margin-top:8px;"><label class="dp-label">Guía</label><input type="number" class="dp-input" id="sliderLen" value="20" min="6" max="80"></div>
-      <button class="dp-btn dp-btn-teal" onclick="addSliderBtn();closeDrop()">▬ Añadir Corredera</button>
-    </div>
-  </div>
-
-  <div class="tb-spacer"></div>
-
-  <!-- SCENE ACTIONS -->
-
-  <div class="tg">
-    <button class="tb" onclick="loadDemoAndClose()" title="Demo Biela-Manivela">
-      <span class="tb-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polygon points="5,3 19,12 5,21"/></svg></span>
-      <span class="tb-label">Demo</span>
-    </button>
-    <button class="tb" onclick="clearAll()" title="Limpiar todo" style="color:var(--red);">
-      <span class="tb-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="3,6 5,6 21,6"/><path d="M19,6l-1,14H6L5,6"/></svg></span>
-      <span class="tb-label" style="color:var(--red);">Limpiar</span>
-    </button>
-  </div>
+</main>
+<section id="out" hidden>
+<div id="oh"><b id="on"></b><span id="os"></span><button id="bd" class="g">Detener</button><button id="bc" class="g">Cerrar</button></div>
+<div id="cw" hidden><canvas id="cv" width="320" height="180"></canvas></div>
+<div id="pins" hidden></div>
+<div id="ui" hidden></div>
+<button id="sb" class="g">START_BUTTON (pin 5)</button>
+<div id="inw" hidden><span id="inp"></span><input id="ini" autocomplete="off" aria-label="Respuesta"></div>
+<div id="dev" hidden><button id="bk" class="g">Teclado</button><button id="bm" class="g">Mouse</button></div>
+<div id="pad" hidden><div id="pd">arrastra aquí para mover el mouse</div><button id="pl" class="g">Izq</button><button id="pr2" class="g">Der</button></div>
+<div id="vk" hidden></div>
+<div id="ol"></div>
+<div id="hdmi" hidden>HDMI EMULATED · <span id="hr"></span></div>
+</section>
 </div>
-
-<!-- ══════════════════════════════════════════════════
-     VIEWPORT
-═══════════════════════════════════════════════════ -->
-
-<div id="viewport">
-  <canvas id="c"></canvas>
-  <div id="snapIndicator"><div></div></div>
-  <div id="spinHint">☝️ Arrastra para girar · ESC para salir</div>
-
-  <div id="tooltip">
-    <div class="tt-title" id="tt-title">PIEZA</div>
-    <div class="tt-row"><span class="tt-key">Tipo</span><span class="tt-val hi" id="tt-a">—</span></div>
-    <div class="tt-row"><span class="tt-key">RPM</span><span class="tt-val" id="tt-rpm">0</span></div>
-    <div class="tt-row"><span class="tt-key">Torque</span><span class="tt-val" id="tt-trq">—</span></div>
-    <div class="tt-row"><span class="tt-key">Extra</span><span class="tt-val" id="tt-z">—</span></div>
-    <div class="tt-footer">Doble clic: propiedades · Modo Mover: flechas XYZ</div>
-  </div>
-
-  <div id="introBanner">
-    <h2>⚙ Simulador de <span>Mecanismos</span></h2>
-    <p>Motor 3D propio · Engranajes · Ejes · Bielas<br>Cremalleras · Correderas · Modo girar manual<br><br>
-    <strong style="color:var(--accent)">Nuevo:</strong> herramienta ☝️ para girar engranajes a mano</p>
-    <div class="ib-btns">
-      <button class="b-primary" onclick="loadDemoAndClose()">▶ Demo Biela-Manivela</button>
-      <button class="b-secondary" onclick="closeIntro()">Empezar vacío</button>
-    </div>
-  </div>
-
-  <div id="statusBar">
-    <span class="sb-mode" id="sb-mode">ÓRBITA</span>
-    <span class="sb-hint" id="sb-hint">Arrastra para orbitar · Rueda: zoom · Shift+drag: pan</span>
-    <span style="font-size:10px;color:var(--text3);">
-      <kbd>1</kbd>órbita <kbd>2</kbd>pan <kbd>3</kbd>mover <kbd>4</kbd>girar <kbd>ESC</kbd>cancelar
-    </span>
-  </div>
-</div>
-
-<!-- EDIT MODAL -->
-
-<div id="editOverlay" onclick="closeEdit()">
-  <div id="editModal" onclick="event.stopPropagation()">
-    <h3 id="editTitle">Editar pieza</h3>
-    <div class="em-row" id="eRowTeeth" style="display:none;"><label>Dientes</label><input type="number" id="editTeeth" min="6" max="60"></div>
-    <div id="motorProps" style="display:none;flex-direction:column;gap:12px;">
-      <div class="em-row"><label>RPM</label><input type="number" id="editRPM"></div>
-      <div class="em-row"><label>Torque (Nm)</label><input type="number" id="editTorque"></div>
-    </div>
-    <div id="pinProps" style="display:none;flex-direction:column;gap:12px;">
-      <div class="em-row"><label>Radio offset</label><input type="number" id="editPinR" min="0.5" max="20" step="0.5"></div>
-    </div>
-    <div id="sliderPropEdit" style="display:none;flex-direction:column;gap:12px;">
-      <div class="em-row"><label>Long. Guía</label><input type="number" id="editSliderLen" min="4" max="80" step="2"></div>
-    </div>
-    <div id="shaftProps" style="display:none;flex-direction:column;gap:12px;">
-      <div class="em-row"><label>Longitud</label><input type="number" id="editShaftLen" min="4" max="80" step="2"></div>
-      <div class="em-row"><label>Grosor (r)</label><input type="number" id="editShaftR" min="0.1" max="3" step="0.1"></div>
-    </div>
-    <div id="rackProps" style="display:none;flex-direction:column;gap:12px;">
-      <div class="em-row"><label>Dientes</label><input type="number" id="editRackTeeth" min="4" max="60"></div>
-    </div>
-    <div class="em-btns">
-      <button class="b-save" onclick="saveEdit()">Guardar</button>
-      <button class="b-del" onclick="deleteSelected()">Borrar</button>
-      <button class="b-can" onclick="closeEdit()">Cancelar</button>
-    </div>
-  </div>
-</div>
-
-<!-- ══════════════════════════════════════════════════
-     SCRIPT
-═══════════════════════════════════════════════════ -->
-
 <script>
-// ─── MATH ──────────────────────────────────────────
-function v3(x,y,z){return{x:x||0,y:y||0,z:z||0};}
-function vadd(a,b){return v3(a.x+b.x,a.y+b.y,a.z+b.z);}
-function vsub(a,b){return v3(a.x-b.x,a.y-b.y,a.z-b.z);}
-function vscale(a,s){return v3(a.x*s,a.y*s,a.z*s);}
-function vdot(a,b){return a.x*b.x+a.y*b.y+a.z*b.z;}
-function vcross(a,b){return v3(a.y*b.z-a.z*b.y,a.z*b.x-a.x*b.z,a.x*b.y-a.y*b.x);}
-function vlen(a){return Math.sqrt(a.x*a.x+a.y*a.y+a.z*a.z);}
-function vnorm(a){var l=vlen(a)||1;return v3(a.x/l,a.y/l,a.z/l);}
-function mmul(A,B){var r=new Array(16);for(var row=0;row<4;row++)for(var col=0;col<4;col++){r[row*4+col]=A[row*4]*B[col]+A[row*4+1]*B[4+col]+A[row*4+2]*B[8+col]+A[row*4+3]*B[12+col];}return r;}
-function mapplyV(M,v){var x=M[0]*v.x+M[1]*v.y+M[2]*v.z+M[3],y=M[4]*v.x+M[5]*v.y+M[6]*v.z+M[7],z=M[8]*v.x+M[9]*v.y+M[10]*v.z+M[11],w=M[12]*v.x+M[13]*v.y+M[14]*v.z+M[15];if(w===0)w=1;return v3(x/w,y/w,z/w);}
-function mapplyN(M,v){return v3(M[0]*v.x+M[1]*v.y+M[2]*v.z,M[4]*v.x+M[5]*v.y+M[6]*v.z,M[8]*v.x+M[9]*v.y+M[10]*v.z);}
-function mtrans(x,y,z){return[1,0,0,x,0,1,0,y,0,0,1,z,0,0,0,1];}
-function mrotZ(t){var c=Math.cos(t),s=Math.sin(t);return[c,-s,0,0,s,c,0,0,0,0,1,0,0,0,0,1];}
-function mrotX(t){var c=Math.cos(t),s=Math.sin(t);return[1,0,0,0,0,c,-s,0,0,s,c,0,0,0,0,1];}
-function mrotY(t){var c=Math.cos(t),s=Math.sin(t);return[c,0,s,0,0,1,0,0,-s,0,c,0,0,0,0,1];}
-function mpersp(fov,asp,n,f){var fc=1/Math.tan(fov*.5),d=f-n;return[fc/asp,0,0,0,0,fc,0,0,0,0,-(f+n)/d,-2*f*n/d,0,0,-1,0];}
-function mlookAt(eye,at,up){var f=vnorm(vsub(eye,at)),r=vnorm(vcross(up,f)),u=vcross(f,r);return[r.x,r.y,r.z,-vdot(r,eye),u.x,u.y,u.z,-vdot(u,eye),f.x,f.y,f.z,-vdot(f,eye),0,0,0,1];}
+const $=s=>document.querySelector(s),sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const T=$('#term'),PR=$('#pr'),IN=$('#in'),ED=$('#ed'),EA=$('#ea'),OUT=$('#out'),OL=$('#ol'),CV=$('#cv'),cx=CV.getContext('2d');
+let files=(()=>{try{return JSON.parse(localStorage.getItem('logfs')||'{}')}catch(_){return{}}})(),cur=null,R=null,res=null,t0=Date.now(),cpu=3,PIN=Array(32).fill(0),V={},TY={},CC={},port=null,wr=null,AC=null;
+const add=(box,t,c,before)=>{const d=document.createElement('div');d.textContent=t;if(c)d.className=c;box.insertBefore(d,before||null);box.scrollTop=box.scrollHeight};
+const pr=(t,c)=>add(T,t,c,PR),op=(t,c)=>add(OL,t,c);
+const LG=/^<\s*(log\+\+|log\+-|log\+|log-|logall|log\*)\s*>$/i,norm=s=>(s=s.toLowerCase())==='log*'?'logall':s;
+const TPL={
+'log-':`<log->
+// Log-: cada pixel se escribe de forma explicita
+Screen:Resolution("W;32","H;18","Bits;24")
+Screen:Clear("Color;#101820")
+Var:U8:r("Value;250")
+Repeat(10)
+{
+    Set:r("Value;r+1")
+}
+Print("r (U8) desbordo y ahora vale {r}")
+For:i(0,18)
+{
+    Screen:Pixel(i,i)("Color;hsl;i*20")
+}
+Screen:Pixel(16,9)("Color;rgb;255;60;0")
+Screen:Pixel(17,9)("Color;rgb;0;200;120")
+Expect:Pixel(16,9)("Equals;R=255;G=60;B=0") Else:Halt("ERR_PIXEL")
+Print("Pixel (16,9) verificado")
+`,
+'log+':`<log+>
+// Log+: corto, con valores por defecto (pantalla 320x180)
+Screen:Clear("Color;black")
+Print("Dibujando una espiral...")
+For:i(0,300)
+{
+    Screen:Circle(160+i*0.45*cos(i/6),90+i*0.28*sin(i/6),2)("Color;hsl;i*1.2")
+    Wait("ms;4")
+}
+Print("Listo")
+`,
+'log++':`<log++>
+// Log++: estilo microcontrolador, sin pantalla
+Setup
+{
+    Pin:5("Input;PullDown")
+    Pin:13("Output")
+    Print("Setup listo")
+}
+Loop
+{
+    Pin:13("Set;High")
+    Wait("ms;300")
+    Pin:13("Set;Low")
+    Wait("ms;300")
+}
+`,
+'log+-':`<log+->
+#- Screen:Resolution("W;160","H;90","Bits;24")
+#+ Screen:Clear("Color;black")
+#+ Screen:Rect(20,20,120,50)("Color;rgb;255;60;0")
+#- Expect:Pixel(30,30)("Equals;R=255;G=60;B=0") Else:Halt("ERR_PIXEL")
+#+ Print("Log- y Log+ conviviendo en un archivo")
+`,
+'logall':`<logall>
+// Pulsa START_BUTTON en el panel de salida
+#++ Setup
+{
+    Pin:13("Output")
+}
+#- Screen:Resolution("W;160","H;90","Bits;24")
+#+ Screen:Clear("Color;black")
+#+ On:START_BUTTON("Press")
+{
+    Screen:Rect(20,20,120,50)("Color;rgb;255;60;0")
+    #- Expect:Pixel(30,30)("Equals;R=255;G=60;B=0") Else:Halt("ERR_PIXEL")
+    #++ Pin:13("Set;High")
+    Print("Pixel pintado y LED encendido")
+}
+`};
+/* ---------- parser ---------- */
+const KN=['use','print','var','set','repeat','for','if','wait','screen','display','reg','pin','on','loop','setup','expect','sound','serial','else','while','break','continue','input','ui','store','g3d','push','pop','remove','insert','sort','shuffle','each','def','call','return','elseif','console','mem','disk','exec','panic','stop'],OPS=['pixel','rect','line','circle','clear','resolution','text'],TYP=['u8','u16','u32','i32','str'];
+const CAST={u8:v=>v&255,u16:v=>v&65535,u32:v=>v>>>0,i32:v=>v|0,str:v=>String(v).slice(0,255)};
+function sp(s){const a=[];let d=0,q=0,b=0;for(let i=0;i<=s.length;i++){const c=s[i];if(c==='"')q^=1;if(!q){if(c==='('||c==='[')d++;if(c===')'||c===']')d--}if(i===s.length||(c===','&&!d&&!q)){a.push(s.slice(b,i).trim());b=i+1}}return a}
+function grp(s){const g=[];let d=0,b=0;for(let i=0;i<s.length;i++){const c=s[i];if(c==='"'){if(!d)return null;const j=s.indexOf('"',i+1);if(j<0)return null;i=j}else if(c==='('){if(d++===0)b=i+1}else if(c===')'){if(--d<0)return null;if(d===0)g.push(s.slice(b,i))}else if(!d&&c!==' ')return null}return d?null:g}
+function stm(t,n,lg){let els=null;const ei=t.indexOf(' Else:');if(ei>0){els=t.slice(ei+6);t=t.slice(0,ei)}
+const hm=t.match(/^[A-Za-z_][\w:]*/);if(!hm)return{n,lg,h:['?'],bad:1,why:'La linea debe empezar con el nombre de una instruccion (ver Apendice A)'};
+const x={n,lg,h:hm[0].split(':'),els,a:[],q:[]},g=grp(t.slice(hm[0].length).trim());if(!g){x.bad=1;x.why=diag(t);return x}
+g.forEach(s=>{if(s.includes('"'))(s.match(/"[^"]*"/g)||[]).forEach(m=>x.q.push(m.slice(1,-1)));else x.a=s.trim()?sp(s):[]});
+x.o=x.q.map(s=>s.split(';').map(v=>v.trim()));return x}
+function parse(src,name){const E=[],W=[],L=[];
+src.split('\n').forEach((r,i)=>{let t=r.replace(/\/\/.*$/,'').trim();if(!t)return;if(t==='{'){L.length&&(L[L.length-1].o=1);return}let o=0;if(t.length>1&&t.endsWith('{')){t=t.slice(0,-1).trim();o=1}L.push({n:i+1,t,o})});
+const h=L.shift(),hm=h&&h.t.match(LG);if(!hm){E.push([h?h.n:1,'Falta la cabecera de lenguaje, por ejemplo <log+>']);return{E,W}}
+const fl=norm(hm[1]),ext=name.split('.').pop();if(ext!==fl)W.push([h.n,`La cabecera <${fl}> no coincide con la extension .${ext}`]);
+let i=0,w=0;
+const blk=(lg,ol)=>{const o=[];while(i<L.length){const x=L[i++];if(x.t==='}'){if(ol===undefined){E.push([x.n,'Llave } sin su { de apertura','Falta la { justo despues de la instruccion que abre este bloque (If, For, While, Def...)']);continue}return o}let t=x.t,l=lg;const tg=t.match(/^#(\+\+|\+|-)\s*(.*)$/);if(tg){l='log'+tg[1];t=tg[2]}else if(!l){l='log+';if(fl==='logall'&&!w++)W.push([x.n,'Linea sin etiqueta #-, #+ o #++: se asume #+'])}const s=stm(t,x.n,l);if(x.o)s.body=blk(l,x.n);const hn=s.h[0].toLowerCase();
+if(hn==='else'||hn==='elseif'){let q=o[o.length-1];while(q&&q.alt&&q.alt.length===1&&q.alt[0].elif)q=q.alt[0];
+if(q&&q.h[0].toLowerCase()==='if'&&!q.alt){if(hn==='else')q.alt=s.body||[];else{s.h=['If'];s.elif=1;q.alt=[s]}}
+else E.push([x.n,hn==='else'?'Else sin un If justo antes':'ElseIf sin un If justo antes','Va en su propia linea, justo despues del } de un If']);continue}
+o.push(s)}if(ol!==undefined)E.push([ol,'Esta llave { nunca se cierra','Falta un } mas abajo para cerrar este bloque']);return o};
+const nodes=blk(fl==='logall'||fl==='log+-'?null:fl);
 
-// ─── CANVAS / CAMERA ───────────────────────────────
-var canvas=document.getElementById('c'),ctx=canvas.getContext('2d');
-var VP=document.getElementById('viewport');
-function resize(){canvas.width=VP.clientWidth;canvas.height=VP.clientHeight;}
-resize();window.addEventListener('resize',resize);
-var CAM={theta:0.6,phi:1.1,radius:50,tx:0,ty:0,tz:0};
-function camEye(){return v3(CAM.tx+CAM.radius*Math.sin(CAM.phi)*Math.sin(CAM.theta),CAM.ty+CAM.radius*Math.cos(CAM.phi),CAM.tz+CAM.radius*Math.sin(CAM.phi)*Math.cos(CAM.theta));}
-var _VP=null,_EYE=camEye();
-function buildVP(){var eye=camEye(),V=mlookAt(eye,v3(CAM.tx,CAM.ty,CAM.tz),v3(0,1,0)),P=mpersp(Math.PI/3.4,canvas.width/canvas.height,.5,600);_VP=mmul(P,V);_EYE=eye;}
-function project(wx,wy,wz){var v=v3(wx,wy,wz),cx=_VP[0]*v.x+_VP[1]*v.y+_VP[2]*v.z+_VP[3],cy=_VP[4]*v.x+_VP[5]*v.y+_VP[6]*v.z+_VP[7],cz=_VP[8]*v.x+_VP[9]*v.y+_VP[10]*v.z+_VP[11],cw=_VP[12]*v.x+_VP[13]*v.y+_VP[14]*v.z+_VP[15];if(Math.abs(cw)<1e-7)cw=1e-7;return[(cx/cw*.5+.5)*canvas.width,(.5-cy/cw*.5)*canvas.height,cz/cw,cw];}
-function resetCamera(){CAM.theta=0.6;CAM.phi=1.1;CAM.radius=50;CAM.tx=0;CAM.ty=0;CAM.tz=0;}
+return{E,W,nodes}}
+const hw=ns=>ns.some(x=>x.h[0].toLowerCase()==='wait'||hw(x.body||[]));
+function chk(ns,E,W,s){for(const x of ns){const k=x.h[0].toLowerCase(),l=x.lg,n=x.n;
+if(x.bad){E.push([n,'Sintaxis incorrecta en la instruccion',x.why]);continue}
+if(!KN.includes(k)){E.push([n,`Instruccion desconocida: ${x.h[0]}`,sug(x.h[0])||'Instrucciones: '+KN.join(', ')]);continue}
+if(k==='reg'&&l!=='log-')E.push([n,'Reg: es exclusivo de Log- (usa Screen: o Display:)']);
+if(['screen','display','reg'].includes(k)){const p=x.h.map(v=>v.toLowerCase()).find(v=>OPS.includes(v));
+if(!p)E.push([n,'Operacion de pantalla desconocida (Pixel, Rect, Line, Circle, Clear, Resolution)']);
+else if(l==='log++')E.push([n,'Log++ no tiene pantalla: usa Log+ o Log-']);
+else if(p==='resolution')s.res=1;
+else if(l==='log-'&&!s.res)E.push([n,'Log- exige Resolution antes de dibujar']);}
+if(k==='var'){const t=x.h.length>2?x.h[1].toLowerCase():null;
+if(l==='log-'&&!t)E.push([n,'Log- exige tipo: Var:U8:nombre("Value;0")']);
+if(t&&!TYP.includes(t))E.push([n,`Tipo desconocido: ${x.h[1]} (usa U8, U16, U32, I32 o STR)`]);
+if(t&&l==='log+')W.push([n,`Log+ infiere el tipo: puedes quitar ${x.h[1]}`])}
+if(k==='expect'&&l!=='log-')E.push([n,'Expect es exclusivo de Log-']);
+if(k==='loop'&&(x.h.length===1||x.h[1].toLowerCase()==='forever')&&!hw(x.body||[]))W.push([n,'Loop sin Wait: la CPU quedara al 100%']);
+if(x.body)chk(x.body,E,W,s);if(x.alt)chk(x.alt,E,W,s)}}
+/* ---------- intérprete ---------- */
+const MF=Object.getOwnPropertyNames(Math);
+function ev(e){const k=Object.keys(V),key=k+'|'+e;let f=CC[key];
+if(!f){try{f=CC[key]=new Function(...MF,...k,'pin','t','rnd','peek','peek16','peek32','peekstr','return('+e+')')}catch(_){throw 'Expresion invalida: '+e}}
+try{return f(...MF.map(m=>Math[m]),...k.map(m=>V[m]),n=>PIN[n]|0,Date.now()-R.t0,(a,b)=>a+Math.floor(Math.random()*(b-a+1)),pk,pk16,pk32,pks)}catch(_){throw 'No se pudo evaluar: '+e}}
+const fm=s=>s.replace(/\{([^}]+)\}/g,(_,e)=>ev(e));
+const kv=a=>{const r={};a.slice(1).forEach(p=>{const[m,v]=p.split('=');r[m.trim().toUpperCase()]=ev(v)});return r};
+function cs(p){if(p[0]==='hsl')return`hsl(${ev(p[1])} 90% ${p[2]?ev(p[2]):55}%)`;if(p[0]==='rgb')p=p.slice(1);if(p.length>=3)return`rgb(${p.slice(0,3).map(e=>ev(e)&255)})`;return p[0]}
+function col(o){const c=o.find(a=>a[0].toLowerCase()==='color');if(c)return cs(c.slice(1));const w=o.find(a=>a[0].toLowerCase()==='write');if(w){const k=kv(w);return`rgb(${k.R},${k.G},${k.B})`}return'#fff'}
+function setRes(w,h){w=Math.max(1,Math.min(1920,w|0));h=Math.max(1,Math.min(1080,h|0));CV.width=w;CV.height=h;res={w,h};cx.fillStyle='#000';cx.fillRect(0,0,w,h);$('#cw').hidden=false;hd()}
+function scr(x){const p=x.h.map(v=>v.toLowerCase()).find(v=>OPS.includes(v)),a=x.a.map(e=>ev(e)),o=x.o;
+if(p==='resolution'){let w=320,h=180;if(o[0][0].toLowerCase()==='set'){w=ev(o[0][1]);h=ev(o[0][2])}else o.forEach(q=>{const m=q[0].toLowerCase();if(m==='w')w=ev(q[1]);if(m==='h')h=ev(q[1])});return setRes(w,h)}
+if(!res)setRes(320,180);Con.sus=1;cx.fillStyle=cx.strokeStyle=col(o);
+if(p==='clear')cx.fillRect(0,0,res.w,res.h);
+if(p==='pixel')cx.fillRect(a[0],a[1],1,1);
+if(p==='rect')cx.fillRect(a[0],a[1],a[2],a[3]);
+if(p==='circle'){cx.beginPath();cx.arc(a[0],a[1],a[2],0,7);cx.fill()}
+if(p==='line'){cx.beginPath();cx.moveTo(a[0],a[1]);cx.lineTo(a[2],a[3]);cx.stroke()}
+if(p==='text'){const tq=x.q.find(s=>/^text;/i.test(s));cx.font='8px ui-monospace,Menlo,Consolas,monospace';cx.textBaseline='top';cx.fillText(fm(tq?tq.slice(5):''),a[0],a[1])}}
+const led=n=>{const e=$('#pins').children[n];if(e)e.className=PIN[n]?'on':''};
+async function ex(ns){for(const x of ns){if(R.stop)throw'STOP';if(++R.st%(R.k?20000:2500)===0)await(R.k?tick():sleep(0));
+try{await one(x)}catch(e){if(e==='STOP'||e===BRK||e===CNT||e instanceof Ret||/^l\.\d+:/.test(e))throw e;throw`l.${x.n}: ${typeof e==='string'?e:e.message}`}}}
+async function one(x){const k=x.h[0].toLowerCase();
+switch(k){
+case'use':if(x.q[0]){const f=x.q[0];if(!files[f])throw'Use: no existe el archivo '+f;if((R.inc=(R.inc||0)+1)>8)throw'Use: demasiados niveles';const p=parse(files[f],f);if(p.nodes){chk(p.nodes,p.E,p.W,{});chkx(p.nodes,p.E,p.W,{},0)}if(p.E.length)throw`${f} l.${p.E[0][0]}: ${p.E[0][1]}`;op(`[use] ${f} incluido`);reg(p.nodes);await ex(p.nodes);R.inc--}else op(`[lib] ${x.h[1]||''} cargada desde el silicio`);break;
+case'sound':{const g=k=>ev((x.o.find(a=>a[0].toLowerCase()===k)||['',k==='ms'?200:440])[1]),m=g('ms');beep(g('freq'),m);R.waiting=1;await sleep(m);R.waiting=0;break}
+case'serial':send(fm((x.q[0]||'').replace(/^write;/i,'')));break;
+case'g3d':g3(x);break;
+case'push':case'pop':case'remove':case'insert':case'sort':case'shuffle':{const n=x.h[1],a=V[n];if(k==='remove'&&a&&typeof a==='object'&&!Array.isArray(a)){delete a[fm(og(x,'key')||'')];break}if(!Array.isArray(a))throw(n||'?')+' no es una lista (declarala con Var:lista("List;1,2,3"))';const t=TY[n],ci=v=>t?CAST[t](v):v;
+if(k==='push')a.push(ci(valOf(x)));
+else if(k==='insert'){const i=+ev(og(x,'index'));if(!(i>=0&&i<=a.length))throw'Indice fuera de rango: '+i;a.splice(i,0,ci(valOf(x)))}
+else if(k==='remove'){const i=+ev(og(x,'index'));if(!(i>=0&&i<a.length))throw'Indice fuera de rango: '+i;a.splice(i,1)}
+else if(k==='pop'){if(!a.length)throw'La lista esta vacia';const v=a.pop(),to=og(x,'into');if(to!==null){if(!(to in V))throw'Variable no declarada: '+to;V[to]=cv(TY[to],v)}}
+else if(k==='sort'){a.sort((p,q)=>typeof p==='number'&&typeof q==='number'?p-q:String(p).localeCompare(String(q)));if(/^desc/i.test(og(x,'order')||''))a.reverse()}
+else for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}
+break}
+case'each':{const a=ev(x.a[0]);if(!Array.isArray(a))throw'Each necesita una lista';for(const el of a.slice()){V[x.h[1]]=el;if(await lp(x.body))break}break}
+case'def':R.fn[x.h[1]]=x;break;
+case'call':{const f=R.fn[x.h[1]];if(!f)throw'Funcion no definida: '+x.h[1];if((R.dp=(R.dp||0)+1)>200){R.dp=0;throw'Demasiada recursion (limite 200)'}
+const ps=f.a,args=x.a.map(e=>ev(e));if(args.length!==ps.length)throw`${x.h[1]} espera ${ps.length} argumento(s) y recibio ${args.length}`;
+const old=ps.map(p=>[p in V,V[p],TY[p]]);ps.forEach((p,i)=>{V[p]=args[i];TY[p]=undefined});let rv;
+try{await ex(f.body)}catch(e){if(e instanceof Ret)rv=e.v;else throw e}finally{ps.forEach((p,i)=>{if(old[i][0]){V[p]=old[i][1];TY[p]=old[i][2]}else{delete V[p];delete TY[p]}});if(R.dp>0)R.dp--}
+const to=og(x,'into');if(to!==null){if(!(to in V))throw'Variable no declarada: '+to;V[to]=cv(TY[to],rv)}break}
+case'return':throw new Ret(x.q.length?valOf(x):undefined);
+case'console':{const w=(x.h[1]||'').toLowerCase(),cc=x.o.find(q=>q[0].toLowerCase()==='color'),col=cc?cs(cc.slice(1)):undefined,tq=x.q.find(s=>/^text;/i.test(s)),tx=tq?fm(tq.slice(5)):'';
+if(w==='init'){const b=x.o.find(q=>q[0].toLowerCase()==='bg');Con.cols=Math.max(10,Math.min(160,+ev(og(x,'cols')??'53')));Con.rows=Math.max(5,Math.min(60,+ev(og(x,'rows')??'20')));if(col)Con.fg=col;if(b)Con.bg=cs(b.slice(1));setRes(Con.cols*Con.cw,Con.rows*Con.ch);Con.on=1;CV.style.imageRendering='auto';conClear()}
+else{conEns();if(w==='clear')conClear();else if(w==='refresh'){Con.sus=0;conMark()}else if(w==='at'){Con.cx=+ev(og(x,'col')??'0');Con.cy=+ev(og(x,'row')??'0')}else if(w==='print'||w==='put')conPut(tx+(w==='print'?'\n':''),col);
+else if(w==='read'){const n=og(x,'into');if(n===null||!(n in V))throw'Variable no declarada: '+(n||'(falta Into)');const pm=fm(og(x,'prompt')??'');conPut(pm?pm+' ':'',Con.fg);R.waiting=1;const s=await ask(pm||'Escribe y pulsa Enter');R.waiting=0;conPut(s+'\n',Con.fg);const num=(TY[n]&&TY[n]!=='str')||typeof V[n]==='number';V[n]=cv(TY[n],num?(Number(s)||0):s)}else throw'Console: operacion desconocida: '+x.h[1]}break}
+case'mem':{const w=(x.h[1]||'').toLowerCase(),g=k=>{const v=og(x,k);return v===null?undefined:+ev(v)},a=g('addr');
+if(w==='write'){const v=g('value')??0,sz=g('size')??1;for(let i=0;i<sz;i++)MEM[mc(a+i)]=(v>>>(8*i))&255}
+else if(w==='read'){const sz=g('size')??1;let v=0;for(let i=sz-1;i>=0;i--)v=v*256+MEM[mc(a+i)];const to=og(x,'into');if(to===null||!(to in V))throw'Variable no declarada: '+(to||'(falta Into)');V[to]=cv(TY[to],v)}
+else if(w==='fill'){const n=g('len')??0,v=g('value')??0;mc(a);mc(a+n-1);for(let i=0;i<n;i++)MEM[a+i]=v&255}
+else if(w==='copy'){const f=g('from'),t=g('to'),n=g('len')??0;mc(f);mc(f+n-1);mc(t);mc(t+n-1);MEM.copyWithin(t,f,f+n)}
+else if(w==='writetext'){const s=String(valOf(x));for(let i=0;i<=s.length;i++)MEM[mc(a+i)]=i<s.length?s.charCodeAt(i)&255:0}
+else throw'Mem: usa Write, Read, Fill, Copy o WriteText';break}
+case'disk':{const w=(x.h[1]||'').toLowerCase(),f=fm(og(x,'file')||''),pv=()=>{if(!R.k)throw'Operacion privilegiada: Disk:'+x.h[1]+' solo funciona con run # archivo (modo kernel)'},into=v=>{const to=og(x,'into');if(to!==null){if(!(to in V))throw'Variable no declarada: '+to;V[to]=cv(TY[to],v)}};
+if(w==='list')into(Object.keys(files).sort());
+else if(w==='read'){if(files[f]===undefined)throw'Disk: no existe '+f;into(files[f])}
+else if(w==='exists')into(files[f]!==undefined?1:0);
+else if(w==='write'){pv();if(!f)throw'Disk: falta File';files[f]=String(valOf(x)).split('\\n').join(String.fromCharCode(10));sv()}
+else if(w==='delete'){pv();delete files[f];sv()}
+else throw'Disk: usa List, Read, Exists, Write o Delete';break}
+case'exec':{const f=fm(og(x,'file')||''),to=og(x,'into');if(files[f]===undefined)throw'Exec: no existe '+f;
+const p=parse(files[f],f);if(p.nodes){chk(p.nodes,p.E,p.W,{});chkx(p.nodes,p.E,p.W,{ids:new Set(ids(p.nodes)),fns:new Set(fnn(p.nodes))},0)}
+let code=0;if(p.E.length){code=1;p.E.forEach(e=>op(`[${f}] ERROR l.${e[0]}: ${e[1]}`,'err'))}
+else{const sV=V,sT=TY,sf=R.fn;V={};TY={};R.fn={};V.args=fm(og(x,'args')||'');R.xd=(R.xd||0)+1;reg(p.nodes);
+try{await ex(p.nodes)}catch(e){if(e==='STOP')throw e;if(!(e instanceof Ret)&&e!==BRK&&e!==CNT){code=1;op(`[${f}] ERROR ${typeof e==='string'?e:e.message}`,'err')}}finally{V=sV;TY=sT;R.fn=sf;R.xd--}}
+if(to!==null){if(!(to in V))throw'Variable no declarada: '+to;V[to]=cv(TY[to],code)}break}
+case'panic':{const m=fm(x.q.length?x.q[0].replace(/^text;/i,''):'sin mensaje');if(!res)setRes(318,180);Con.on=0;clearTimeout(Con.t);Con.t=0;cx.fillStyle='#7a0000';cx.fillRect(0,0,res.w,res.h);cx.fillStyle='#ffffff';cx.font='8px ui-monospace,Menlo,Consolas,monospace';cx.textBaseline='top';cx.fillText('KERNEL PANIC',6,6);const ln=(m.match(/.{1,48}/g)||['']);ln.forEach((s,i)=>cx.fillText(s,6,22+i*10));cx.fillText('Sistema detenido.',6,28+ln.length*10);throw'KERNEL PANIC: '+m}
+case'stop':if(R.xd>0)throw new Ret();R.stop=1;R.fin&&R.fin();throw'STOP';
+case'input':{const n=x.h[1];if(!(n in V))throw`Variable no declarada: ${n} (declarala antes con Var)`;const pq=fm((x.q[0]||'').replace(/^prompt;/i,''));R.waiting=1;
+for(;;){const s=await ask(pq);op('> '+s,'ok');if(TY[n]==='str'||typeof V[n]==='string'){V[n]=TY[n]?CAST[TY[n]](s):s;break}const v=Number(s);if(s.trim()===''||isNaN(v)){op('Escribe un numero','wrn');continue}V[n]=TY[n]?CAST[TY[n]](v):v;break}R.waiting=0;break}
+case'ui':{R.ui=1;const U=$('#ui'),id=og(x,'id'),w=(x.h[1]||'').toLowerCase();U.hidden=false;hd();
+if(w==='clear'){U.innerHTML='';break}
+if(!id||!/^[A-Za-z_]\w*$/.test(id))throw'UI: falta un Id valido, por ejemplo "Id;boton1"';
+const lb=fm(og(x,'label')??og(x,'text')??'');
+if(w==='set'){const e=document.getElementById('u_'+id);if(!e)throw'UI: no existe el widget '+id;const v=og(x,'value'),tx=og(x,'text'),i=e.querySelector('input');if(tx!==null)(e.querySelector('span')||e).textContent=fm(tx);if(v!==null&&i){V[id]=ev(v);if(i.type==='checkbox')i.checked=!!V[id];else i.value=V[id]}break}
+const old=document.getElementById('u_'+id);old&&old.remove();
+const mk=(t,h)=>{const e=document.createElement(t);e.id='u_'+id;if(h!==undefined)e.textContent=h;U.appendChild(e);return e};
+if(w==='button')mk('button',lb||id).onclick=()=>fire(id.toLowerCase());
+else if(w==='label')mk('span',lb);
+else if(['slider','check','textbox'].includes(w)){const e=mk('label'),s=document.createElement('span'),i=document.createElement('input');s.textContent=lb;
+i.type=w==='slider'?'range':w==='check'?'checkbox':'text';
+if(w==='slider'){i.min=og(x,'min')??0;i.max=og(x,'max')??100;i.value=V[id]=+ev(og(x,'value')??String(i.min))}
+else if(w==='check')i.checked=!!(V[id]=+ev(og(x,'value')??'0'));
+else i.value=V[id]=fm(og(x,'value')??'');
+i.oninput=()=>{V[id]=w==='slider'?+i.value:w==='check'?+i.checked:i.value;fire(id.toLowerCase())};e.append(s,i)}
+else throw'UI: widget desconocido: '+x.h[1]+' (Button, Label, Slider, Check, TextBox, Set, Clear)';
+break}
+case'store':{const w=(x.h[1]||'').toLowerCase(),key='logdata:'+og(x,'key');try{if(w==='save')localStorage.setItem(key,JSON.stringify(ev(og(x,'value'))));else if(w==='load'){const r=localStorage.getItem(key),to=og(x,'into'),df=og(x,'default');if(!(to in V))throw'Variable no declarada: '+to;const v=r===null?(df===null?V[to]:ev(df)):JSON.parse(r);V[to]=cv(TY[to],v)}else throw'Store: usa Save o Load'}catch(e){if(typeof e==='string')throw e;op('Store: el navegador no permite guardar datos','wrn')}break}
+case'print':op(fm(x.q[0]||''));break;
+case'var':case'set':{const n=x.h[x.h.length-1];if(k==='set'&&!(n in V))throw'Variable no declarada: '+n;
+if(k==='var')TY[n]=x.h.length>2?x.h[1].toLowerCase():undefined;const ix=og(x,'index'),lst=og(x,'list'),sz=og(x,'size');let v;
+const dc=og(x,'dict'),ky=og(x,'key');
+if(k==='var'&&dc!==null)v=Object.fromEntries((dc.trim()?sp(dc):[]).map(e=>{const i=e.indexOf('=');return[e.slice(0,i).trim(),ev(e.slice(i+1))]}));else if(k==='var'&&(lst!==null||sz!==null))v=lst!==null?(lst.trim()?sp(lst).map(e=>ev(e)):[]):Array.from({length:+ev(sz)},()=>ev(og(x,'fill')??'0'));else v=valOf(x);
+if(ky!==null){const o=V[n];if(!o||typeof o!=='object'||Array.isArray(o))throw n+' no es un diccionario';o[fm(ky)]=v;break}
+if(ix!==null){let a=V[n];if(!Array.isArray(a))throw n+' no es una lista';const p=sp(ix).map(e=>ev(e));for(let i=0;i<p.length-1;i++)a=a[p[i]];const li=p[p.length-1];if(!Array.isArray(a)||!Number.isInteger(li)||li<0||li>=a.length)throw'Indice fuera de rango: '+p.join(',');a[li]=TY[n]?CAST[TY[n]](v):v;break}
+V[n]=cv(TY[n],v);break}
+case'wait':R.waiting=1;if(/^press$/i.test(x.o[0][0]))await new Promise((f,j)=>{R.pw=f;R.pj=j});else await sleep(ev(x.o[0][1]));R.waiting=0;break;
+case'repeat':{const n=ev(x.a[0]);for(let i=0;i<n;i++)if(await lp(x.body))break;break}
+case'for':{const v=x.h[1],a=ev(x.a[0]),b=ev(x.a[1]),s=x.a[2]?ev(x.a[2]):1;if(!s)throw'El paso de For no puede ser 0';for(let i=a;s>0?i<b:i>b;i+=s){V[v]=i;if(await lp(x.body))break}break}
+case'if':if(ev(x.a[0]))await ex(x.body);else if(x.alt)await ex(x.alt);break;
+case'while':while(ev(x.a[0])){if(R.stop)throw'STOP';if(await lp(x.body))break;if(++R.st%2500===0)await sleep(0)}break;
+case'break':throw BRK;
+case'continue':throw CNT;
+case'setup':await ex(x.body);break;
+case'loop':while(!R.stop){if(await lp(x.body))break;await(R.k?tick():sleep(1))}break;
+case'on':{let nm=(x.h[1]||'').toLowerCase();const sc={v:V,t:TY,f:R.fn};if(nm==='mouse')nm='mouse'+(((x.o[0]||[])[0])||'move').toLowerCase();if(/^(key|canvas|mouse)/.test(nm))showDev();if(nm==='timer'){const ms=Math.max(10,+ev(og(x,'every')??'1000'));(R.tm=R.tm||[]).push(setInterval(()=>{if(R&&R.on&&!R.stop)runIn(sc,x.body)},ms))}else R.hd.push({n:nm,b:x.body,sc});break}
+case'pin':{const n=+x.h[1],a=x.o[0]||['?'],c=a[0].toLowerCase();$('#pins').hidden=false;if(c==='set'){PIN[n]=/^(high|1)$/i.test(a[1])?1:0;led(n);send(`${n}=${PIN[n]}`)}break}
+case'screen':case'display':case'reg':scr(x);break;
+case'expect':{if(!res)throw'Pantalla sin inicializar';const a=x.a.map(e=>ev(e)),d=cx.getImageData(a[0],a[1],1,1).data,e=kv(x.o[0]);
+if(d[0]!=e.R||d[1]!=e.G||d[2]!=e.B){const m=(x.els||'').match(/"([^"]*)"/);throw`HALT ${m?m[1]:'EXPECT'}: en el pixel (${a}) esperaba R${e.R} G${e.G} B${e.B} y leyo R${d[0]} G${d[1]} B${d[2]}`}
+op(`Expect OK: pixel (${a}) verificado`,'ok');break}}}
+const ss=t=>{$('#os').textContent=(kmode?'KERNEL · ':'')+t;if(t!=='CORRIENDO')$('#inw').hidden=true};
+async function runFile(n,o){kmode=!!(o&&o.k);
+if(R&&R.on){R.stop=1;R.fin&&R.fin();R.pj&&R.pj('STOP');await new Promise(f=>R.dn=f)}
+OL.innerHTML='';G3.o={};Con.on=0;Con.sus=0;CV.style.imageRendering='';MEM.fill(0);$('#dev').hidden=true;$('#vk').hidden=true;$('#pad').hidden=true;CV.style.touchAction='';$('#ui').innerHTML='';$('#ui').hidden=true;$('#inw').hidden=true;$('#app').classList.add('o');OUT.hidden=false;$('#on').textContent=n;res=null;$('#cw').hidden=true;$('#pins').hidden=true;hd();
+PIN.fill(0);[...$('#pins').children].forEach(e=>e.className='');V={};TY={};
+SL=files[n].split('\n');const p=parse(files[n],n);if(p.nodes){chk(p.nodes,p.E,p.W,{});chkx(p.nodes,p.E,p.W,{ids:new Set(ids(p.nodes)),fns:new Set(fnn(p.nodes))},0)}
+p.E.sort((a,b)=>a[0]-b[0]);p.W.forEach(w=>show('ADVERTENCIA',w,'wrn'));p.E.forEach(e=>show('ERROR',e,'err'));
+if(p.E.length){op(`Compilacion abortada: ${p.E.length} error(es)`,'err');ss('ERROR');return}
+op(`Compilado sin errores (${p.W.length} advertencia(s)). Ejecutando...`,'ok');
+const r=R={on:1,stop:0,st:0,hd:[],t0:Date.now(),n,fn:{},k:kmode};reg(p.nodes);if(kmode)showDev();ss('CORRIENDO');let bad=0;
+try{await ex(p.nodes);if((r.hd.length||r.ui||r.tm)&&!r.stop){op('Esperando eventos (Detener para salir)','ok');await new Promise(f=>r.fin=f)}}
+catch(e){if(e!=='STOP'){bad=1;const m=String(e).match(/^l\.(\d+): ([\s\S]*)$/);if(m)show('ERROR',[+m[1],m[2]],'err');else op('ERROR '+e,'err')}}
+r.on=0;(r.tm||[]).forEach(clearInterval);ss(bad?'ERROR':r.stop?'DETENIDO':'TERMINADO');r.dn&&r.dn()}
+const stopRun=()=>{if(R&&R.on){R.stop=1;R.fin&&R.fin();R.pj&&R.pj('STOP')}};
+/* ---------- terminal y editor ---------- */
+for(let i=0;i<16;i++){const e=document.createElement('i');e.title='pin '+i;$('#pins').appendChild(e)}
+function openEd(n){cur=n;EA.value=files[n];$('#en').textContent=n;ED.hidden=false;EA.focus()}
+function closeEd(){files[cur]=EA.value;sv();$('#sa').hidden=true;ED.hidden=true;IN.focus()}
+function runCur(){files[cur]=EA.value;runFile(cur)}
+function cmd(s){pr('log@chip:~$ '+s,'p');s=s.trim();if(!s)return;
+const m=s.match(/^start\s+<?\s*(log\+\+|log\+-|log\+|log-|logall|log\*)\s*>?\s*(\S+)?/i);
+if(m){const k=norm(m[1]);let n=m[2]||'main.'+k;if(!n.includes('.'))n+='.'+k;if(!files[n]){files[n]=TPL[k];fresh=n;pr('archivo creado: '+n,'ok')}return openEd(n)}
+const tk=s.split(/\s+/);if(tk[1]==='#'&&tk[0]!=='run')tk.splice(1,1);const[c,a,b]=tk;
+if(c==='help')return['Comandos:','  Start <Log-> | <Log+> | <Log++> | <LogAll> [archivo]  crea y abre el editor','  edit <archivo>   abrir     run <archivo>   ejecutar','  ls   cat <a>   rm <a>   cp <a> <b>   mv <a> <b>   echo texto   stop   clear   reboot','  upload   cargar archivos de tu dispositivo (se guardan solos)','  connect [baudios]   enlazar un microcontrolador real por USB   disconnect','  pkg list | install <nombre> | remove <nombre> | info <nombre>   extensiones (UIVisuals, Storage, Graphics3D)','  run # <archivo>   ejecutar como kernel (modo privilegiado)    boot <archivo> | boot off   kernel de arranque','  En codigo: Use("archivo")  Sound("Freq;440","ms;200")  Serial("Write;hola")'].forEach(l=>pr(l));
+if(c==='ls')return pr(Object.keys(files).join('   ')||'(sin archivos: prueba Start <Log+>)');
+if(c==='echo')return pr(s.slice(5));
+if(c==='cp'||c==='mv'){if(!files[a]||!b)return pr(`uso: ${c} <origen> <destino>`,'err');files[b]=files[a];if(c==='mv')delete files[a];return pr('listo: '+b,'ok')}
+if(c==='upload')return $('#upl').click();
+if(c==='connect')return connect(+a||115200);
+if(c==='disconnect')return disc();
+if(c==='pkg')return pkg(a,b);
+if(c==='run'&&a==='#'){if(!files[b])return pr('run #: no existe '+(b||'(falta el nombre)'),'err');return runFile(b,{k:1})}
+if(c==='boot'){if(!a)return pr(BOOT?'kernel de arranque: '+BOOT:'sin kernel de arranque (usa: boot archivo)');if(a==='off'){BOOT='';lsB();return pr('arranque normal')}if(!files[a])return pr('boot: no existe '+a,'err');BOOT=a;lsB();return pr('kernel de arranque: '+a+' (se ejecuta al iniciar y con reboot)','ok')}
+if(c==='clear')return[...T.children].forEach(e=>e!==PR&&e.remove());
+if(c==='stop'){stopRun();return pr('proceso detenido')}
+if(c==='reboot')return boot();
+if(['cat','edit','run','rm'].includes(c)){if(!files[a])return pr(`${c}: no existe ${a||'(falta el nombre)'}`+(a&&sug(a,Object.keys(files))?'. '+sug(a,Object.keys(files)):''),'err');
+if(c==='cat')return files[a].split('\n').forEach(l=>pr(l));if(c==='edit')return openEd(a);if(c==='run')return runFile(a);delete files[a];return pr('borrado '+a)}
+pr('comando no encontrado: '+c+'  (escribe help)','err')}
+async function boot(){stopRun();[...T.children].forEach(e=>e!==PR&&e.remove());PR.hidden=true;t0=Date.now();
+for(const l of['LOG-ROM v0.1  (sin sistema operativo)','CPU  3.0 GHz ............ OK','RAM  4096 MB ........... OK','ROM  Log-, Log+, Log++ y LogAll en silicio ... OK','HDMI framebuffer 1280x720 ... OK','GPIO 32 pines ........... OK','','Escribe help para ver los comandos.']){pr(l,l.includes('OK')?'ok':'');await sleep(110)}
+PR.hidden=false;IN.focus();if(BOOT&&files[BOOT]){pr('Cargando kernel: '+BOOT+' ...','ok');await sleep(300);runFile(BOOT,{k:1})}}
+IN.addEventListener('keydown',e=>{if(e.key==='Enter'){const v=IN.value;IN.value='';cmd(v)}if(e.ctrlKey&&e.key==='c')stopRun()});
+T.addEventListener('click',()=>{if(!getSelection().toString())IN.focus()});
+EA.addEventListener('keydown',e=>{if(e.key==='Tab'){e.preventDefault();document.execCommand('insertText',false,'    ')}
+if(e.key==='Escape')closeEd();const m=e.ctrlKey||e.metaKey,kk=e.key.toLowerCase();if(m&&kk==='s'){e.preventDefault();e.shiftKey?saveAs():save()}if(m&&kk==='r'){e.preventDefault();runCur()}});
+$('#bs').onclick=save;$('#bsa').onclick=saveAs;$('#sao').onclick=doSaveAs;$('#san').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();doSaveAs()}if(e.key==='Escape'){$('#sa').hidden=true;EA.focus()}};$('#br').onclick=runCur;$('#bx').onclick=closeEd;$('#bd').onclick=stopRun;
+$('#bc').onclick=()=>{stopRun();OUT.hidden=true;$('#app').classList.remove('o')};
+const sb=$('#sb');
+sb.onpointerdown=()=>{PIN[5]=1;led(5);if(R&&R.on){if(R.pw){const f=R.pw;R.pw=null;f()}fire('start_button')}};
+sb.onpointerup=sb.onpointerleave=()=>{PIN[5]=0;led(5)};
+setInterval(()=>{const on=R&&R.on,tg=on?(R.k?99:R.waiting?8:96):3;cpu=Math.max(1,Math.min(100,cpu+(tg-cpu)*.4+Math.random()*3-1.5));
+const fb=res?res.w*res.h*4/1048576:0,ram=38+fb+Object.keys(files).length*.3+(on?14:0)+Math.random(),s=Math.floor((Date.now()-t0)/1000);
+$('#cp').textContent=cpu.toFixed(0)+'%';$('#cb').style.width=cpu+'%';$('#rp').textContent=ram.toFixed(0)+' MB';$('#rb').style.width=ram/40.96+'%';
+$('#vp').textContent=res?res.w+'x'+res.h:'-';$('#vb').style.width=Math.min(100,fb*4)+'%';$('#tp').textContent=(36+cpu*.3).toFixed(0)+' °C';
+$('#up').textContent=(s/60|0)+'m '+s%60+'s';$('#pc').textContent=on?(R.k?'[K] ':'')+R.n:'ninguno'},500);
+const sv=()=>{try{localStorage.setItem('logfs',JSON.stringify(files))}catch(_){}};
+setInterval(sv,1500);EA.addEventListener('input',()=>{if(cur)files[cur]=EA.value});
+$('#upl').onchange=async e=>{for(const f of e.target.files){files[f.name]=await f.text();pr(`cargado ${f.name} (${f.size} bytes)`,'ok')}e.target.value='';sv()};
+function beep(f,ms){try{AC=AC||new(window.AudioContext||window.webkitAudioContext)();AC.resume&&AC.resume();const o=AC.createOscillator(),g=AC.createGain();o.frequency.value=f;g.gain.value=.15;o.connect(g);g.connect(AC.destination);o.start();o.stop(AC.currentTime+ms/1000)}catch(_){op('Sound: el navegador bloqueo el audio','wrn')}}
+const send=t=>{if(wr)wr.write(new TextEncoder().encode(t+'\n')).catch(()=>{})};
+async function connect(b){if(!navigator.serial)return pr('Este navegador no soporta Web Serial. Usa Chrome o Edge en computadora, o Chrome en Android.','err');
+try{port=await navigator.serial.requestPort();await port.open({baudRate:b});wr=port.writable.getWriter();pr(`conectado a un microcontrolador real (${b} baudios): Pin:N("Set;High") ahora mueve el pin real`,'ok');
+const rd=port.readable.getReader(),dec=new TextDecoder();let buf='';
+(async()=>{try{for(;;){const{value,done}=await rd.read();if(done)break;buf+=dec.decode(value);let i;while((i=buf.indexOf('\n'))>=0){const l=buf.slice(0,i).trim();buf=buf.slice(i+1);const m=l.match(/^(\d+)=([01])$/);if(m){PIN[+m[1]]=+m[2];led(+m[1])}else if(l)op('[serial] '+l)}}}catch(_){}})()}catch(e){pr('no se pudo conectar: '+(e.message||e),'err')}}
+function disc(){try{wr&&wr.releaseLock();port&&port.close()}catch(_){}port=wr=null;pr('desconectado')}
+const BRK={},CNT={};
+function runIn(sc,body){const a=V,b=TY,c=R.fn;V=sc.v;TY=sc.t;R.fn=sc.f;return ex(body).catch(e=>{if(e!=='STOP'&&e!==BRK&&e!==CNT&&!(e instanceof Ret))op('ERROR '+e,'err')}).finally(()=>{V=a;TY=b;R.fn=c})}
+async function lp(b){try{await ex(b)}catch(e){if(e===BRK)return 1;if(e!==CNT)throw e}return 0}
+const fire=n=>{if(!(R&&R.on))return Promise.resolve();return Promise.all(R.hd.filter(h=>h.n===n).map(h=>runIn(h.sc||{v:V,t:TY,f:R.fn},h.b)))};
+const ask=p=>new Promise((f,j)=>{R.pj=j;$('#inp').textContent=p;$('#inw').hidden=false;const i=$('#ini');i.value='';i.focus();i.onkeydown=e=>{if(e.key==='Enter'){$('#inw').hidden=true;f(i.value)}}});
+const og=(x,k)=>{const a=x.o.find(q=>q[0].toLowerCase()===k);return a?a.slice(1).join(';'):null};
+let SL=[];function show(t,e,c){op(`${t} l.${e[0]}: ${e[1]}`,c);if(SL[e[0]-1]!==undefined)op(`   ${e[0]} | ${SL[e[0]-1].trim()}`,'src');if(e[2])op('   -> '+e[2],'hint')}
+function lev(a,b){const m=[...Array(b.length+1).keys()];for(let i=1;i<=a.length;i++){let p=m[0];m[0]=i;for(let j=1;j<=b.length;j++){const t=m[j];m[j]=Math.min(m[j]+1,m[j-1]+1,p+(a[i-1]===b[j-1]?0:1));p=t}}return m[b.length]}
+function sug(w,L){L=L||KN;w=w.toLowerCase();let b='',d=9;for(const c of L){const m=lev(w,c);if(m<d){d=m;b=c}}return d<=2?'Quisiste decir "'+b+'"?':''}
+function diag(t){if(/^[A-Za-z_][\w:]*:\s+\S/.test(t))return'Hay un espacio despues de ":". Escribelo pegado: '+t.replace(/^([A-Za-z_][\w:]*:)\s+/,'$1');
+if((t.match(/"/g)||[]).length%2)return'Falta cerrar una comilla (")';const a=(t.match(/\(/g)||[]).length,b=(t.match(/\)/g)||[]).length;if(a>b)return'Falta cerrar un parentesis ")"';if(b>a)return'Sobra un parentesis ")"';return'Despues de los parentesis no puede haber texto suelto'}
+const ids=ns=>ns.flatMap(x=>[...(x.h[0].toLowerCase()==='ui'&&x.o?x.o.filter(q=>q[0].toLowerCase()==='id').map(q=>q[1].toLowerCase()):[]),...ids(x.body||[]),...ids(x.alt||[])]);
+const OA=(()=>{const S=['w','h','bits','set','color','write','text'];return{var:['value','text','list','size','fill','index','dict','key'],set:['value','text','index','key'],push:['value','text'],insert:['index','value','text'],remove:['index','key'],pop:['into'],sort:['order'],call:['into'],return:['value','text'],wait:['ms','press'],pin:['set','output','input','mode'],screen:S,display:S,reg:S,sound:['freq','ms'],expect:['equals'],input:['prompt'],ui:['id','label','text','min','max','value'],store:['key','value','into','default'],g3d:['id','x','y','z','size','color','rx','ry','rz','s','tx','ty','tz','fov','mode','bg'],console:['cols','rows','color','bg','text','col','row','into','prompt'],mem:['addr','value','size','len','from','to','text','into'],disk:['file','into','text','value'],exec:['file','args','into'],panic:['text']}})();
+const ARG={text:[2],each:[1],pixel:[2],rect:[4],line:[4],circle:[3],repeat:[1],if:[1],while:[1],for:[2,3]};
+function chkx(ns,E,W,s,lp){s.ids=s.ids||new Set();for(const x of ns){if(x.bad||!KN.includes(x.h[0].toLowerCase()))continue;const k=x.h[0].toLowerCase(),l=x.lg,n=x.n;
+if(!['print','serial','use'].includes(k))x.o.forEach(q=>{const a=q[0];if(/[:\s]/.test(a))E.push([n,`La orden "${q.join(';')}" no esta bien separada`,`Usa ";" para separar: "${a.split(/[:\s]+/).filter(Boolean).join(';')}"`]);else if(OA[k]&&!OA[k].includes(a.toLowerCase()))W.push([n,`Orden desconocida "${a}" en ${x.h[0]}`,sug(a,OA[k])||'Validas: '+OA[k].join(', ')])});
+const ck=['repeat','if','while','for','each'].includes(k)?k:k==='expect'?'pixel':['screen','display','reg'].includes(k)?x.h.map(v=>v.toLowerCase()).find(v=>OPS.includes(v)):null;
+if(ck&&ARG[ck]&&!ARG[ck].includes(x.a.length))E.push([n,`${ck} necesita ${ARG[ck].join(' o ')} argumentos y recibio ${x.a.length}`,'Los argumentos numericos van en el primer parentesis, separados por comas']);
+if((k==='break'||k==='continue')&&!lp)E.push([n,`${x.h[0]} solo puede usarse dentro de un bucle`,'Usalo dentro de Repeat, For, While o Loop']);
+if(k==='ui'){if(!EXT.has('uivisuals')&&!s.wu){s.wu=1;E.push([n,'UI necesita la extension UIVisuals','En la terminal escribe: pkg install UIVisuals'])}if(l!=='log+')E.push([n,'UIVisuals solo funciona en Log+ y en lineas #+ de archivos mixtos','Cambia la cabecera a <log+> o etiqueta la linea con #+'])}
+if(!EXT.has('storage')&&!s.ws&&k==='store'){s.ws=1;E.push([n,'Store necesita la extension Storage','En la terminal escribe: pkg install Storage'])}
+if(['screen','display','reg'].includes(k)&&x.h.some(v=>v.toLowerCase()==='resolution'))s.res=1;
+if(k==='g3d'){const o=(x.h[1]||'').toLowerCase();if(!EXT.has('graphics3d')&&!s.w3){s.w3=1;E.push([n,'G3D necesita la extension Graphics3D','En la terminal escribe: pkg install Graphics3D'])}if(l==='log++')E.push([n,'Log++ no tiene pantalla: G3D no puede usarse aqui','Usa Log+ o Log-']);else if(l==='log-'&&!s.res)E.push([n,'Log- exige Resolution antes de usar G3D','Agrega Screen:Resolution(...) arriba']);if(!G3O.includes(o))E.push([n,'Operacion G3D desconocida: '+(x.h[1]||''),sug(o,G3O)||'Validas: '+G3O.join(', ')])}
+if(k==='on'){const m=(x.h[1]||'').toLowerCase();if(m!=='start_button'&&m!=='key'&&m!=='canvas'&&m!=='timer'&&m!=='mouse'&&!s.ids.has(m))W.push([n,`On:${x.h[1]}: no existe ese evento ni un widget con ese Id`,'Eventos: START_BUTTON o el Id de un widget UI'])}
+if(k==='var'&&x.o[0]&&x.o[0][0].toLowerCase()==='text'&&l==='log-'&&x.h.length>2&&x.h[1].toLowerCase()!=='str')E.push([n,'Log- exige tipo STR para texto','Escribe Var:STR:nombre("Text;Hola")']);
+if(k==='console'){const o=(x.h[1]||'').toLowerCase(),CO=['init','clear','print','put','at','read','refresh'];if(l==='log++')E.push([n,'Log++ no tiene pantalla: Console no puede usarse aqui','Usa Log+ o Log-']);else if(o==='init')s.res=1;else if(l==='log-'&&!s.res)E.push([n,'Log- exige Console:Init (o Screen:Resolution) antes de usar la consola','Agrega Console:Init("Cols;53","Rows;20") arriba']);if(!CO.includes(o))E.push([n,'Operacion Console desconocida: '+(x.h[1]||''),sug(o,CO)||'Validas: '+CO.join(', ')])}
+if(k==='mem'&&!['write','read','fill','copy','writetext'].includes((x.h[1]||'').toLowerCase()))E.push([n,'Operacion Mem desconocida: '+(x.h[1]||''),'Validas: write, read, fill, copy, writetext']);
+if(k==='disk'&&!['list','read','exists','write','delete'].includes((x.h[1]||'').toLowerCase()))E.push([n,'Operacion Disk desconocida: '+(x.h[1]||''),'Validas: list, read, exists, write, delete']);
+if(['if','while','for','repeat','each','def','loop','setup','on'].includes(k)&&!x.body)E.push([n,'Falta el bloque { } de '+x.h[0],'Escribe { en la linea siguiente (o al final de esta) y cierralo con } mas abajo']);
+if(k==='return'&&!s.fn)E.push([n,'Return solo puede usarse dentro de una funcion (Def)','Mueve el Return dentro de Def:nombre(...){ ... }']);if(k==='call'&&s.fns&&!s.fns.has(x.h[1]))W.push([n,'Funcion no definida en este archivo: '+x.h[1],'Si viene de otro archivo con Use("...") ignora esta advertencia']);if(k==='def')s.fn=(s.fn||0)+1;if(x.body)chkx(x.body,E,W,s,lp||['repeat','for','while','loop','each'].includes(k));if(k==='def')s.fn--;if(x.alt)chkx(x.alt,E,W,s,lp)}}
+const CAT={uivisuals:{n:'UIVisuals',d:'Botones, etiquetas, deslizadores, casillas y cajas de texto. Solo Log+ y lineas #+ de archivos mixtos.',kb:14},storage:{n:'Storage',d:'Guardar y cargar datos entre ejecuciones con Store:Save y Store:Load. Todas las variantes.',kb:6},graphics3d:{n:'Graphics3D',d:'Motor 3D por software: cubo, esfera, toro y piramide, camara con lookAt, luz con brillo, caras ocultas y orden por profundidad. Log+ y Log- (Log++ no tiene pantalla).',kb:22}};
+const EXT=new Set((()=>{try{return JSON.parse(localStorage.getItem('logpkgs')||'[]')}catch(_){return[]}})());
+const svp=()=>{try{localStorage.setItem('logpkgs',JSON.stringify([...EXT]))}catch(_){}};
+async function pkg(a,b){const k=(b||'').toLowerCase(),p=CAT[k];
+if(!a||a==='list')return Object.entries(CAT).forEach(([i,c])=>pr(`${EXT.has(i)?'[instalada]':'[disponible]'} ${c.n} (${c.kb} KB)\n   ${c.d}`));
+if(!p)return pr('paquete no encontrado: '+(b||'(falta el nombre)')+'. Usa: pkg list','err');
+if(a==='install'){if(EXT.has(k))return pr(p.n+' ya esta instalada');pr('Descargando '+p.n+' ('+p.kb+' KB)...');for(let i=1;i<=10;i++){await sleep(90);if(i%5===0)pr('['+'#'.repeat(i)+'.'.repeat(10-i)+'] '+i*10+'%')}EXT.add(k);svp();return pr(p.n+' instalada','ok')}
+if(a==='remove'){EXT.delete(k);svp();return pr(p.n+' eliminada')}
+if(a==='info')return pr(p.n+': '+p.d);
+pr('uso: pkg list | install <nombre> | remove <nombre> | info <nombre>','err')}
+const EF0=$('#ef').textContent;
+function flash(t){const f=$('#ef');f.textContent=t;clearTimeout(flash.h);flash.h=setTimeout(()=>f.textContent=EF0,2200)}
+function save(){if(fresh===cur)fresh=null;files[cur]=EA.value;sv();flash('Guardado: '+cur)}
+function saveAs(){$('#sa').hidden=false;const i=$('#san');i.value=cur;i.focus();i.select&&i.select()}
+function doSaveAs(){let n=$('#san').value.trim().replace(/\s+/g,'_');if(!n)return flash('Escribe un nombre para el archivo');if(!n.includes('.'))n+='.'+cur.split('.').pop();const ow=files[n]!==undefined&&n!==cur;files[n]=EA.value;if(fresh===cur&&n!==cur)delete files[cur];fresh=null;cur=n;$('#en').textContent=n;$('#sa').hidden=true;sv();EA.focus();flash((ow?'Sobrescrito: ':'Guardado como: ')+n)}
+/* ---- Graphics3D ---- */
+const G3={o:{},c:{p:[0,2,6],t:[0,0,0],fov:60},l:[3,5,4],bg:[5,7,22],mode:'solid'};
+const G3O=['cube','sphere','torus','pyramid','set','render','clear','scene','camera','light'];
+const v3={sub:(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]],dot:(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2],cr:(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]],nm:a=>{const l=Math.hypot(...a)||1;return[a[0]/l,a[1]/l,a[2]/l]}};
+function rgbOf(p,d){p=p.map(s=>s.trim());if(p[0]==='hsl'){const h=((ev(p[1])%360)+360)%360,l=(p[2]?ev(p[2]):55)/100,a=.9*Math.min(l,1-l),f=n=>{const k=(n+h/30)%12;return Math.round(255*(l-a*Math.max(-1,Math.min(k-3,9-k,1))))};return[f(0),f(8),f(4)]}
+if(p[0]==='rgb')p=p.slice(1);if(p.length>=3)return p.slice(0,3).map(e=>ev(e)&255);const m=/^#?([0-9a-f]{6})$/i.exec(p[0]);return m?[0,2,4].map(i=>parseInt(m[1].substr(i,2),16)):d}
+function mesh(t,s){const V=[],F=[],h=s/2,P=Math.PI;let rf=c=>c;
+if(t==='cube'){for(let i=0;i<8;i++)V.push([i&1?h:-h,i&2?h:-h,i&4?h:-h]);[[0,1,3,2],[4,5,7,6],[0,1,5,4],[2,3,7,6],[0,2,6,4],[1,3,7,5]].forEach(q=>F.push([q[0],q[1],q[2]],[q[0],q[2],q[3]]))}
+else if(t==='pyramid'){V.push([-h,-h,-h],[h,-h,-h],[h,-h,h],[-h,-h,h],[0,h,0]);F.push([0,1,4],[1,2,4],[2,3,4],[3,0,4],[0,1,2],[0,2,3]);rf=c=>[c[0],c[1]+s/4,c[2]]}
+else if(t==='sphere'){const a=10,b=16;for(let i=0;i<=a;i++)for(let j=0;j<=b;j++){const p=P*i/a,q=2*P*j/b;V.push([h*Math.sin(p)*Math.cos(q),h*Math.cos(p),h*Math.sin(p)*Math.sin(q)])}for(let i=0;i<a;i++)for(let j=0;j<b;j++){const k=i*(b+1)+j;F.push([k,k+b+1,k+1],[k+1,k+b+1,k+b+2])}}
+else{const R_=s*.35,r_=s*.15,a=20,b=10;for(let i=0;i<=a;i++)for(let j=0;j<=b;j++){const u=2*P*i/a,v=2*P*j/b;V.push([(R_+r_*Math.cos(v))*Math.cos(u),r_*Math.sin(v),(R_+r_*Math.cos(v))*Math.sin(u)])}for(let i=0;i<a;i++)for(let j=0;j<b;j++){const k=i*(b+1)+j;F.push([k,k+b+1,k+1],[k+1,k+b+1,k+b+2])}rf=c=>{const l=Math.hypot(c[0],c[2])||1;return[c[0]-R_*c[0]/l,c[1],c[2]-R_*c[2]/l]}}
+F.forEach(f=>{const[A,B,C]=f.map(i=>V[i]),n=v3.cr(v3.sub(B,A),v3.sub(C,A)),m=[(A[0]+B[0]+C[0])/3,(A[1]+B[1]+C[1])/3,(A[2]+B[2]+C[2])/3];if(v3.dot(n,rf(m))<0){const t=f[1];f[1]=f[2];f[2]=t}});return{V,F}}
+function g3(x){const o=(x.h[1]||'').toLowerCase(),n=k=>{const v=og(x,k);return v===null?undefined:+ev(v)},id=og(x,'id'),cq=x.o.find(q=>q[0].toLowerCase()==='color');
+if(o==='render')return g3r();if(o==='clear'){G3.o={};return}
+if(o==='scene'){const b=x.o.find(q=>q[0].toLowerCase()==='bg');if(b)G3.bg=rgbOf(b.slice(1),G3.bg);const m=og(x,'mode');if(m)G3.mode=m.toLowerCase();const f=n('fov');if(f)G3.c.fov=f;if(!res)setRes(320,180);return}
+if(o==='camera'){const c=G3.c;c.p=[n('x')??c.p[0],n('y')??c.p[1],n('z')??c.p[2]];c.t=[n('tx')??c.t[0],n('ty')??c.t[1],n('tz')??c.t[2]];c.fov=n('fov')??c.fov;return}
+if(o==='light'){G3.l=[n('x')??G3.l[0],n('y')??G3.l[1],n('z')??G3.l[2]];return}
+if(!id)throw'G3D: falta el Id, por ejemplo "Id;caja"';
+if(o==='set'){const b=G3.o[id];if(!b)throw'G3D: no existe el objeto '+id;for(const k of['x','y','z','rx','ry','rz','s']){const v=n(k);if(v!==undefined)b[k]=v}if(cq)b.col=rgbOf(cq.slice(1),b.col);return}
+G3.o[id]={m:mesh(o,n('size')??1),x:n('x')??0,y:n('y')??0,z:n('z')??0,rx:n('rx')??0,ry:n('ry')??0,rz:n('rz')??0,s:1,col:cq?rgbOf(cq.slice(1),[74,163,255]):[74,163,255]}}
+function g3r(){if(!res)setRes(320,180);Con.sus=1;const{w:W,h:H}=res,c=G3.c,{sub,dot,cr,nm}=v3,f=nm(sub(c.t,c.p)),r=nm(cr(f,[0,1,0])),u=cr(r,f),F=H/2/Math.tan(c.fov*Math.PI/360),L=nm(G3.l),TR=[],cs=Math.cos,sn=Math.sin;
+for(const b of Object.values(G3.o)){const P=b.m.V.map(v=>{let[x,y,z]=[v[0]*b.s,v[1]*b.s,v[2]*b.s],t;t=y*cs(b.rx)-z*sn(b.rx);z=y*sn(b.rx)+z*cs(b.rx);y=t;t=x*cs(b.ry)+z*sn(b.ry);z=-x*sn(b.ry)+z*cs(b.ry);x=t;t=x*cs(b.rz)-y*sn(b.rz);y=x*sn(b.rz)+y*cs(b.rz);x=t;return[x+b.x,y+b.y,z+b.z]});
+for(const[i,j,k]of b.m.F){const A=P[i],B=P[j],C=P[k],N=nm(cr(sub(B,A),sub(C,A))),M=[(A[0]+B[0]+C[0])/3,(A[1]+B[1]+C[1])/3,(A[2]+B[2]+C[2])/3],E=nm(sub(c.p,M));if(dot(N,E)<=0)continue;
+const S=[A,B,C].map(p=>{const q=sub(p,c.p),z=dot(q,f);return[W/2+F*dot(q,r)/z,H/2-F*dot(q,u)/z,z]});if(S.some(s=>s[2]<.1))continue;
+const Hh=nm([L[0]+E[0],L[1]+E[1],L[2]+E[2]]);TR.push({S,z:(S[0][2]+S[1][2]+S[2][2])/3,d:.18+.82*Math.max(0,dot(N,L)),sp:.5*Math.pow(Math.max(0,dot(N,Hh)),30),col:b.col})}}
+TR.sort((a,b)=>b.z-a.z);cx.fillStyle=`rgb(${G3.bg})`;cx.fillRect(0,0,W,H);
+for(const t of TR){const s=`rgb(${t.col.map(v=>Math.min(255,v*t.d+255*t.sp|0))})`;cx.beginPath();cx.moveTo(t.S[0][0],t.S[0][1]);cx.lineTo(t.S[1][0],t.S[1][1]);cx.lineTo(t.S[2][0],t.S[2][1]);cx.closePath();
+if(G3.mode==='wire'){cx.strokeStyle=s;cx.stroke()}else{cx.fillStyle=cx.strokeStyle=s;cx.fill();cx.stroke()}}}
+class Ret{constructor(v){this.v=v}}
+const cv=(t,v)=>t?Array.isArray(v)?v.map(CAST[t]):(v&&typeof v==='object')?v:CAST[t](v):v;
+const valOf=x=>{const i=x.q.findIndex(s=>/^(value|text);/i.test(s));if(i<0)throw'Falta la orden Value o Text';return/^text;/i.test(x.q[i])?fm(x.q[i].slice(5)):ev(x.o[i][1])};
+const reg=ns=>ns.forEach(x=>{if(x.h[0].toLowerCase()==='def')R.fn[x.h[1]]=x});
+const fnn=ns=>ns.flatMap(x=>[...(x.h[0].toLowerCase()==='def'?[x.h[1]]:[]),...fnn(x.body||[]),...fnn(x.alt||[])]);
+document.addEventListener('keydown',e=>{if(R&&R.on&&!/INPUT|TEXTAREA/.test((e.target||{}).tagName||'')){V.key=e.key;fire('key')}});
+CV.addEventListener('pointerdown',e=>{if(R&&R.on&&res){const r=CV.getBoundingClientRect();V.mx=Math.floor((e.clientX-r.left)/r.width*res.w);V.my=Math.floor((e.clientY-r.top)/r.height*res.h);fire('canvas')}});
+let fresh=null;
+function hd(){const on=!$('#cw').hidden||!$('#ui').hidden;$('#hdmi').hidden=!on;$('#hr').textContent=res?res.w+'x'+res.h:'1280x720'}
+let kmode=false,BOOT=(()=>{try{return localStorage.getItem('logboot')||''}catch(_){return''}})();
+const lsB=()=>{try{localStorage.setItem('logboot',BOOT)}catch(_){}};
+const MEM=new Uint8Array(1<<20);
+const mc=a=>{a=+a|0;if(a<0||a>=MEM.length)throw'Direccion fuera de memoria: '+a;return a};
+const pk=a=>MEM[mc(a)],pk16=a=>pk(a)|pk(a+1)<<8,pk32=a=>(pk(a)|pk(a+1)<<8|pk(a+2)<<16|pk(a+3)<<24)>>>0;
+const pks=a=>{let s='';for(a=mc(a);a<MEM.length&&MEM[a];a++)s+=String.fromCharCode(MEM[a]);return s};
+const MC=new MessageChannel(),MQ=[];MC.port1.onmessage=()=>{const f=MQ.shift();f&&f()};MC.port1.unref&&MC.port1.unref();
+const tick=()=>new Promise(r=>{MQ.push(r);MC.port2.postMessage(0)});
+const Con={on:0,cols:53,rows:20,cw:6,ch:9,buf:[],cx:0,cy:0,fg:'#9be7b4',bg:'#04110a',t:0};
+function conClear(){Con.sus=0;Con.buf=Array.from({length:Con.rows},()=>Array(Con.cols).fill(null));Con.cx=0;Con.cy=0;conMark()}
+function conMark(){if(!Con.t)Con.t=setTimeout(()=>{Con.t=0;conR()},16)}
+function conR(){if(!Con.on||!res||Con.sus)return;cx.fillStyle=Con.bg;cx.fillRect(0,0,res.w,res.h);cx.font='8px ui-monospace,Menlo,Consolas,monospace';cx.textBaseline='top';for(let r=0;r<Con.rows;r++)for(let c=0;c<Con.cols;c++){const k=Con.buf[r]&&Con.buf[r][c];if(k&&k.c!==' '){cx.fillStyle=k.f;cx.fillText(k.c,c*Con.cw,r*Con.ch)}}cx.fillStyle=Con.fg;cx.fillRect(Con.cx*Con.cw,Con.cy*Con.ch+8,5,1)}
+function conEns(){if(!Con.on){const c=res?Math.floor(res.w/Con.cw):53,r=res?Math.floor(res.h/Con.ch):20;if(!res)setRes(c*Con.cw,r*Con.ch);Con.cols=c;Con.rows=r;Con.on=1;CV.style.imageRendering='auto';conClear()}}
+function conNl(){Con.cx=0;if(++Con.cy>=Con.rows){Con.buf.shift();Con.buf.push(Array(Con.cols).fill(null));Con.cy=Con.rows-1}}
+function conPut(s,f){for(const ch of String(s)){if(ch==='\n'){conNl();continue}if(Con.cx>=Con.cols)conNl();Con.buf[Con.cy][Con.cx++]={c:ch,f:f||Con.fg}}conMark()}
+const SEED={
+'kernel.log-':`<log->
+// KERNEL.LOG- - sistema operativo minimo para Log OS
+// Ejecutalo con:  run # kernel.log-   (modo kernel: prioridad absoluta)
+// Para que arranque solo:  boot kernel.log-
+// Mapa de memoria:  0x0010 ticks (32 bits)  |  0x0100 tabla de procesos (16 bytes c/u)
+Console:Init("Cols;53","Rows;20","Color;#9be7b4","Bg;#04110a")
+Var:U32:ticks("Value;0")
+Var:U8:procs("Value;0")
+Var:I32:codigo("Value;0")
+Var:I32:ok("Value;0")
+Var:I32:vivo("Value;1")
+Var:STR:linea("Text;")
+Var:STR:cmd("Text;")
+Var:STR:arg("Text;")
+Var:STR:txt("Text;")
+Var:STR:archivos("List;")
 
-// ─── LIGHTING ──────────────────────────────────────
-var LKEY=vnorm(v3(.55,.9,.65)),LFILL=vnorm(v3(-.4,-.3,-.5)),LRIM=vnorm(v3(-.5,.25,-.75));
-function hexToRgb(h){h=h.replace('#','');if(h.length===3)h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2];return[parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)];}
-function mulColor(hex,f){var c=hexToRgb(hex);return'#'+c.map(function(v){return Math.max(0,Math.min(255,Math.round(v*f))).toString(16).padStart(2,'0');}).join('');}
-function lerpColor(a,b,t){var ca=hexToRgb(a),cb=hexToRgb(b);return'#'+[0,1,2].map(function(i){return Math.round(ca[i]+(cb[i]-ca[i])*t).toString(16).padStart(2,'0');}).join('');}
-function shadeFace(nx,ny,nz,hex,metal,vx,vy,vz){
-  var n=vnorm(v3(nx,ny,nz)),m=metal||.5;
-  var nl=Math.max(0,vdot(n,LKEY)),nl2=Math.max(0,vdot(n,LFILL))*.14,nlR=Math.max(0,vdot(n,LRIM))*.22;
-  var amb=.27+m*.07,diff=Math.min(1,amb+(nl+nl2)*(1-amb)*1.1);
-  var spec=0;
-  if(vx!==undefined){var hx=LKEY.x+vx,hy=LKEY.y+vy,hz=LKEY.z+vz,hl2=Math.sqrt(hx*hx+hy*hy+hz*hz)||1,ndh=Math.max(0,n.x*(hx/hl2)+n.y*(hy/hl2)+n.z*(hz/hl2));spec=Math.pow(ndh,16+m*80)*(.08+m*.32);}
-  var c=hexToRgb(hex);
-  return'rgb('+[c[0]*diff+nlR*28+spec*220,c[1]*diff+nlR*38+spec*230,c[2]*diff+nlR*72+spec*255].map(function(v){return Math.max(0,Math.min(255,Math.round(v)));}).join(',')+')';}
-
-// ─── FACE PAINTER ─────────────────────────────────
-var _faces=[];
-function pushFace(pts,z,fill){_faces.push({pts,z,fill});}
-function flushFaces(){
-  _faces.sort(function(a,b){return b.z-a.z;});
-  _faces.forEach(function(f){if(f.pts.length<3)return;ctx.beginPath();ctx.moveTo(f.pts[0][0],f.pts[0][1]);for(var j=1;j<f.pts.length;j++)ctx.lineTo(f.pts[j][0],f.pts[j][1]);ctx.closePath();if(f.fill){ctx.fillStyle=f.fill;ctx.fill();}ctx.strokeStyle='rgba(0,0,0,0.2)';ctx.lineWidth=0.4;ctx.stroke();});
-  _faces=[];}
-function emitFace(wv,wn,hex,met,noBC){
-  var n=wv.length,spts=new Array(n),minZ=Infinity,sumW=0,fcx=0,fcy=0,fcz=0;
-  for(var i=0;i<n;i++){var vv=wv[i];fcx+=vv.x;fcy+=vv.y;fcz+=vv.z;var p=project(vv.x,vv.y,vv.z);spts[i]=[p[0],p[1]];if(p[2]<minZ)minZ=p[2];sumW+=p[3];}
-  if(sumW<=0)return;
-  if(!noBC){var ax=spts[1][0]-spts[0][0],ay=spts[1][1]-spts[0][1],bx=spts[2][0]-spts[0][0],by=spts[2][1]-spts[0][1];if(ax*by-ay*bx>0)return;}
-  var vd=vnorm(vsub(_EYE,v3(fcx/n,fcy/n,fcz/n)));
-  pushFace(spts,minZ,shadeFace(wn.x,wn.y,wn.z,hex,met,vd.x,vd.y,vd.z));}
-function tfV(M,verts){return verts.map(function(v){return mapplyV(M,v);});}
-function tfN(M,n){return vnorm(mapplyN(M,n));}
-
-// ─── PRIMITIVES ───────────────────────────────────
-var MODULE=0.5,GEAR_HOLE_R=1.2,GEAR_HUB_R=2.4;
-
-function buildAndRenderCylinder(M,r,h,segs,color,hl){
-  segs=segs||14;var ht=h/2,tc=hl?lerpColor(color,'#ffffff',.25):mulColor(color,1.05),sc=hl?lerpColor(mulColor(color,.78),'#aaddff',.2):mulColor(color,.78),bc=mulColor(color,.45);
-  var wCen=mapplyV(M,v3()),toEye=vnorm(vsub(_EYE,wCen)),wUp=vnorm(mapplyN(M,v3(0,1,0))),wDn=vnorm(mapplyN(M,v3(0,-1,0)));
-  var tv=vdot(wUp,toEye)>-.01,bv=vdot(wDn,toEye)>-.01;
-  for(var i=0;i<segs;i++){var a0=(i/segs)*Math.PI*2,a1=((i+1)/segs)*Math.PI*2,c0=Math.cos(a0),s0=Math.sin(a0),c1=Math.cos(a1),s1=Math.sin(a1);
-    if(tv)emitFace(tfV(M,[v3(0,ht,0),v3(c0*r,ht,s0*r),v3(c1*r,ht,s1*r)]),wUp,tc,.5,true);
-    if(bv)emitFace(tfV(M,[v3(0,-ht,0),v3(c1*r,-ht,s1*r),v3(c0*r,-ht,s0*r)]),wDn,bc,.5,true);
-    var wn=tfN(M,v3((c0+c1)/2,0,(s0+s1)/2));if(vdot(wn,toEye)>-.05)emitFace(tfV(M,[v3(c0*r,-ht,s0*r),v3(c1*r,-ht,s1*r),v3(c1*r,ht,s1*r),v3(c0*r,ht,s0*r)]),wn,sc,.7,true);}}
-
-function buildAndRenderBox(M,w,h,d,color,hl){
-  var hw=w/2,hh=h/2,hd=d/2,c=hl?lerpColor(color,'#ffffff',.25):color,wCen=mapplyV(M,v3()),toEye=vnorm(vsub(_EYE,wCen));
-  [{verts:[v3(-hw,-hh,hd),v3(hw,-hh,hd),v3(hw,hh,hd),v3(-hw,hh,hd)],n:v3(0,0,1),f:mulColor(c,1.0)},
-   {verts:[v3(hw,-hh,-hd),v3(-hw,-hh,-hd),v3(-hw,hh,-hd),v3(hw,hh,-hd)],n:v3(0,0,-1),f:mulColor(c,.65)},
-   {verts:[v3(hw,-hh,hd),v3(hw,-hh,-hd),v3(hw,hh,-hd),v3(hw,hh,hd)],n:v3(1,0,0),f:mulColor(c,.85)},
-   {verts:[v3(-hw,-hh,-hd),v3(-hw,-hh,hd),v3(-hw,hh,hd),v3(-hw,hh,-hd)],n:v3(-1,0,0),f:mulColor(c,.6)},
-   {verts:[v3(-hw,hh,hd),v3(hw,hh,hd),v3(hw,hh,-hd),v3(-hw,hh,-hd)],n:v3(0,1,0),f:mulColor(c,1.05)},
-   {verts:[v3(-hw,-hh,-hd),v3(hw,-hh,-hd),v3(hw,-hh,hd),v3(-hw,-hh,hd)],n:v3(0,-1,0),f:mulColor(c,.45)}
-  ].forEach(function(f){var wn=tfN(M,f.n);if(vdot(wn,toEye)>-.01)emitFace(tfV(M,f.verts),wn,f.f,.5,true);});}
-
-function buildAndRenderCone(M,r,h,segs,color){
-  segs=segs||10;var ht=h/2,wCen=mapplyV(M,v3()),toEye=vnorm(vsub(_EYE,wCen)),wDn=vnorm(mapplyN(M,v3(0,-1,0)));
-  for(var i=0;i<segs;i++){var a0=(i/segs)*Math.PI*2,a1=((i+1)/segs)*Math.PI*2,c0=Math.cos(a0),s0=Math.sin(a0),c1=Math.cos(a1),s1=Math.sin(a1);
-    var sn=tfN(M,vnorm(v3((c0+c1)/2,r/h,(s0+s1)/2)));
-    if(vdot(sn,toEye)>-.05)emitFace(tfV(M,[v3(c0*r,-ht,s0*r),v3(c1*r,-ht,s1*r),v3(0,ht,0)]),sn,color,.6,true);
-    if(vdot(wDn,toEye)>-.01)emitFace(tfV(M,[v3(0,-ht,0),v3(c1*r,-ht,s1*r),v3(c0*r,-ht,s0*r)]),wDn,mulColor(color,.5),.5,true);}}
-
-// ─── GEAR ─────────────────────────────────────────
-function buildAndRenderGear(M,teeth,color,isMotor,hl,manualGlow){
-  var pr=(teeth*MODULE)/2,outerR=pr+MODULE*.78,innerR=pr-MODULE*1.05;if(innerR<pr*.18)innerR=pr*.18;
-  var holeR=GEAR_HOLE_R,hubR=GEAR_HUB_R;if(hubR>innerR*.88)hubR=innerR*.88;if(holeR>hubR*.7)holeR=hubR*.7;
-  var thick=1.6,ht=thick/2,segs=teeth*4;
-  var fc=isMotor?'#ff9944':color,sc=mulColor(isMotor?'#cc6622':color,.70),bc=mulColor(isMotor?'#aa4410':color,.52),hubC=mulColor(fc,.72);
-  if(hl){fc=lerpColor(fc,'#ffffff',.28);sc=lerpColor(sc,'#88ccff',.3);}
-  if(manualGlow){fc=lerpColor(fc,'#ffffff',.18);sc=lerpColor(sc,'#ff8844',.25);}// spin mode tint
-  var wc=mapplyV(M,v3()),wFN=vnorm(mapplyN(M,v3(0,1,0))),wBN=vnorm(mapplyN(M,v3(0,-1,0))),toEye=vnorm(vsub(_EYE,wc));
-  var fv=vdot(wFN,toEye)>-.01,bv=vdot(wBN,toEye)>-.01;
-  var pts=[];for(var i=0;i<segs;i++){var a=(i/segs)*Math.PI*2,r=(i%4<2)?outerR:innerR;pts.push({x:Math.cos(a)*r,z:Math.sin(a)*r});}
-  if(fv)for(var i=0;i<segs;i++){var i1=(i+1)%segs,p0=pts[i],p1=pts[i1];if(Math.sqrt(p0.x*p0.x+p0.z*p0.z)<holeR*1.05)continue;emitFace(tfV(M,[v3(0,ht,0),v3(p0.x,ht,p0.z),v3(p1.x,ht,p1.z)]),wFN,fc,.68,true);}
-  if(bv)for(var i=0;i<segs;i++){var i1=(i+1)%segs,p0=pts[i],p1=pts[i1];if(Math.sqrt(p0.x*p0.x+p0.z*p0.z)<holeR*1.05)continue;emitFace(tfV(M,[v3(0,-ht,0),v3(p1.x,-ht,p1.z),v3(p0.x,-ht,p0.z)]),wBN,bc,.5,true);}
-  for(var i=0;i<segs;i++){var i1=(i+1)%segs,p0=pts[i],p1=pts[i1],nx=(p0.x+p1.x)/2,nz=(p0.z+p1.z)/2,nl2=Math.sqrt(nx*nx+nz*nz)||1,wn=tfN(M,v3(nx/nl2,0,nz/nl2));if(vdot(wn,toEye)<-.05)continue;emitFace(tfV(M,[v3(p0.x,-ht,p0.z),v3(p1.x,-ht,p1.z),v3(p1.x,ht,p1.z),v3(p0.x,ht,p0.z)]),wn,sc,.75,true);}
-  var hs=28;for(var i=0;i<hs;i++){var a0=(i/hs)*Math.PI*2,a1=((i+1)/hs)*Math.PI*2,c0=Math.cos(a0),s0=Math.sin(a0),c1=Math.cos(a1),s1=Math.sin(a1);
-    var hwn=tfN(M,v3((c0+c1)/2,0,(s0+s1)/2));if(vdot(hwn,toEye)>-.05)emitFace(tfV(M,[v3(c0*hubR,-ht,s0*hubR),v3(c1*hubR,-ht,s1*hubR),v3(c1*hubR,ht,s1*hubR),v3(c0*hubR,ht,s0*hubR)]),hwn,hubC,.82,true);
-    if(fv)emitFace(tfV(M,[v3(c0*holeR,ht,s0*holeR),v3(c0*hubR,ht,s0*hubR),v3(c1*hubR,ht,s1*hubR),v3(c1*holeR,ht,s1*holeR)]),wFN,mulColor(fc,.58),.82,true);
-    if(bv)emitFace(tfV(M,[v3(c1*holeR,-ht,s1*holeR),v3(c1*hubR,-ht,s1*hubR),v3(c0*hubR,-ht,s0*hubR),v3(c0*holeR,-ht,s0*holeR)]),wBN,mulColor(bc,.58),.82,true);}
-  var ho=20;for(var i=0;i<ho;i++){var a0=(i/ho)*Math.PI*2,a1=((i+1)/ho)*Math.PI*2,c0=Math.cos(a0),s0=Math.sin(a0),c1=Math.cos(a1),s1=Math.sin(a1);
-    if(fv)emitFace(tfV(M,[v3(0,ht,0),v3(c0*holeR,ht,s0*holeR),v3(c1*holeR,ht,s1*holeR)]),wFN,'#0a0e14',0,true);
-    if(bv)emitFace(tfV(M,[v3(0,-ht,0),v3(c1*holeR,-ht,s1*holeR),v3(c0*holeR,-ht,s0*holeR)]),wBN,'#0a0e14',0,true);
-    var bn=tfN(M,v3(-(c0+c1)/2,0,-(s0+s1)/2));emitFace(tfV(M,[v3(c0*holeR,-ht,s0*holeR),v3(c1*holeR,-ht,s1*holeR),v3(c1*holeR,ht,s1*holeR),v3(c0*holeR,ht,s0*holeR)]),bn,'#1a1e28',0,true);}
-  if(isMotor&&fv){var ringR=pr*.55,rs=24;for(var i=0;i<rs;i++){var a0=(i/rs)*Math.PI*2,a1=((i+1)/rs)*Math.PI*2,c0=Math.cos(a0),s0=Math.sin(a0),c1=Math.cos(a1),s1=Math.sin(a1);emitFace(tfV(M,[v3(c0*ringR,ht+.01,s0*ringR),v3(c1*ringR,ht+.01,s1*ringR),v3(c1*(ringR+.28),ht+.01,s1*(ringR+.28)),v3(c0*(ringR+.28),ht+.01,s0*(ringR+.28))]),wFN,'#ffdd55',.3,true);}}}
-
-// ─── SHAFT ────────────────────────────────────────
-function getSegments(lo,hi,gaps){var res=[],cur=lo;gaps.forEach(function(g){if(g.lo>cur&&cur<hi)res.push({lo:cur,hi:Math.min(g.lo,hi)});cur=Math.max(cur,g.hi);});if(cur<hi)res.push({lo:cur,hi:hi});return res;}
-function buildAndRenderShaft(sh,hl){
-  var sx=sh.x,sy=sh.y,sz=sh.z,L=sh.length,r=sh.radius;
-  var color=hl?lerpColor('#a855f7','#ffffff',.25):'#a855f7',cap=hl?lerpColor('#7a3ccc','#ffffff',.22):'#7a3ccc';
-  var halfL=L/2,lo=sy-halfL,hi=sy+halfL;
-  var gaps=sh.mountedGears.map(function(g){return{lo:g.y-.95,hi:g.y+.95};});
-  gaps.sort(function(a,b){return a.lo-b.lo;});var mg=[];
-  gaps.forEach(function(g){if(mg.length&&g.lo<=mg[mg.length-1].hi)mg[mg.length-1].hi=Math.max(mg[mg.length-1].hi,g.hi);else mg.push({lo:g.lo,hi:g.hi});});
-  getSegments(lo,hi,mg).forEach(function(seg){var len=seg.hi-seg.lo;if(len<.05)return;buildAndRenderCylinder(mtrans(sx,(seg.lo+seg.hi)/2,sz),r,len,16,color,hl);});
-  buildAndRenderCylinder(mtrans(sx,sy+halfL,sz),r*1.6,.3,12,cap);
-  buildAndRenderCylinder(mtrans(sx,sy-halfL,sz),r*1.6,.3,12,cap);}
-
-// ─── RACK ─────────────────────────────────────────
-var RACK_PITCH=Math.PI*MODULE,RACK_BASE_D=2.0,RACK_BASE_H=1.6,RACK_TH=MODULE*1.8,RACK_TW=MODULE*1.05,RACK_TC=MODULE*.22;
-function buildAndRenderRack(rack,hl){
-  var n=rack.numTeeth,L=n*RACK_PITCH,color=hl?lerpColor(rack.color,'#ffffff',.22):rack.color,cx=rack.x,cy=rack.y,cz=rack.z,tc=hl?lerpColor(color,'#ffffff',.15):mulColor(color,1.02);
-  buildAndRenderBox(mtrans(cx,cy,cz+RACK_BASE_D/2),L,RACK_BASE_H,RACK_BASE_D,mulColor(color,.78),hl);
-  buildAndRenderBox(mtrans(cx-L/2-.15,cy,cz+RACK_BASE_D/2),.3,RACK_BASE_H,RACK_BASE_D,mulColor(color,.65));
-  buildAndRenderBox(mtrans(cx+L/2+.15,cy,cz+RACK_BASE_D/2),.3,RACK_BASE_H,RACK_BASE_D,mulColor(color,.65));
-  for(var i=0;i<n;i++){var tx=cx-L/2+(i+.5)*RACK_PITCH;buildAndRenderBox(mtrans(tx,cy,cz-RACK_TH/2),RACK_TW,RACK_BASE_H*.88,RACK_TH,tc,hl);buildAndRenderBox(mtrans(tx,cy,cz-RACK_TH-RACK_TC/2),RACK_TW*.7,RACK_BASE_H*.7,RACK_TC,mulColor(tc,.92),hl);}
-  if(!hl){var sp0=project(cx-L/2,cy+RACK_BASE_H*.5+.1,cz),sp1=project(cx+L/2,cy+RACK_BASE_H*.5+.1,cz);ctx.save();ctx.beginPath();ctx.moveTo(sp0[0],sp0[1]);ctx.lineTo(sp1[0],sp1[1]);ctx.strokeStyle='rgba(100,116,139,0.35)';ctx.lineWidth=1;ctx.setLineDash([3,4]);ctx.stroke();ctx.setLineDash([]);ctx.restore();}}
-
-// ─── GRID ─────────────────────────────────────────
-function drawGrid(){
-  var size=40,step=4;ctx.save();
-  for(var x=-size;x<=size;x+=step){var a=project(x,0,-size),b=project(x,0,size);ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.strokeStyle=x===0?'rgba(255,50,50,0.5)':'rgba(40,50,70,0.8)';ctx.lineWidth=x===0?1.6:.6;ctx.stroke();}
-  for(var z=-size;z<=size;z+=step){var a=project(-size,0,z),b=project(size,0,z);ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.strokeStyle=z===0?'rgba(60,150,255,0.5)':'rgba(40,50,70,0.8)';ctx.lineWidth=z===0?1.6:.6;ctx.stroke();}
-  var ya=project(0,-size,0),yb=project(0,size,0);ctx.beginPath();ctx.moveTo(ya[0],ya[1]);ctx.lineTo(yb[0],yb[1]);ctx.strokeStyle='rgba(50,220,80,0.5)';ctx.lineWidth=1.6;ctx.stroke();ctx.restore();}
-
-// ─── STATE ────────────────────────────────────────
-var COLORS=['#3b82f6','#14b8a6','#a3e635','#a855f7','#f87171','#fbbf24','#fb923c'];
-var gears=[],shafts=[],crankPins=[],rods=[],sliders=[],racks=[];
-var RPM_VIS=(Math.PI*2)/60/3;
-var mode='orbit';
-var pendingPinMode=false,rodMode=false,rodEndA=null;
-var hovered=null,mouseS={x:0,y:0};
-var editTarget=null,editType=null;
-var lastClickTime=0,lastClickObj=null,DBL_MS=350;
-var gizmoTarget=null,gizmoDragAxis=null,gizmoScratchPlaneN=null,gizmoScratchD=null,gizmoDragStartWorld=null,gizmoHandles={x:null,y:null,z:null};
-var orbitDrag=false,panDrag=false;
-var lastMouse={x:0,y:0},isDragging=false;
-var SHAFT_SNAP_DIST=2.2;
-
-// ─── SPIN MODE ────────────────────────────────────
-var spinTarget=null,spinDragging=false,spinLastAngle=null;
-// Propagate manual rotation through the gear network
-function spinGearManual(g, delta){
-  // BFS propagate
-  var visited=new Set();
-  var queue=[{g:g,delta:delta}];
-  while(queue.length){
-    var it=queue.shift();if(visited.has(it.g))continue;visited.add(it.g);
-    it.g.angle+=it.delta;
-    // Shaft siblings (same shaft same direction)
-    var sh=gearShaft(it.g);
-    if(sh)sh.mountedGears.forEach(function(nb){if(!visited.has(nb))queue.push({g:nb,delta:it.delta});});
-    // Meshing gears (opposite direction, scaled)
-    it.g.connectedTo.forEach(function(nb){if(!visited.has(nb)){var r=it.g.teeth/nb.teeth;queue.push({g:nb,delta:-it.delta*r});}});
-  }
+// servicio del kernel: registra un proceso en la tabla (0x0100)
+Def:spawn(nombre)
+{
+    Mem:Write("Addr;256+procs*16","Value;procs+1")
+    Mem:Write("Addr;257+procs*16","Value;1")
+    Mem:WriteText("Addr;258+procs*16","Text;{nombre}")
+    Set:procs("Value;procs+1")
 }
 
-// ─── RACK LOGIC ───────────────────────────────────
-function addRack(cx,cz,n){var r={type:'rack',x:cx||0,y:0,z:cz||0,numTeeth:n||16,color:'#64748b',meshGear:null};racks.push(r);return r;}
-window.addRackBtn=function(){addRack((Math.random()-.5)*10,(Math.random()-.5)*6+6,parseInt(document.getElementById('rackTeeth').value)||16);};
-function rackHalfLen(rack){return rack.numTeeth*RACK_PITCH/2;}
-function gearMeshesRack(g,rack){var hl=rackHalfLen(rack);if(Math.abs(g.y-rack.y)>1.5)return false;if(Math.abs(rack.z-g.z-g.pr)>MODULE*2.2)return false;return g.x>rack.x-hl-g.pr*.4&&g.x<rack.x+hl+g.pr*.4;}
-function updateRackKinematics(delta){
-  racks.forEach(function(rack){rack.meshGear=null;
-    for(var i=0;i<gears.length;i++){var g=gears[i];if(!g.currentAngularVel)continue;if(gearMeshesRack(g,rack)){rack.meshGear=g;break;}}
-    if(rack.meshGear)rack.x+=rack.meshGear.currentAngularVel*rack.meshGear.pr*delta;});}
+// interrupcion del reloj: una vez por segundo
+On:Timer("Every;1000")
+{
+    Set:ticks("Value;ticks+1")
+    Mem:Write("Addr;16","Value;ticks","Size;4")
+}
 
-// ─── SHAFT LOGIC ──────────────────────────────────
-function addShaft(cx,cz,len,r){var sh={type:'shaft',x:cx||0,y:0,z:cz||0,length:len||16,radius:r||.4,mountedGears:[],currentRPM:0,currentAngularVel:0,_vis:false};shafts.push(sh);return sh;}
-window.addShaftBtn=function(){addShaft((Math.random()-.5)*10,(Math.random()-.5)*6,parseFloat(document.getElementById('shaftLen').value)||16,parseFloat(document.getElementById('shaftR').value)||.4);};
-function gearNearShaft(g,sh){var hl=sh.length/2,dx=g.x-sh.x,dz=g.z-sh.z;return Math.sqrt(dx*dx+dz*dz)<SHAFT_SNAP_DIST&&g.y>=sh.y-hl-.5&&g.y<=sh.y+hl+.5;}
-function snapGearToShaft(g,sh){g.x=sh.x;g.z=sh.z;var hl=sh.length/2;g.y=Math.max(sh.y-hl+.1,Math.min(sh.y+hl-.1,g.y));if(sh.mountedGears.indexOf(g)<0)sh.mountedGears.push(g);}
-function unmountGearFromShafts(g){shafts.forEach(function(sh){var i=sh.mountedGears.indexOf(g);if(i>=0)sh.mountedGears.splice(i,1);});}
-function updateShaftMounts(){shafts.forEach(function(sh){sh.mountedGears=[];});gears.forEach(function(g){shafts.forEach(function(sh){if(gearNearShaft(g,sh))snapGearToShaft(g,sh);});});}
-function gearShaft(g){for(var i=0;i<shafts.length;i++)if(shafts[i].mountedGears.indexOf(g)>=0)return shafts[i];return null;}
+// ---- arranque ----
+Console:Print("Text;LOGOS 0.1 - kernel en Log-","Color;#ffffff")
+Wait("ms;300")
+Console:Print("Text;CPU 3.0 GHz ............ OK")
+Mem:Fill("Addr;1024","Len;4096","Value;170")
+Mem:Read("Addr;3000","Into;ok")
+If(ok!=170)
+{
+    Panic("Text;fallo en la prueba de memoria")
+}
+Mem:Fill("Addr;1024","Len;4096","Value;0")
+Console:Print("Text;RAM 1024 KB ........... OK")
+Wait("ms;300")
+Disk:List("Into;archivos")
+Console:Print("Text;Disco: {archivos.length} archivos ... OK")
+Call:spawn('init')
+Call:spawn('shell')
+Console:Print("Text;Procesos iniciados: {procs}")
+Console:Print("Text;Escribe help para ver los comandos.")
+Console:Print("Text;")
 
-// ─── GEAR LOGIC ───────────────────────────────────
-function gearPR(t){return(t*MODULE)/2;}
-function addGear(teeth,x,y){var pr=gearPR(teeth);var g={type:'gear',teeth,x:x||0,y:0,z:y||0,pr,outerR:pr+MODULE*.78,angle:0,isMotor:false,rpm:0,torque:0,color:COLORS[gears.length%COLORS.length],currentRPM:0,currentTorque:0,currentAngularVel:0,_vis:false,connectedTo:[]};gears.push(g);return g;}
-function makeMotor(g,rpm,torque){g.isMotor=true;g.rpm=rpm;g.torque=torque;g.color='#f97316';}
-window.addGearBtn=function(){var t=parseInt(document.getElementById('teethCount').value)||12;if(t>=6)addGear(t,(Math.random()-.5)*14,(Math.random()-.5)*8);};
-window.addMotorBtn=function(){var rpm=parseFloat(document.getElementById('motorRPM').value)||60,trq=parseFloat(document.getElementById('motorTorque').value)||10,g=addGear(18,(Math.random()-.5)*12,(Math.random()-.5)*8);makeMotor(g,rpm,trq);};
-
-function updateConnections(){
-  gears.forEach(function(g){g.connectedTo=[];});
-  for(var i=0;i<gears.length;i++)for(var j=i+1;j<gears.length;j++){var g1=gears[i],g2=gears[j];if(Math.abs(g1.y-g2.y)>1.6)continue;var dx=g2.x-g1.x,dz=g2.z-g1.z,dist=Math.sqrt(dx*dx+dz*dz),tgt=g1.pr+g2.pr;if(Math.abs(dist-tgt)<MODULE*2.5){g1.connectedTo.push(g2);g2.connectedTo.push(g1);}}}
-
-function propagatePhysics(){
-  gears.forEach(function(g){g.currentRPM=0;g.currentTorque=0;g.currentAngularVel=0;g._vis=false;});
-  shafts.forEach(function(sh){sh.currentRPM=0;sh.currentAngularVel=0;sh._vis=false;});
-  var queue=[];gears.filter(function(g){return g.isMotor&&g.rpm;}).forEach(function(m){m._vis=true;queue.push({g:m,rpm:m.rpm,torque:m.torque,sign:1});});
-  while(queue.length){var it=queue.shift(),g=it.g;g.currentRPM=it.rpm;g.currentTorque=it.torque;g.currentAngularVel=it.sign*it.rpm*RPM_VIS;
-    var sh=gearShaft(g);
-    if(sh&&!sh._vis){sh._vis=true;sh.currentRPM=it.rpm;sh.currentAngularVel=it.sign*it.rpm*RPM_VIS;sh.mountedGears.forEach(function(nb){if(nb===g||nb._vis)return;nb._vis=true;queue.push({g:nb,rpm:it.rpm,torque:it.torque,sign:it.sign});});}
-    if(sh&&sh._vis)sh.mountedGears.forEach(function(nb){if(nb===g||nb._vis)return;nb._vis=true;queue.push({g:nb,rpm:sh.currentRPM,torque:it.torque,sign:sh.currentAngularVel>0?1:-1});});
-    g.connectedTo.forEach(function(nb){if(nb._vis)return;nb._vis=true;var r=g.teeth/nb.teeth;queue.push({g:nb,rpm:Math.abs(it.rpm)*r,torque:it.torque/r,sign:-it.sign});});}}
-
-// ─── PINS + RODS + SLIDERS ────────────────────────
-function addCrankPin(gear,offsetR,la){var pin={type:'pin',gear,offsetR,localAngle:la||0,worldX:0,worldY:0,worldZ:0};crankPins.push(pin);updatePinPos(pin);return pin;}
-function updatePinPos(pin){var a=pin.gear.angle+pin.localAngle;pin.worldX=pin.gear.x+pin.offsetR*Math.cos(a);pin.worldZ=pin.gear.z+pin.offsetR*Math.sin(a);pin.worldY=pin.gear.y;}
-function removeCrankPin(pin){rods=rods.filter(function(r){return r.endA!==pin&&r.endB!==pin;});crankPins.splice(crankPins.indexOf(pin),1);}
-function getEndPos(end){if(!end)return null;if(end.type==='pin')return{x:end.worldX,y:end.worldY+.9,z:end.worldZ};if(end.type==='slider')return{x:end.x,y:end.y+.6,z:end.z};return null;}
-function addRod(eA,eB){var pA=getEndPos(eA),pB=getEndPos(eB);if(!pA||!pB)return null;var nom=Math.sqrt((pB.x-pA.x)**2+(pB.z-pA.z)**2+(pB.y-pA.y)**2);var slEnd=eA.type==='slider'?eA:(eB.type==='slider'?eB:null),dvEnd=slEnd===eA?eB:eA,sign=1;if(slEnd){var sp=getEndPos(slEnd),dp=getEndPos(dvEnd);if(sp&&dp)sign=sp.x>=dp.x?1:-1;}return{type:'rod',endA:eA,endB:eB,nominalLength:nom,sliderSign:sign};}
-function addSlider(cx,cz,rl){if(!rl)rl=parseFloat(document.getElementById('sliderLen').value)||20;var sl={type:'slider',x:cx,y:0,z:cz,railLen:rl,railXMin:cx-rl/2,railXMax:cx+rl/2};sliders.push(sl);return sl;}
-window.addSliderBtn=function(){addSlider((Math.random()-.5)*8,(Math.random()-.5)*6);};
-function solveKinematics(){rods.forEach(function(rod){var slEnd=null,dvEnd=null;if(rod.endA.type==='slider'){slEnd=rod.endA;dvEnd=rod.endB;}else if(rod.endB.type==='slider'){slEnd=rod.endB;dvEnd=rod.endA;}if(!slEnd)return;var dp=getEndPos(dvEnd);if(!dp)return;var sl=slEnd,L=rod.nominalLength,dy=sl.y+.6-dp.y,disc=L*L-dy*dy;if(disc<0)return;sl.x=Math.max(sl.railXMin,Math.min(sl.railXMax,dp.x+rod.sliderSign*Math.sqrt(disc)));});}
-
-// ─── HIT TEST ─────────────────────────────────────
-function hitTestScreen(sx,sy){
-  if(mode==='gizmo'&&gizmoTarget){var ax=hitGizmoAxis(sx,sy);if(ax)return{obj:gizmoTarget,type:'gizmoAxis',axis:ax};}
-  for(var i=gears.length-1;i>=0;i--){var g=gears[i];var pe=project(g.x,g.y,g.z),pE=project(g.x+g.outerR,g.y,g.z),sr=Math.abs(pE[0]-pe[0])+6;if(Math.sqrt((sx-pe[0])**2+(sy-pe[1])**2)<sr)return{obj:g,type:'gear'};}
-  for(var i=racks.length-1;i>=0;i--){var rack=racks[i],hl=rackHalfLen(rack),pl=project(rack.x-hl,rack.y,rack.z),pr2=project(rack.x+hl,rack.y,rack.z),ax=pr2[0]-pl[0],ay=pr2[1]-pl[1],l2=ax*ax+ay*ay||1,t=Math.max(0,Math.min(1,((sx-pl[0])*ax+(sy-pl[1])*ay)/l2)),d=Math.sqrt((sx-pl[0]-t*ax)**2+(sy-pl[1]-t*ay)**2);if(d<20)return{obj:rack,type:'rack'};}
-  for(var i=shafts.length-1;i>=0;i--){var sh=shafts[i],spT=project(sh.x,sh.y+sh.length/2,sh.z),spB=project(sh.x,sh.y-sh.length/2,sh.z),dx2=spT[0]-spB[0],dy2=spT[1]-spB[1],l2=dx2*dx2+dy2*dy2||1,t=Math.max(0,Math.min(1,((sx-spB[0])*dx2+(sy-spB[1])*dy2)/l2)),d=Math.sqrt((sx-spB[0]-t*dx2)**2+(sy-spB[1]-t*dy2)**2);if(d<12)return{obj:sh,type:'shaft'};}
-  for(var i=crankPins.length-1;i>=0;i--){var p=crankPins[i],pp=project(p.worldX,p.worldY+.7,p.worldZ);if(Math.sqrt((sx-pp[0])**2+(sy-pp[1])**2)<16)return{obj:p,type:'pin'};}
-  for(var i=sliders.length-1;i>=0;i--){var sl=sliders[i],ps=project(sl.x,sl.y,sl.z);if(Math.sqrt((sx-ps[0])**2+(sy-ps[1])**2)<22)return{obj:sl,type:'slider'};}
-  return null;}
-
-// ─── GIZMO ────────────────────────────────────────
-var GIZMO_BASE_LEN=5.5,GIZMO_BASE_SR=0.15,GIZMO_BASE_HR=0.45,GIZMO_BASE_HH=0.9;
-function getObjRadius(obj){if(!obj)return 1;if(obj.type==='gear')return obj.outerR||3;if(obj.type==='shaft')return Math.max(obj.length*.25,2);if(obj.type==='rack')return rackHalfLen(obj)*.35;if(obj.type==='slider')return(obj.railLen||20)*.12;return 2;}
-function renderGizmo(obj){
-  var ox=obj.x||0,oy=obj.y||0,oz=obj.z||0,ds=vlen(vsub(_EYE,v3(ox,oy,oz)))/40;
-  var os=Math.max(getObjRadius(obj)*.55,ds*GIZMO_BASE_LEN)/GIZMO_BASE_LEN,tl=GIZMO_BASE_LEN*os,hh=GIZMO_BASE_HH*os,sl=tl-hh,hr=GIZMO_BASE_HR*os,sr=GIZMO_BASE_SR*os;
-  gizmoHandles={};
-  [{dir:v3(1,0,0),color:'#ef4444',key:'x'},{dir:v3(0,1,0),color:'#22c55e',key:'y'},{dir:v3(0,0,1),color:'#3b82f6',key:'z'}].forEach(function(ax){
-    var cb=vadd(v3(ox,oy,oz),vscale(ax.dir,sl)),mid=vadd(v3(ox,oy,oz),vscale(ax.dir,sl/2)),up=Math.abs(ax.dir.y)>.98?v3(1,0,0):v3(0,1,0),right=vnorm(vcross(ax.dir,up)),fwd=vcross(right,ax.dir);
-    var Mrot=[right.x,ax.dir.x,fwd.x,0,right.y,ax.dir.y,fwd.y,0,right.z,ax.dir.z,fwd.z,0,0,0,0,1];
-    buildAndRenderCylinder(mmul(mtrans(mid.x,mid.y,mid.z),Mrot),sr,sl,8,ax.color);
-    buildAndRenderCone(mmul(mtrans(cb.x,cb.y,cb.z),Mrot),hr,hh,10,ax.color);
-    var tip=vadd(v3(ox,oy,oz),vscale(ax.dir,tl)),ptip=project(tip.x,tip.y,tip.z),porig=project(ox,oy,oz);
-    gizmoHandles[ax.key]={sx:ptip[0],sy:ptip[1],ox:porig[0],oy:porig[1],hitR:Math.max(22,hr*canvas.width/18),ax:ax.dir};});}
-function hitGizmoAxis(sx,sy){
-  if(!gizmoTarget)return null;var best=null,bestD=9999;
-  ['x','y','z'].forEach(function(k){var h=gizmoHandles[k];if(!h)return;var ax=h.sx-h.ox,ay=h.sy-h.oy,l2=ax*ax+ay*ay;var t=l2>0?Math.max(0,Math.min(1,((sx-h.ox)*ax+(sy-h.oy)*ay)/l2)):0;var d=Math.sqrt((sx-h.ox-t*ax)**2+(sy-h.oy-t*ay)**2);if(d<h.hitR&&d<bestD){bestD=d;best=k;}});return best;}
-function rayFromScreen(sx,sy){var ndcX=(sx/canvas.width)*2-1,ndcY=1-(sy/canvas.height)*2,fov=Math.PI/3.4,asp=canvas.width/canvas.height,hH=Math.tan(fov/2),hW=hH*asp,fwd=vnorm(vsub(v3(CAM.tx,CAM.ty,CAM.tz),_EYE)),right=vnorm(vcross(fwd,v3(0,1,0))),up=vcross(right,fwd);return{orig:_EYE,dir:vnorm(vadd(vadd(fwd,vscale(right,ndcX*hW)),vscale(up,ndcY*hH)))};}
-function rayPlaneIntersect(ray,plN,plD){var den=vdot(plN,ray.dir);if(Math.abs(den)<1e-6)return null;var t=(plD-vdot(plN,ray.orig))/den;if(t<0)return null;return vadd(ray.orig,vscale(ray.dir,t));}
-
-// ─── RENDER OBJECTS ───────────────────────────────
-function renderGear(g){
-  var hl=(hovered&&hovered.obj===g)||(gizmoTarget===g);
-  var mg=mode==='spin'&&(hovered&&hovered.obj===g||spinTarget===g);
-  buildAndRenderGear(mmul(mtrans(g.x,g.y,g.z),mrotY(g.angle)),g.teeth,g.color,g.isMotor,hl,mg);}
-function renderShaft(sh){buildAndRenderShaft(sh,(hovered&&hovered.obj===sh)||(gizmoTarget===sh));}
-function renderRackObj(rack){
-  var hl=(hovered&&hovered.obj===rack)||(gizmoTarget===rack);
-  buildAndRenderRack(rack,hl);
-  if(rack.meshGear){var sp=project(rack.x,rack.y+RACK_BASE_H*.5+.5,rack.z-rack.meshGear.pr);ctx.save();ctx.font='bold 10px JetBrains Mono,monospace';ctx.fillStyle='rgba(100,116,139,0.9)';ctx.textAlign='center';ctx.fillText('↔',sp[0],sp[1]);ctx.restore();}}
-function renderPin(pin){
-  var gx=pin.gear.x,gy=pin.gear.y,gz=pin.gear.z,px=pin.worldX,pz=pin.worldZ,cx=(gx+px)/2,cz=(gz+pz)/2,dx=px-gx,dz2=pz-gz,len=Math.sqrt(dx*dx+dz2*dz2)||.01;
-  buildAndRenderCylinder(mmul(mtrans(cx,gy+.7,cz),mmul(mrotY(-Math.atan2(dz2,dx)),mrotZ(Math.PI/2))),.1,len,8,'#886644');
-  var hl=(hovered&&hovered.obj===pin)||(rodMode&&rodEndA===pin);
-  buildAndRenderCylinder(mtrans(px,pin.worldY+.7,pz),.44,.65,12,hl?'#ffe060':'#f0b429');}
-function renderRod(rod){
-  var a=getEndPos(rod.endA),b=getEndPos(rod.endB);if(!a||!b)return;
-  var dx=b.x-a.x,dy=b.y-a.y,dz=b.z-a.z,len=Math.sqrt(dx*dx+dy*dy+dz*dz);if(len<.01)return;
-  var cx=(a.x+b.x)/2,cy=(a.y+b.y)/2,cz=(a.z+b.z)/2,dir=vnorm(v3(dx,dy,dz)),up=Math.abs(dir.y)>.98?v3(1,0,0):v3(0,1,0),right=vnorm(vcross(dir,up)),fwd=vcross(right,dir);
-  var Mr=[right.x,dir.x,fwd.x,0,right.y,dir.y,fwd.y,0,right.z,dir.z,fwd.z,0,0,0,0,1];
-  buildAndRenderCylinder(mmul(mtrans(cx,cy,cz),Mr),.22,len,10,'#f59e0b');
-  [[a.x,a.y,a.z],[b.x,b.y,b.z]].forEach(function(p){buildAndRenderCylinder(mtrans(p[0],p[1],p[2]),.36,.36,12,'#fde68a');});}
-function renderSlider(sl){
-  var hl=(hovered&&hovered.obj===sl)||(rodMode&&rodEndA===sl);
-  buildAndRenderCylinder(mmul(mtrans((sl.railXMin+sl.railXMax)/2,sl.y,sl.z),mrotZ(Math.PI/2)),.2,sl.railLen,12,'#2a3a4a');
-  [[sl.railXMin,sl.y,sl.z],[sl.railXMax,sl.y,sl.z]].forEach(function(p){buildAndRenderCylinder(mmul(mtrans(p[0],p[1],p[2]),mrotZ(Math.PI/2)),.55,.3,12,'#334455');});
-  buildAndRenderBox(mtrans(sl.x,sl.y,sl.z),2.2,1.4,1.4,hl?'#3dffc0':'#14b8a6',hl);
-  buildAndRenderCylinder(mtrans(sl.x,sl.y+.85,sl.z),.38,.7,12,'#f0b429');}
-
-// ─── SNAP INDICATOR ───────────────────────────────
-var snapEl=document.getElementById('snapIndicator');
-function updateSnapIndicator(){
-  if(mode!=='gizmo'||!gizmoTarget||gizmoTarget.type!=='gear'){snapEl.style.display='none';return;}
-  var g=gizmoTarget,nearShaft=null;for(var i=0;i<shafts.length;i++){if(gearNearShaft(g,shafts[i])){nearShaft=shafts[i];break;}}
-  if(!nearShaft){snapEl.style.display='none';return;}
-  var sp=project(nearShaft.x,g.y,nearShaft.z);snapEl.style.left=sp[0]+'px';snapEl.style.top=sp[1]+'px';snapEl.style.display='block';}
-
-// ─── TOOLTIP ──────────────────────────────────────
-function updateTooltip(){
-  var tt=document.getElementById('tooltip');
-  if(!hovered||gizmoDragAxis||spinDragging){tt.style.display='none';return;}
-  var o=hovered.obj,t=hovered.type,title='',a='',rpm='',trq='',extra='';
-  if(t==='gear'){title=o.isMotor?'⚡ MOTOR':'⚙ ENGRANAJE';a=o.teeth+'Z · R='+o.pr.toFixed(1);rpm=o.currentRPM.toFixed(1)+' rpm';trq=o.currentTorque.toFixed(2)+' Nm';var sh=gearShaft(o);extra=sh?'Eje montado':(o.connectedTo.length+' enlaces');}
-  else if(t==='rack'){title='⊟ CREMALLERA';a=o.numTeeth+'Z';rpm=o.meshGear?'⚡ Accionada':'Libre';trq='—';extra='x='+o.x.toFixed(1);}
-  else if(t==='shaft'){title='| EJE';a='L='+o.length;rpm=o.currentRPM.toFixed(1)+' rpm';trq='—';extra=o.mountedGears.length+' engranajes';}
-  else if(t==='pin'){title='⊙ PASADOR';a='R='+o.offsetR.toFixed(2);rpm=o.gear.currentRPM.toFixed(1)+' rpm';trq='—';extra='Doble clic editar';}
-  else if(t==='slider'){title='▬ CORREDERA';a='X='+o.x.toFixed(2);rpm='—';trq='—';extra='Guía='+o.railLen;}
-  document.getElementById('tt-title').textContent=title;document.getElementById('tt-a').textContent=a;
-  document.getElementById('tt-rpm').textContent=rpm;document.getElementById('tt-trq').textContent=trq;
-  document.getElementById('tt-z').textContent=extra;
-  tt.style.left=(mouseS.x+18)+'px';tt.style.top=(mouseS.y-12)+'px';tt.style.display='block';}
-
-// ─── DROPDOWN ─────────────────────────────────────
-var openDropId=null;
-function toggleDrop(id){if(openDropId===id){closeDrop();return;}closeDrop();openDropId=id;document.getElementById(id).classList.add('open');}
-function closeDrop(){if(openDropId){document.getElementById(openDropId).classList.remove('open');openDropId=null;}}
-document.addEventListener('mousedown',function(e){if(!e.target.closest('.drop-panel')&&!e.target.closest('.tb.has-drop'))closeDrop();});
-
-// ─── THEME ────────────────────────────────────────
-var isDark=true;
-window.toggleTheme=function(){
-  isDark=!isDark;document.body.classList.toggle('light',!isDark);
-  document.getElementById('themeLabel').textContent=isDark?'Claro':'Oscuro';
-  // Actualizar el fondo de respaldo del canvas (CSS ya lo hace)
-};
-
-// ─── MODES ────────────────────────────────────────
-function setMode(m){
-  cancelSpecialModes();mode=m;
-  if(m!=='gizmo')gizmoTarget=null;
-  if(m!=='spin'){spinTarget=null;spinDragging=false;spinLastAngle=null;}
-  var modes=['orbit','pan','gizmo','spin'];
-  modes.forEach(function(id){var el=document.getElementById('tb-'+id);if(el){el.classList.remove('active');}});
-  var el=document.getElementById('tb-'+m);if(el)el.classList.add('active');
-  var modeInfo={orbit:{label:'ÓRBITA',cls:'',hint:'Arrastra para orbitar · Rueda: zoom · Shift+drag: pan'},pan:{label:'PAN',cls:'',hint:'Arrastra para desplazar · 2 dedos: pan'},gizmo:{label:'MOVER',cls:'amber',hint:'Clic pieza → arrastra flechas XYZ'},spin:{label:'GIRAR MANUAL',cls:'purple',hint:'Clic en engranaje → arrastra para girarlo'}};
-  var info=modeInfo[m]||modeInfo.orbit;
-  document.getElementById('sb-mode').textContent=info.label;document.getElementById('sb-mode').className='sb-mode '+(info.cls||'');
-  document.getElementById('sb-hint').textContent=info.hint;
-  document.getElementById('spinHint').style.display=m==='spin'?'block':'none';
-  canvas.className=m==='spin'?'cursor-spin':m==='gizmo'?'cursor-pointer':'cursor-grab';}
-
-function cancelSpecialModes(){
-  pendingPinMode=false;rodMode=false;rodEndA=null;
-  document.getElementById('btnPin').textContent='⊙ Activar Pasador';
-  document.getElementById('btnRod').textContent='↔ Activar Biela';
-  document.getElementById('pinInfo').classList.remove('show');
-  document.getElementById('rodInfo').classList.remove('show');}
-window.addEventListener('keydown',function(e){
-  if(e.key==='Escape'){cancelSpecialModes();gizmoDragAxis=null;spinDragging=false;spinTarget=null;spinLastAngle=null;if(mode==='gizmo')gizmoTarget=null;}
-  if(e.key==='1')setMode('orbit');if(e.key==='2')setMode('pan');if(e.key==='3')setMode('gizmo');if(e.key==='4')setMode('spin');});
-window.togglePinMode=function(){if(pendingPinMode){cancelSpecialModes();return;}cancelSpecialModes();pendingPinMode=true;document.getElementById('btnPin').textContent='✓ Clic en engranaje...';document.getElementById('pinInfo').textContent='Clic en un engranaje';document.getElementById('pinInfo').classList.add('show');};
-window.toggleRodMode=function(){if(rodMode&&!rodEndA){cancelSpecialModes();return;}cancelSpecialModes();rodMode=true;rodEndA=null;document.getElementById('btnRod').textContent='✓ Eligiendo puntos...';updateRodUI();};
-function updateRodUI(){var el=document.getElementById('rodInfo');el.classList.add('show');el.textContent=!rodEndA?'Paso 1: clic en pasador/corredera':'Paso 2: clic en segundo punto';}
-
-// ─── POINTER EVENTS ───────────────────────────────
-canvas.addEventListener('contextmenu',function(e){e.preventDefault();});
-canvas.addEventListener('pointerdown',function(e){
-  if(e.target.tagName==='INPUT'||e.target.tagName==='BUTTON')return;
-  if(e.pointerType==='touch'&&_touchCount>=2)return;
-  canvas.setPointerCapture(e.pointerId);
-  mouseS={x:e.offsetX,y:e.offsetY};lastMouse={x:e.offsetX,y:e.offsetY};isDragging=false;
-  var hit=hitTestScreen(e.offsetX,e.offsetY);
-
-  // SPECIAL MODES
-  if(rodMode){if(hit&&(hit.type==='pin'||hit.type==='slider')){if(!rodEndA){rodEndA=hit.obj;updateRodUI();}else if(hit.obj!==rodEndA){var rod=addRod(rodEndA,hit.obj);if(rod)rods.push(rod);rodEndA=null;cancelSpecialModes();}}return;}
-  if(pendingPinMode){if(hit&&hit.type==='gear'){var r2=Math.min(parseFloat(document.getElementById('pinRadius').value)||3,hit.obj.outerR*.9);addCrankPin(hit.obj,r2);}cancelSpecialModes();return;}
-
-  // SPIN MODE
-  if(mode==='spin'){
-    if(hit&&hit.type==='gear'){
-      spinTarget=hit.obj;spinDragging=true;
-      // Compute screen angle from gear center to current mouse
-      var pe=project(hit.obj.x,hit.obj.y,hit.obj.z);
-      spinLastAngle=Math.atan2(e.offsetY-pe[1],e.offsetX-pe[0]);
-      canvas.className='cursor-grabbing';
+// ---- shell ----
+While(vivo)
+{
+    Console:Read("Into;linea","Prompt;logos>")
+    Set:cmd("Value;linea.trim().split(' ')[0].toLowerCase()")
+    Set:arg("Value;linea.trim().split(' ').slice(1).join(' ')")
+    If(cmd=='')
+    {
+        Continue
     }
-    return;}
+    If(cmd=='help')
+    {
+        Console:Print("Text;help ver clear ls cat <f> echo <t> mem ps")
+        Console:Print("Text;uptime run <app> panic halt")
+    }
+    ElseIf(cmd=='ver')
+    {
+        Console:Print("Text;LOGOS 0.1 (kernel escrito en Log-)")
+    }
+    ElseIf(cmd=='clear')
+    {
+        Console:Clear
+    }
+    ElseIf(cmd=='ls')
+    {
+        Disk:List("Into;archivos")
+        Each:f(archivos)
+        {
+            Console:Print("Text;  {f}")
+        }
+    }
+    ElseIf(cmd=='cat')
+    {
+        Disk:Exists("File;{arg}","Into;ok")
+        If(ok==1)
+        {
+            Disk:Read("File;{arg}","Into;txt")
+            Console:Print("Text;{txt}")
+        }
+        Else
+        {
+            Console:Print("Text;cat: no existe {arg}","Color;#ff7b7b")
+        }
+    }
+    ElseIf(cmd=='echo')
+    {
+        Console:Print("Text;{arg}")
+    }
+    ElseIf(cmd=='mem')
+    {
+        Mem:Read("Addr;16","Into;ok","Size;4")
+        Console:Print("Text;RAM total: 1024 KB")
+        Console:Print("Text;ticks guardados en 0x10: {ok}")
+        Console:Print("Text;tabla de procesos (0x100): {procs} entradas")
+    }
+    ElseIf(cmd=='ps')
+    {
+        Console:Print("Text;PID  ESTADO  NOMBRE")
+        For:p(0,procs)
+        {
+            Console:Print("Text;{peek(256+p*16)}    {peek(257+p*16)}       {peekstr(258+p*16)}")
+        }
+    }
+    ElseIf(cmd=='uptime')
+    {
+        Console:Print("Text;encendido hace {ticks} s")
+    }
+    ElseIf(cmd=='run')
+    {
+        Call:spawn(arg)
+        Exec("File;{arg}","Into;codigo")
+        Console:Refresh
+        Console:Print("Text;proceso {arg} termino con codigo {codigo}")
+        Set:procs("Value;procs-1")
+    }
+    ElseIf(cmd=='panic')
+    {
+        Panic("Text;panico pedido desde el shell")
+    }
+    ElseIf(cmd=='halt')
+    {
+        Console:Print("Text;Apagando el sistema...")
+        Wait("ms;600")
+        Stop
+    }
+    Else
+    {
+        Console:Print("Text;comando desconocido: {cmd}","Color;#ff7b7b")
+    }
+}
+`,
+'hola.log+':`<log+>
+// Aplicacion de ejemplo. Desde el shell del kernel:  run hola.log+
+Console:Print("Text;Hola! Soy un proceso hijo (hola.log+)","Color;#ffd479")
+Console:Print("Text;args = [{args}]")
+`,
+'espiral.log+':`<log+>
+// Aplicacion grafica. Desde el shell del kernel:  run espiral.log+
+Screen:Clear("Color;black")
+For:i(0,300)
+{
+    Screen:Circle(160+i*0.45*cos(i/6),90+i*0.28*sin(i/6),2)("Color;hsl;i*1.2")
+}
+Wait("ms;1500")
+`,
+'LEEME.txt':`Archivos de ejemplo de Log OS
+kernel.log-   sistema operativo minimo (Log-)
+hola.log+     app de texto para el shell
+espiral.log+  app grafica para el shell
+Arrancar:  run # kernel.log-
+Autoarranque:  boot kernel.log-`};
+SEED['kernel.log-']=`<log->
+// KERNEL.LOG- v2 - sistema operativo minimo para Log OS
+// Ejecutalo con:  run # kernel.log-   (modo kernel: prioridad absoluta)
+// Para que arranque solo:  boot kernel.log-
+// Entradas: pulsa Teclado o Mouse debajo de la pantalla (o toca la pantalla).
+// Mapa de memoria:  0x0010 ticks (32 bits)  |  0x0100 tabla de procesos (16 bytes c/u)
+Screen:Resolution("W;318","H;180","Bits;24")
+Console:Init("Cols;53","Rows;20","Color;#9be7b4","Bg;#04110a")
+Var:U32:ticks("Value;0")
+Var:U8:procs("Value;0")
+Var:I32:codigo("Value;0")
+Var:I32:ok("Value;0")
+Var:I32:vivo("Value;1")
+Var:I32:modo("Value;0")
+Var:I32:mx("Value;159")
+Var:I32:my("Value;90")
+Var:I32:mb("Value;0")
+Var:I32:ox("Value;159")
+Var:I32:oy("Value;90")
+Var:STR:linea("Text;")
+Var:STR:cmd("Text;")
+Var:STR:arg("Text;")
+Var:STR:txt("Text;")
+Var:STR:archivos("List;")
 
-  // GIZMO MODE
-  if(mode==='gizmo'){
-    if(hit&&hit.type==='gizmoAxis'){
-      gizmoDragAxis=hit.axis;var obj=gizmoTarget,ox=obj.x||0,oy=obj.y||0,oz=obj.z||0;
-      var axisVec={x:v3(1,0,0),y:v3(0,1,0),z:v3(0,0,1)}[gizmoDragAxis];
-      var toEye=vnorm(vsub(_EYE,v3(ox,oy,oz))),side=vcross(toEye,axisVec);
-      gizmoScratchPlaneN=vnorm(vcross(axisVec,side));gizmoScratchD=vdot(gizmoScratchPlaneN,v3(ox,oy,oz));
-      gizmoDragStartWorld=rayPlaneIntersect(rayFromScreen(e.offsetX,e.offsetY),gizmoScratchPlaneN,gizmoScratchD);
-      canvas.className='cursor-grabbing';return;}
-    if(hit&&hit.type!=='gizmoAxis'){var now2=Date.now();if(now2-lastClickTime<DBL_MS&&lastClickObj===hit.obj){lastClickTime=0;lastClickObj=null;openEdit(hit.obj,hit.type);return;}lastClickTime=now2;lastClickObj=hit.obj;gizmoTarget=hit.obj;return;}
-    if(e.shiftKey){panDrag=true;canvas.className='cursor-grabbing';}else gizmoTarget=null;return;}
+// servicio del kernel: registra un proceso en la tabla (0x0100)
+Def:spawn(nombre)
+{
+    Mem:Write("Addr;256+procs*16","Value;procs+1")
+    Mem:Write("Addr;257+procs*16","Value;1")
+    Mem:WriteText("Addr;258+procs*16","Text;{nombre}")
+    Set:procs("Value;procs+1")
+}
 
-  // ORBIT / PAN
-  var now=Date.now();
-  if(hit&&now-lastClickTime<DBL_MS&&lastClickObj===hit.obj){lastClickTime=0;lastClickObj=null;openEdit(hit.obj,hit.type);return;}
-  if(hit){lastClickTime=now;lastClickObj=hit.obj;}
-  if(e.shiftKey||mode==='pan'){panDrag=true;}else{orbitDrag=true;}
-  canvas.className='cursor-grabbing';});
+// servicio del kernel: borra el cursor anterior y dibuja el nuevo
+Def:cursor()
+{
+    Screen:Rect(ox-1,oy-1,12,16)("Color;#000000")
+    Screen:Rect(0,0,60,10)("Color;#000000")
+    Screen:Line(mx,my,mx,my+11)("Color;#ffffff")
+    Screen:Line(mx,my,mx+8,my+8)("Color;#ffffff")
+    Screen:Line(mx,my+11,mx+3,my+8)("Color;#ffffff")
+    Screen:Line(mx+3,my+8,mx+8,my+8)("Color;#ffffff")
+    Screen:Text(2,1)("Text;{mx},{my}","Color;#9be7b4")
+    Set:ox("Value;mx")
+    Set:oy("Value;my")
+}
 
-canvas.addEventListener('pointermove',function(e){
-  mouseS={x:e.offsetX,y:e.offsetY};
-  var dx=e.offsetX-lastMouse.x,dy=e.offsetY-lastMouse.y;
-  if(dx*dx+dy*dy>4)isDragging=true;
-  if(e.pointerType==='touch'&&_touchCount>=2){lastMouse={x:e.offsetX,y:e.offsetY};return;}
+// interrupcion del reloj: una vez por segundo
+On:Timer("Every;1000")
+{
+    Set:ticks("Value;ticks+1")
+    Mem:Write("Addr;16","Value;ticks","Size;4")
+}
 
-  // SPIN MODE drag
-  if(mode==='spin'&&spinDragging&&spinTarget){
-    var pe=project(spinTarget.x,spinTarget.y,spinTarget.z);
-    var curAngle=Math.atan2(e.offsetY-pe[1],e.offsetX-pe[0]);
-    var delta=curAngle-spinLastAngle;
-    // Normalize
-    while(delta>Math.PI)delta-=Math.PI*2;while(delta<-Math.PI)delta+=Math.PI*2;
-    spinGearManual(spinTarget,delta);
-    // Actualizar pines y cinemática inmediatamente para que la corredera responda en tiempo real
-    crankPins.forEach(updatePinPos);
-    solveKinematics();
-    updateRackKinematics(0);
-    spinLastAngle=curAngle;lastMouse={x:e.offsetX,y:e.offsetY};return;}
+// interrupciones del mouse y del teclado (variables mx, my, mb y key)
+On:Mouse("Move")
+{
+    If(modo==1)
+    {
+        Call:cursor()
+    }
+}
+On:Mouse("Down")
+{
+    If(modo==1&&mb==2)
+    {
+        Set:modo("Value;0")
+        Console:Refresh
+    }
+}
+On:Key("Down")
+{
+    If(modo==1&&key=='Escape')
+    {
+        Set:modo("Value;0")
+        Console:Refresh
+    }
+}
 
-  // GIZMO drag
-  if(gizmoDragAxis&&gizmoTarget&&gizmoScratchPlaneN){
-    var ray=rayFromScreen(e.offsetX,e.offsetY),pt=rayPlaneIntersect(ray,gizmoScratchPlaneN,gizmoScratchD);
-    if(pt&&gizmoDragStartWorld){var dv=vsub(pt,gizmoDragStartWorld),axisVec={x:v3(1,0,0),y:v3(0,1,0),z:v3(0,0,1)}[gizmoDragAxis],move=vdot(dv,axisVec);
-      if(gizmoDragAxis==='x')gizmoTarget.x+=move;else if(gizmoDragAxis==='y')gizmoTarget.y+=move;else gizmoTarget.z+=move;
-      gizmoDragStartWorld=pt;
-      if(gizmoTarget.type==='gear'){crankPins.forEach(function(p){if(p.gear===gizmoTarget)updatePinPos(p);});shafts.forEach(function(sh){if(gearNearShaft(gizmoTarget,sh))snapGearToShaft(gizmoTarget,sh);});}}
-    lastMouse={x:e.offsetX,y:e.offsetY};return;}
+// ---- arranque ----
+Console:Print("Text;LOGOS 0.2 - kernel en Log-","Color;#ffffff")
+Wait("ms;300")
+Console:Print("Text;CPU 3.0 GHz ............ OK")
+Mem:Fill("Addr;1024","Len;4096","Value;170")
+Mem:Read("Addr;3000","Into;ok")
+If(ok!=170)
+{
+    Panic("Text;fallo en la prueba de memoria")
+}
+Mem:Fill("Addr;1024","Len;4096","Value;0")
+Console:Print("Text;RAM 1024 KB ........... OK")
+Wait("ms;300")
+Disk:List("Into;archivos")
+Console:Print("Text;Disco: {archivos.length} archivos ... OK")
+Console:Print("Text;Mouse y teclado ........ OK")
+Call:spawn('init')
+Call:spawn('shell')
+Console:Print("Text;Procesos iniciados: {procs}")
+Console:Print("Text;Escribe help para ver los comandos.")
+Console:Print("Text;")
 
-  if(orbitDrag){CAM.theta-=dx*.007;CAM.phi=Math.max(.08,Math.min(Math.PI-.08,CAM.phi+dy*.007));}
-  else if(panDrag){var fwd=vnorm(vsub(v3(CAM.tx,CAM.ty,CAM.tz),_EYE)),right=vnorm(vcross(fwd,v3(0,1,0))),up=vcross(right,fwd),spd=CAM.radius*.009;CAM.tx-=right.x*dx*spd+up.x*dy*spd;CAM.ty-=right.y*dx*spd+up.y*dy*spd;CAM.tz-=right.z*dx*spd+up.z*dy*spd;}
-  else{hovered=hitTestScreen(e.offsetX,e.offsetY);
-    if(mode==='gizmo'&&gizmoTarget){var hovAxis=hitGizmoAxis(e.offsetX,e.offsetY);canvas.className=hovAxis?'cursor-crosshair':hovered?'cursor-pointer':'cursor-grab';}
-    else if(mode==='spin'){canvas.className=hovered&&hovered.type==='gear'?'cursor-spin':'cursor-crosshair';}
-    else canvas.className=hovered?'cursor-grab':'cursor-grab';}
-  lastMouse={x:e.offsetX,y:e.offsetY};});
-
-canvas.addEventListener('pointerup',function(){
-  orbitDrag=false;panDrag=false;gizmoDragAxis=null;
-  if(spinDragging){spinDragging=false;spinLastAngle=null;}
-  canvas.className=mode==='spin'?'cursor-spin':mode==='gizmo'?'cursor-pointer':'cursor-grab';});
-canvas.addEventListener('wheel',function(e){e.preventDefault();CAM.radius=Math.max(5,Math.min(220,CAM.radius*(e.deltaY>0?1.07:.935)));},{passive:false});
-
-// Touch
-var _tc={},_tcPrev={},_touchCount=0;
-canvas.addEventListener('touchstart',function(e){_touchCount=e.touches.length;for(var i=0;i<e.changedTouches.length;i++){var t=e.changedTouches[i];_tc[t.identifier]={x:t.clientX,y:t.clientY};_tcPrev[t.identifier]={x:t.clientX,y:t.clientY};}if(_touchCount>=2){orbitDrag=false;panDrag=false;}},{passive:true});
-canvas.addEventListener('touchmove',function(e){e.preventDefault();_touchCount=e.touches.length;for(var i=0;i<e.changedTouches.length;i++){var t=e.changedTouches[i],prev=_tc[t.identifier];_tcPrev[t.identifier]=prev?{x:prev.x,y:prev.y}:{x:t.clientX,y:t.clientY};_tc[t.identifier]={x:t.clientX,y:t.clientY};}var ids=Object.keys(_tc);if(ids.length>=2){var a=_tc[ids[0]],b=_tc[ids[1]],ap=_tcPrev[ids[0]]||a,bp=_tcPrev[ids[1]]||b,d=Math.hypot(b.x-a.x,b.y-a.y),dp=Math.hypot(bp.x-ap.x,bp.y-ap.y);if(dp>4&&d>4)CAM.radius=Math.max(5,Math.min(220,CAM.radius*(dp/d)));var cx=(a.x+b.x)/2,cy=(a.y+b.y)/2,cpx=(ap.x+bp.x)/2,cpy=(ap.y+bp.y)/2,ddx=cx-cpx,ddy=cy-cpy;if(Math.abs(ddx)+Math.abs(ddy)>.3){var eye2=camEye(),fwd2=vnorm(vsub(v3(CAM.tx,CAM.ty,CAM.tz),eye2)),rt2=vnorm(vcross(fwd2,v3(0,1,0))),up2=vcross(rt2,fwd2),spd2=CAM.radius*.016;CAM.tx-=rt2.x*ddx*spd2+up2.x*ddy*spd2;CAM.ty-=rt2.y*ddx*spd2+up2.y*ddy*spd2;CAM.tz-=rt2.z*ddx*spd2+up2.z*ddy*spd2;}}},{passive:false});
-canvas.addEventListener('touchend',function(e){for(var i=0;i<e.changedTouches.length;i++){delete _tc[e.changedTouches[i].identifier];delete _tcPrev[e.changedTouches[i].identifier];}_touchCount=e.touches.length;},{passive:true});
-
-// ─── EDIT MODAL ───────────────────────────────────
-function openEdit(obj,type){
-  editTarget=obj;editType=type;document.getElementById('editOverlay').style.display='flex';
-  ['eRowTeeth','motorProps','pinProps','sliderPropEdit','shaftProps','rackProps'].forEach(function(id){document.getElementById(id).style.display='none';});
-  if(type==='gear'){document.getElementById('editTitle').textContent=obj.isMotor?'⚡ Motor':'⚙ Engranaje';document.getElementById('eRowTeeth').style.display='flex';document.getElementById('editTeeth').value=obj.teeth;if(obj.isMotor){document.getElementById('motorProps').style.display='flex';document.getElementById('editRPM').value=obj.rpm;document.getElementById('editTorque').value=obj.torque;}}
-  else if(type==='rack'){document.getElementById('editTitle').textContent='⊟ Cremallera';document.getElementById('rackProps').style.display='flex';document.getElementById('editRackTeeth').value=obj.numTeeth;}
-  else if(type==='shaft'){document.getElementById('editTitle').textContent='| Eje';document.getElementById('shaftProps').style.display='flex';document.getElementById('editShaftLen').value=obj.length;document.getElementById('editShaftR').value=obj.radius;}
-  else if(type==='pin'){document.getElementById('editTitle').textContent='⊙ Pasador';document.getElementById('pinProps').style.display='flex';document.getElementById('editPinR').value=obj.offsetR.toFixed(2);}
-  else if(type==='slider'){document.getElementById('editTitle').textContent='▬ Corredera';document.getElementById('sliderPropEdit').style.display='flex';document.getElementById('editSliderLen').value=obj.railLen;}}
-window.saveEdit=function(){
-  if(!editTarget)return;
-  if(editType==='gear'){var nt=parseInt(document.getElementById('editTeeth').value)||editTarget.teeth;editTarget.teeth=nt;editTarget.pr=gearPR(nt);editTarget.outerR=editTarget.pr+MODULE*.78;if(editTarget.isMotor){editTarget.rpm=parseFloat(document.getElementById('editRPM').value)||0;editTarget.torque=parseFloat(document.getElementById('editTorque').value)||0;}}
-  else if(editType==='rack'){editTarget.numTeeth=parseInt(document.getElementById('editRackTeeth').value)||editTarget.numTeeth;}
-  else if(editType==='shaft'){editTarget.length=parseFloat(document.getElementById('editShaftLen').value)||editTarget.length;editTarget.radius=parseFloat(document.getElementById('editShaftR').value)||editTarget.radius;}
-  else if(editType==='pin'){editTarget.offsetR=parseFloat(document.getElementById('editPinR').value)||editTarget.offsetR;}
-  else if(editType==='slider'){var nl=parseFloat(document.getElementById('editSliderLen').value)||editTarget.railLen,cx=(editTarget.railXMin+editTarget.railXMax)/2;editTarget.railLen=nl;editTarget.railXMin=cx-nl/2;editTarget.railXMax=cx+nl/2;}
-  closeEdit();};
-window.deleteSelected=function(){
-  if(!editTarget)return;
-  if(editType==='gear'){crankPins.filter(function(p){return p.gear===editTarget;}).forEach(removeCrankPin);unmountGearFromShafts(editTarget);gears.splice(gears.indexOf(editTarget),1);if(gizmoTarget===editTarget)gizmoTarget=null;if(spinTarget===editTarget)spinTarget=null;}
-  else if(editType==='rack')racks.splice(racks.indexOf(editTarget),1);
-  else if(editType==='shaft')shafts.splice(shafts.indexOf(editTarget),1);
-  else if(editType==='pin')removeCrankPin(editTarget);
-  else if(editType==='slider'){rods=rods.filter(function(r){return r.endA!==editTarget&&r.endB!==editTarget;});sliders.splice(sliders.indexOf(editTarget),1);}
-  closeEdit();};
-window.closeEdit=function(){document.getElementById('editOverlay').style.display='none';editTarget=null;};
-
-// ─── SCENE ────────────────────────────────────────
-window.clearAll=function(silent){if(!silent&&!confirm('¿Borrar todo?'))return;gears.length=0;shafts.length=0;crankPins.length=0;rods.length=0;sliders.length=0;racks.length=0;gizmoTarget=null;spinTarget=null;};
-window.closeIntro=function(){document.getElementById('introBanner').style.display='none';};
-window.loadDemoAndClose=function(){closeIntro();clearAll(true);var motor=addGear(18,-10,0);makeMotor(motor,60,10);var pin=addCrankPin(motor,4,0);var sl=addSlider(4,0,26);sl.x=6;sl.railXMin=-4;sl.railXMax=10;var rod=addRod(pin,sl);if(rod){rod.nominalLength=14;rod.sliderSign=1;rods.push(rod);}CAM.theta=.55;CAM.phi=1.0;CAM.radius=42;CAM.tx=-2;CAM.ty=0;CAM.tz=0;};
-
-// ─── ANIMATION LOOP ───────────────────────────────
-var lastTime=0;
-function animate(now){
-  requestAnimationFrame(animate);
-  var delta=Math.min((now-lastTime)/1000,.05);lastTime=now;
-  updateShaftMounts();updateConnections();propagatePhysics();
-  // Motor-driven rotation (don't drive spin-target externally if spinning)
-  gears.forEach(function(g){if(g.currentAngularVel&&!(mode==='spin'&&spinDragging&&spinTarget===g))g.angle+=g.currentAngularVel*delta;});
-  crankPins.forEach(updatePinPos);solveKinematics();
-  updateRackKinematics(delta);
-
-  // Background (con clearRect extra para Safari)
-  var bgColor=document.body.classList.contains('light')?'#f0f2f5':'#111318';
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  ctx.fillStyle=bgColor;ctx.fillRect(0,0,canvas.width,canvas.height);
-  buildVP();drawGrid();
-
-  _faces=[];
-  racks.forEach(function(rack){buildAndRenderRack(rack,(hovered&&hovered.obj===rack)||(gizmoTarget===rack));});
-  shafts.forEach(renderShaft);rods.forEach(renderRod);sliders.forEach(renderSlider);
-  gears.forEach(renderGear);crankPins.forEach(renderPin);
-  if(mode==='gizmo'&&gizmoTarget)renderGizmo(gizmoTarget);
-  flushFaces();
-  racks.forEach(renderRackObj);
-
-  // Vignette (dark only)
-  if(!document.body.classList.contains('light')){var vig=ctx.createRadialGradient(canvas.width/2,canvas.height/2,canvas.height*.28,canvas.width/2,canvas.height/2,canvas.height*.82);vig.addColorStop(0,'rgba(0,0,0,0)');vig.addColorStop(1,'rgba(0,0,0,0.35)');ctx.fillStyle=vig;ctx.fillRect(0,0,canvas.width,canvas.height);}
-
-  // Gizmo labels
-  if(mode==='gizmo'&&gizmoTarget){
-    var hovAxis=gizmoDragAxis||hitGizmoAxis(mouseS.x,mouseS.y);
-    ctx.font='bold 13px JetBrains Mono,monospace';
-    [['x','#ef4444'],['y','#22c55e'],['z','#3b82f6']].forEach(function(pair){var h=gizmoHandles[pair[0]];if(!h)return;var iH=hovAxis===pair[0];if(iH){ctx.beginPath();ctx.arc(h.sx,h.sy,12,0,Math.PI*2);ctx.fillStyle=pair[1]+'44';ctx.fill();ctx.strokeStyle=pair[1];ctx.lineWidth=2;ctx.stroke();}ctx.fillStyle=iH?'#ffffff':pair[1];ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(pair[0].toUpperCase(),h.sx,h.sy-16);});ctx.textBaseline='alphabetic';}
-
-  // Spin mode target ring
-  if(mode==='spin'&&(hovered&&hovered.type==='gear'||spinTarget)){ 
-    var g=spinDragging?spinTarget:(hovered&&hovered.type==='gear'?hovered.obj:null);
-    if(g){var pe=project(g.x,g.y,g.z),pE=project(g.x+g.outerR*.9,g.y,g.z),sr=Math.abs(pE[0]-pe[0]);ctx.save();ctx.beginPath();ctx.arc(pe[0],pe[1],sr,0,Math.PI*2);ctx.strokeStyle='rgba(168,85,247,0.7)';ctx.lineWidth=2.5;ctx.setLineDash([6,4]);ctx.stroke();ctx.setLineDash([]);ctx.restore();}}
-
-  // Shaft gear counts
-  shafts.forEach(function(sh){if(!sh.mountedGears.length)return;var sp=project(sh.x,sh.y+sh.length/2+1,sh.z);ctx.font='bold 10px JetBrains Mono,monospace';ctx.fillStyle='rgba(168,85,247,0.9)';ctx.textAlign='center';ctx.fillText('⚙×'+sh.mountedGears.length,sp[0],sp[1]);});
-
-  updateTooltip();updateSnapIndicator();}
-requestAnimationFrame(animate);
-setMode('orbit');
-</script>
-
-</body>
-</html>
+// ---- shell ----
+While(vivo)
+{
+    If(modo==1)
+    {
+        Wait("ms;30")
+        Continue
+    }
+    Console:Read("Into;linea","Prompt;logos>")
+    Set:cmd("Value;linea.trim().split(' ')[0].toLowerCase()")
+    Set:arg("Value;linea.trim().split(' ').slice(1).join(' ')")
+    If(cmd=='')
+    {
+        Continue
+    }
+    If(cmd=='help')
+    {
+        Console:Print("Text;help ver clear ls cat <f> echo <t> mem ps")
+        Console:Print("Text;uptime mouse gui run <app> panic halt")
+    }
+    ElseIf(cmd=='ver')
+    {
+        Console:Print("Text;LOGOS 0.2 (kernel escrito en Log-)")
+    }
+    ElseIf(cmd=='clear')
+    {
+        Console:Clear
+    }
+    ElseIf(cmd=='gui')
+    {
+        Set:modo("Value;1")
+        Set:ox("Value;mx")
+        Set:oy("Value;my")
+        Screen:Clear("Color;#000000")
+        Screen:Text(2,170)("Text;Esc o clic derecho: salir","Color;#7f8c85")
+        Call:cursor()
+    }
+    ElseIf(cmd=='mouse')
+    {
+        Console:Print("Text;mouse en {mx},{my} boton {mb}")
+    }
+    ElseIf(cmd=='ls')
+    {
+        Disk:List("Into;archivos")
+        Each:f(archivos)
+        {
+            Console:Print("Text;  {f}")
+        }
+    }
+    ElseIf(cmd=='cat')
+    {
+        Disk:Exists("File;{arg}","Into;ok")
+        If(ok==1)
+        {
+            Disk:Read("File;{arg}","Into;txt")
+            Console:Print("Text;{txt}")
+        }
+        Else
+        {
+            Console:Print("Text;cat: no existe {arg}","Color;#ff7b7b")
+        }
+    }
+    ElseIf(cmd=='echo')
+    {
+        Console:Print("Text;{arg}")
+    }
+    ElseIf(cmd=='mem')
+    {
+        Mem:Read("Addr;16","Into;ok","Size;4")
+        Console:Print("Text;RAM total: 1024 KB")
+        Console:Print("Text;ticks guardados en 0x10: {ok}")
+        Console:Print("Text;tabla de procesos (0x100): {procs} entradas")
+    }
+    ElseIf(cmd=='ps')
+    {
+        Console:Print("Text;PID  ESTADO  NOMBRE")
+        For:p(0,procs)
+        {
+            Console:Print("Text;{peek(256+p*16)}    {peek(257+p*16)}       {peekstr(258+p*16)}")
+        }
+    }
+    ElseIf(cmd=='uptime')
+    {
+        Console:Print("Text;encendido hace {ticks} s")
+    }
+    ElseIf(cmd=='run')
+    {
+        Call:spawn(arg)
+        Exec("File;{arg}","Into;codigo")
+        Console:Refresh
+        Console:Print("Text;proceso {arg} termino con codigo {codigo}")
+        Set:procs("Value;procs-1")
+    }
+    ElseIf(cmd=='panic')
+    {
+        Panic("Text;panico pedido desde el shell")
+    }
+    ElseIf(cmd=='halt')
+    {
+        Console:Print("Text;Apagando el sistema...")
+        Wait("ms;600")
+        Stop
+    }
+    Else
+    {
+        Console:Print("Text;comando desconocido: {cmd}","Color;#ff7b7b")
+    }
+}
+`;
+SEED['LEEME.txt']=`Archivos de ejemplo de Log OS\nkernel.log-   sistema operativo con cursor\nhola.log+     app de texto\nespiral.log+  app grafica\nArrancar:  run # kernel.log-\nAutoarranque:  boot kernel.log-\nEn el shell: help, gui`;
+try{if(localStorage.getItem('logseed3')!=='1'){const k0=files['kernel.log-'];if(k0!==undefined&&!k0.includes('On:Mouse'))files['kernel.v1.log-']=k0;files['kernel.log-']=SEED['kernel.log-'];files['LEEME.txt']=SEED['LEEME.txt'];for(const k in SEED)if(files[k]===undefined)files[k]=SEED[k];localStorage.setItem('logseed3','1');sv()}}catch(_){for(const k in SEED)if(files[k]===undefined)files[k]=SEED[k]}
+const PM={x:0,y:0,last:null};
+function showDev(){$('#dev').hidden=false;CV.style.touchAction='none'}
+function mev(k,x,y,b){V.mx=x;V.my=y;PM.x=x;PM.y=y;if(b!==undefined)V.mb=b;if(!(R&&R.on))return;if(k==='mousemove'){if(R.mm)return;R.mm=1;fire(k).finally(()=>{if(R)R.mm=0})}else fire(k)}
+const cpos=e=>{const r=CV.getBoundingClientRect();return[Math.floor((e.clientX-r.left)/r.width*(res?res.w:1)),Math.floor((e.clientY-r.top)/r.height*(res?res.h:1))]};
+CV.addEventListener('pointermove',e=>{if(!res)return;const[x,y]=cpos(e);mev('mousemove',x,y)});
+CV.addEventListener('pointerdown',e=>{if(!res)return;const[x,y]=cpos(e);try{CV.setPointerCapture(e.pointerId)}catch(_){}mev('mousedown',x,y,e.button===2?2:1)});
+CV.addEventListener('pointerup',e=>{if(!res)return;const[x,y]=cpos(e);mev('mouseup',x,y,0)});
+CV.oncontextmenu=e=>e.preventDefault();
+const pdv=$('#pd');
+pdv.addEventListener('pointerdown',e=>{PM.last=[e.clientX,e.clientY];try{pdv.setPointerCapture(e.pointerId)}catch(_){}});
+pdv.addEventListener('pointermove',e=>{if(!PM.last||!res)return;const k=1.6*res.w/Math.max(1,pdv.clientWidth);const x=Math.max(0,Math.min(res.w-1,PM.x+(e.clientX-PM.last[0])*k)),y=Math.max(0,Math.min(res.h-1,PM.y+(e.clientY-PM.last[1])*k));PM.last=[e.clientX,e.clientY];mev('mousemove',x|0,y|0)});
+pdv.addEventListener('pointerup',()=>{PM.last=null});
+const padBtn=(id,b)=>{const e=$(id);e.addEventListener('pointerdown',()=>mev('mousedown',PM.x|0,PM.y|0,b));e.addEventListener('pointerup',()=>{mev('mouseup',PM.x|0,PM.y|0,0);if(b===1)fire('canvas')})};padBtn('#pl',1);padBtn('#pr2',2);
+const VK=[['1','2','3','4','5','6','7','8','9','0','Backspace'],['q','w','e','r','t','y','u','i','o','p'],['a','s','d','f','g','h','j','k','l','Enter'],['Shift','z','x','c','v','b','n','m',',','.'],['Escape','ArrowLeft','ArrowUp','ArrowDown','ArrowRight',' ','Tab']];
+const VL={Backspace:'⌫',Enter:'↵',Shift:'⇧',Escape:'Esc',ArrowLeft:'←',ArrowUp:'↑',ArrowDown:'↓',ArrowRight:'→',' ':'Espacio',Tab:'Tab'};
+let vs=0;
+function vkey(k){const i=$('#ini'),act=!$('#inw').hidden;if(k==='Shift'){vs^=1;return}const c=k.length===1&&vs?k.toUpperCase():k;if(k.length===1)vs=0;
+if(act){if(k==='Backspace')i.value=i.value.slice(0,-1);else if(k==='Enter')i.onkeydown&&i.onkeydown({key:'Enter'});else if(c.length===1)i.value+=c;return}
+if(R&&R.on){V.key=c;fire('key')}}
+(function(){const v=$('#vk');VK.forEach(r=>{const d=document.createElement('div');d.className='vr';r.forEach(k=>{const b=document.createElement('button');b.className='g';b.textContent=VL[k]||k;b.onpointerdown=e=>{e.preventDefault();vkey(k)};d.appendChild(b)});v.appendChild(d)})})();
+$('#bk').onclick=()=>{const v=$('#vk');v.hidden=!v.hidden;$('#bk').textContent=v.hidden?'Teclado':'Ocultar teclado'};
+$('#bm').onclick=()=>{const p=$('#pad');p.hidden=!p.hidden;if(!p.hidden&&res){PM.x=res.w/2;PM.y=res.h/2}};
+boot();
+</script></body></html>
