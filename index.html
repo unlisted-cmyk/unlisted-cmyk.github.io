@@ -160,8 +160,8 @@ Loop
 }
 `};
 /* ---------- parser ---------- */
-const KN=['use','print','var','set','repeat','for','if','wait','screen','display','reg','pin','on','loop','setup','expect','sound','serial','else','while','break','continue','input','ui','store','g3d','push','pop','remove','insert','sort','shuffle','each','def','call','return','elseif','console','mem','disk','exec','panic','stop','task','spawn','kill','join'],OPS=['pixel','rect','line','circle','clear','resolution','text'],TYP=['u8','u16','u32','i32','str'];
-const CAST={u8:v=>v&255,u16:v=>v&65535,u32:v=>v>>>0,i32:v=>v|0,str:v=>String(v).slice(0,255)};
+const KN=['use','print','var','set','repeat','for','if','wait','screen','display','reg','pin','on','loop','setup','expect','sound','serial','else','while','break','continue','input','ui','store','g3d','push','pop','remove','insert','sort','shuffle','each','def','call','return','elseif','console','mem','disk','exec','panic','stop','task','spawn','kill','join','try','lock','unlock','send','recv','yield','assert','sys','proc','surface','host'],OPS=['pixel','rect','line','circle','clear','resolution','text','blit','get'],TYP=['u8','u16','u32','i32','f32','f64','str'];
+const CAST={u8:v=>v&255,u16:v=>v&65535,u32:v=>v>>>0,i32:v=>v|0,f32:v=>Math.fround(+v),f64:v=>+v,str:v=>String(v).slice(0,65535)};
 function sp(s){const a=[];let d=0,q=0,b=0;for(let i=0;i<=s.length;i++){const c=s[i];if(c==='"')q^=1;if(!q){if(c==='('||c==='[')d++;if(c===')'||c===']')d--}if(i===s.length||(c===','&&!d&&!q)){a.push(s.slice(b,i).trim());b=i+1}}return a}
 function grp(s){const g=[];let d=0,b=0;for(let i=0;i<s.length;i++){const c=s[i];if(c==='"'){if(!d)return null;const j=s.indexOf('"',i+1);if(j<0)return null;i=j}else if(c==='('){if(d++===0)b=i+1}else if(c===')'){if(--d<0)return null;if(d===0)g.push(s.slice(b,i))}else if(!d&&c!==' ')return null}return d?null:g}
 function stm(t,n,lg){let els=null;const ei=t.indexOf(' Else:');if(ei>0){els=t.slice(ei+6);t=t.slice(0,ei)}
@@ -175,6 +175,7 @@ const h=L.shift(),hm=h&&h.t.match(LG);if(!hm){E.push([h?h.n:1,'Falta la cabecera
 const fl=norm(hm[1]),ext=name.split('.').pop();if(ext!==fl)W.push([h.n,`La cabecera <${fl}> no coincide con la extension .${ext}`]);
 let i=0,w=0;
 const blk=(lg,ol)=>{const o=[];while(i<L.length){const x=L[i++];if(x.t==='}'){if(ol===undefined){E.push([x.n,'Llave } sin su { de apertura','Falta la { justo despues de la instruccion que abre este bloque (If, For, While, Def...)']);continue}return o}let t=x.t,l=lg;const tg=t.match(/^#(\+\+|\+|-)\s*(.*)$/);if(tg){l='log'+tg[1];t=tg[2]}else if(!l){l='log+';if(fl==='logall'&&!w++)W.push([x.n,'Linea sin etiqueta #-, #+ o #++: se asume #+'])}const s=stm(t,x.n,l);if(x.o)s.body=blk(l,x.n);const hn=s.h[0].toLowerCase();
+if(hn==='catch'){const q=o[o.length-1];if(q&&q.h[0].toLowerCase()==='try'&&!q.cat){q.cat=s.body||[];q.cv=s.h[1]||''}else E.push([x.n,'Catch sin un Try justo antes','Catch:error va en su propia linea, justo despues del } de un Try']);continue}
 if(hn==='else'||hn==='elseif'){let q=o[o.length-1];while(q&&q.alt&&q.alt.length===1&&q.alt[0].elif)q=q.alt[0];
 if(q&&q.h[0].toLowerCase()==='if'&&!q.alt){if(hn==='else')q.alt=s.body||[];else{s.h=['If'];s.elif=1;q.alt=[s]}}
 else E.push([x.n,hn==='else'?'Else sin un If justo antes':'ElseIf sin un If justo antes','Va en su propia linea, justo despues del } de un If']);continue}
@@ -194,16 +195,15 @@ else if(p==='resolution')s.res=1;
 else if(l==='log-'&&!s.res)E.push([n,'Log- exige Resolution antes de dibujar']);}
 if(k==='var'){const t=x.h.length>2?x.h[1].toLowerCase():null;
 if(l==='log-'&&!t)E.push([n,'Log- exige tipo: Var:U8:nombre("Value;0")']);
-if(t&&!TYP.includes(t))E.push([n,`Tipo desconocido: ${x.h[1]} (usa U8, U16, U32, I32 o STR)`]);
+if(t&&!TYP.includes(t))E.push([n,`Tipo desconocido: ${x.h[1]} (usa U8, U16, U32, I32, F32, F64 o STR)`]);
 if(t&&l==='log+')W.push([n,`Log+ infiere el tipo: puedes quitar ${x.h[1]}`])}
 if(k==='expect'&&l!=='log-')E.push([n,'Expect es exclusivo de Log-']);
 if(k==='loop'&&(x.h.length===1||x.h[1].toLowerCase()==='forever')&&!hw(x.body||[]))W.push([n,'Loop sin Wait: la CPU quedara al 100%']);
 if(x.body)chk(x.body,E,W,s);if(x.alt)chk(x.alt,E,W,s)}}
 /* ---------- intérprete ---------- */
-const MF=Object.getOwnPropertyNames(Math);
-function ev(e){const k=Object.keys(V),key=k+'|'+e;let f=CC[key];
-if(!f){try{f=CC[key]=new Function(...MF,...k,'pin','t','rnd','peek','peek16','peek32','peekstr','return('+e+')')}catch(_){throw 'Expresion invalida: '+e}}
-try{return f(...MF.map(m=>Math[m]),...k.map(m=>V[m]),n=>PIN[n]|0,Date.now()-R.t0,(a,b)=>a+Math.floor(Math.random()*(b-a+1)),pk,pk16,pk32,pks)}catch(_){throw 'No se pudo evaluar: '+e}}
+const MO={};Object.getOwnPropertyNames(Math).forEach(m=>{MO[m]=Math[m]});
+function ev(e){let f=CC[e];if(!f){try{f=CC[e]=new Function('H','M','V','with(H){with(M){with(V){return('+e+')}}}')}catch(_){throw 'Expresion invalida: '+e}}
+try{return f(HF,MO,V)}catch(_){throw 'No se pudo evaluar: '+e}}
 const fm=s=>s.replace(/\{([^}]+)\}/g,(_,e)=>ev(e));
 const kv=a=>{const r={};a.slice(1).forEach(p=>{const[m,v]=p.split('=');r[m.trim().toUpperCase()]=ev(v)});return r};
 function cs(p){if(p[0]==='hsl')return`hsl(${ev(p[1])} 90% ${p[2]?ev(p[2]):55}%)`;if(p[0]==='rgb')p=p.slice(1);if(p.length>=3)return`rgb(${p.slice(0,3).map(e=>ev(e)&255)})`;return p[0]}
@@ -211,19 +211,22 @@ function col(o){const c=o.find(a=>a[0].toLowerCase()==='color');if(c)return cs(c
 function setRes(w,h){w=Math.max(1,Math.min(1920,w|0));h=Math.max(1,Math.min(1080,h|0));CV.width=w;CV.height=h;res={w,h};cx.fillStyle='#000';cx.fillRect(0,0,w,h);$('#cw').hidden=false;hd()}
 function scr(x){const p=x.h.map(v=>v.toLowerCase()).find(v=>OPS.includes(v)),a=x.a.map(e=>ev(e)),o=x.o;
 if(p==='resolution'){let w=320,h=180;if(o[0][0].toLowerCase()==='set'){w=ev(o[0][1]);h=ev(o[0][2])}else o.forEach(q=>{const m=q[0].toLowerCase();if(m==='w')w=ev(q[1]);if(m==='h')h=ev(q[1])});return setRes(w,h)}
-if(!res)setRes(320,180);Con.sus=1;cx.fillStyle=cx.strokeStyle=col(o);
-if(p==='clear')cx.fillRect(0,0,res.w,res.h);
-if(p==='pixel')cx.fillRect(a[0],a[1],1,1);
-if(p==='rect')cx.fillRect(a[0],a[1],a[2],a[3]);
-if(p==='circle'){cx.beginPath();cx.arc(a[0],a[1],a[2],0,7);cx.fill()}
-if(p==='line'){cx.beginPath();cx.moveTo(a[0],a[1]);cx.lineTo(a[2],a[3]);cx.stroke()}
-if(p==='text'){const tq=x.q.find(s=>/^text;/i.test(s));cx.font='8px ui-monospace,Menlo,Consolas,monospace';cx.textBaseline='top';cx.fillText(fm(tq?tq.slice(5):''),a[0],a[1])}}
+const tg=og(x,'target'),S=tg?SURF[tg]:null;if(tg&&!S)throw'Surface: no existe '+tg;
+if(!res)setRes(320,180);const g=S?S.g:cx,W=S?S.w:res.w,Hh=S?S.h:res.h;if(!S)Con.sus=1;g.fillStyle=g.strokeStyle=col(o);const ln=/^line$/i.test(og(x,'style')||'');
+if(p==='clear')g.fillRect(0,0,W,Hh);
+else if(p==='pixel')g.fillRect(a[0],a[1],1,1);
+else if(p==='rect'){if(ln)g.strokeRect(a[0]+.5,a[1]+.5,a[2]-1,a[3]-1);else g.fillRect(a[0],a[1],a[2],a[3])}
+else if(p==='circle'){g.beginPath();g.arc(a[0],a[1],a[2],0,7);if(ln)g.stroke();else g.fill()}
+else if(p==='line'){g.beginPath();g.moveTo(a[0],a[1]);g.lineTo(a[2],a[3]);g.stroke()}
+else if(p==='text'){const tq=x.q.find(s=>/^text;/i.test(s)),sz=og(x,'size');g.font=(sz===null?8:+ev(sz))+'px ui-monospace,Menlo,Consolas,monospace';g.textBaseline='top';g.fillText(fm(tq?tq.slice(5):''),a[0],a[1])}
+else if(p==='blit'){const sn=og(x,'src');if(sn===null)throw'Screen:Blit necesita Src';const sr=sn==='screen'?{c:CV}:SURF[sn];if(!sr)throw'Surface: no existe '+sn;const bw=og(x,'w'),bh=og(x,'h');if(bw!==null&&bh!==null)g.drawImage(sr.c,a[0],a[1],+ev(bw),+ev(bh));else g.drawImage(sr.c,a[0],a[1])}
+else if(p==='get'){const d=g.getImageData(a[0],a[1],1,1).data,to=og(x,'into');if(to===null||!(to in V))throw'Variable no declarada: '+(to||'(falta Into)');V[to]=cv(TY[to],[d[0],d[1],d[2]])}}
 const led=n=>{const e=$('#pins').children[n];if(e)e.className=PIN[n]?'on':''};
 async function ex(ns,fl){for(const x of ns){if(R.stop)throw'STOP';if(fl.task&&fl.task.stop)throw'KILL';if(++R.st%(R.k?20000:2500)===0)await(R.k?tick():sleep(0));if(R.stop)throw'STOP';if(fl.task&&fl.task.stop)throw'KILL';V=fl.v;TY=fl.t;R.fn=fl.fn;
 try{await one(x,fl)}catch(e){if(e==='STOP'||e==='KILL'||e===BRK||e===CNT||e instanceof Ret||/^l\.\d+:/.test(e))throw e;throw`l.${x.n}: ${typeof e==='string'?e:e.message}`}}}
 async function one(x,fl){const k=x.h[0].toLowerCase();
 switch(k){
-case'use':if(x.q[0]){const f=x.q[0];if(!files[f])throw'Use: no existe el archivo '+f;if((R.inc=(R.inc||0)+1)>8)throw'Use: demasiados niveles';const p=parse(files[f],f);if(p.nodes){chk(p.nodes,p.E,p.W,{});chkx(p.nodes,p.E,p.W,{},0)}if(p.E.length)throw`${f} l.${p.E[0][0]}: ${p.E[0][1]}`;op(`[use] ${f} incluido`);reg(p.nodes);await ex(p.nodes,fl);R.inc--}else op(`[lib] ${x.h[1]||''} cargada desde el silicio`);break;
+case'use':if(x.q[0]){const f=x.q[0],fr=(((x.q[1]||'').match(/^from;(.*)$/i)||[])[1]||(R.k?'disk':'host')).toLowerCase(),st=fr==='disk'?VD[f]:files[f];if(st===undefined)throw'Use: no existe el archivo '+f+' (en '+fr+')';if((R.inc=(R.inc||0)+1)>8)throw'Use: demasiados niveles';const p=parse(st,f);if(p.nodes){chk(p.nodes,p.E,p.W,{});chkx(p.nodes,p.E,p.W,{},0)}if(p.E.length)throw`${f} l.${p.E[0][0]}: ${p.E[0][1]}`;op(`[use] ${f} incluido`);reg(p.nodes);await ex(p.nodes,fl);R.inc--}else op(`[lib] ${x.h[1]||''} cargada desde el silicio`);break;
 case'sound':{const g=k=>ev((x.o.find(a=>a[0].toLowerCase()===k)||['',k==='ms'?200:440])[1]),m=g('ms');beep(g('freq'),m);R.waiting=1;await sleep(m);R.waiting=0;break}
 case'serial':send(fm((x.q[0]||'').replace(/^write;/i,'')));break;
 case'g3d':g3(x);break;
@@ -235,43 +238,69 @@ else if(k==='pop'){if(!a.length)throw'La lista esta vacia';const v=a.pop(),to=og
 else if(k==='sort'){a.sort((p,q)=>typeof p==='number'&&typeof q==='number'?p-q:String(p).localeCompare(String(q)));if(/^desc/i.test(og(x,'order')||''))a.reverse()}
 else for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}
 break}
-case'each':{const a=ev(x.a[0]);if(!Array.isArray(a))throw'Each necesita una lista';for(const el of a.slice()){V[x.h[1]]=el;if(await lp(x.body,fl))break}break}
+case'each':{const a=ev(x.a[0]);if(!Array.isArray(a))throw'Each necesita una lista';for(const el of a.slice()){V=fl.v;TY=fl.t;V[x.h[1]]=el;if(await lp(x.body,fl))break}break}
 case'def':R.fn[x.h[1]]=x;break;
 case'call':{const f=R.fn[x.h[1]];if(!f)throw'Funcion no definida: '+x.h[1];if((fl.dp=(fl.dp||0)+1)>200){fl.dp=0;throw'Demasiada recursion (limite 200)'}
 const ps=f.a,args=x.a.map(e=>ev(e));if(args.length!==ps.length)throw`${x.h[1]} espera ${ps.length} argumento(s) y recibio ${args.length}`;
-const loc={},tl={};ps.forEach((p,i)=>{loc[p]=args[i];tl[p]=undefined});const f2={v:mkScope(fl.v,loc),t:mkScope(fl.t,tl),fn:fl.fn,task:fl.task,xd:fl.xd,dp:fl.dp};let rv;
+const loc={},tl={};ps.forEach((p,i)=>{loc[p]=args[i];tl[p]=undefined});const f2={v:mkScope(fl.v,loc),t:mkScope(fl.t,tl),fn:fl.fn,task:fl.task,xd:fl.xd,dp:fl.dp,proc:fl.proc};let rv;
 try{await ex(f.body,f2)}catch(e){if(e instanceof Ret)rv=e.v;else throw e}finally{fl.dp=Math.max(0,(fl.dp||1)-1)}
 V=fl.v;TY=fl.t;R.fn=fl.fn;const to=og(x,'into');if(to!==null){if(!(to in V))throw'Variable no declarada: '+to;V[to]=cv(TY[to],rv)}break}
 case'task':{if(!x.h[1])throw'Task necesita un nombre: Task:enemigo{ ... }';if(!x.body)throw'Task necesita un bloque { }';startTask(x.h[1],x.body,fl);break}
-case'spawn':{const f=R.fn[x.h[1]];if(!f)throw'Funcion no definida: '+x.h[1];const ps=f.a,args=x.a.map(e=>ev(e));if(args.length!==ps.length)throw`${x.h[1]} espera ${ps.length} argumento(s) y recibio ${args.length}`;const loc={},tl={};ps.forEach((p,i)=>{loc[p]=args[i];tl[p]=undefined});startTask(og(x,'id')||x.h[1]+'#'+(++R.tid),f.body,{v:mkScope(fl.v,loc),t:mkScope(fl.t,tl),fn:fl.fn,xd:fl.xd});break}
-case'kill':{const nm=x.h[1]||'';if(nm.toLowerCase()==='all'){Object.values(R.tasks).forEach(t=>t.stop=1);break}const t=R.tasks[nm];if(!t)throw'Tarea desconocida: '+nm;t.stop=1;break}
-case'join':{const t=R.tasks[x.h[1]];if(!t)throw'Tarea desconocida: '+x.h[1];R.waiting=1;while(t.on&&!R.stop)await sleep(10);R.waiting=0;break}
+case'spawn':{const f=R.fn[x.h[1]];if(!f)throw'Funcion no definida: '+x.h[1];const ps=f.a,args=x.a.map(e=>ev(e));if(args.length!==ps.length)throw`${x.h[1]} espera ${ps.length} argumento(s) y recibio ${args.length}`;const loc={},tl={};ps.forEach((p,i)=>{loc[p]=args[i];tl[p]=undefined});startTask(fm(og(x,'id')||'')||x.h[1]+'#'+(++R.tid),f.body,{v:mkScope(fl.v,loc),t:mkScope(fl.t,tl),fn:fl.fn,xd:fl.xd,proc:fl.proc});break}
+case'kill':{const nm=x.h[1]||fm(og(x,'id')||'');if(nm.toLowerCase()==='all'){Object.values(R.tasks).forEach(t=>t.stop=1);break}const t=R.tasks[nm];if(!t)throw'Tarea desconocida: '+nm;t.stop=1;if(t.proc)killProc(t.proc);break}
+case'join':{const jn=x.h[1]||fm(og(x,'id')||''),t=R.tasks[jn];if(!t)throw'Tarea desconocida: '+jn;R.waiting=1;while(t.on&&!R.stop)await sleep(10);R.waiting=0;break}
 case'return':throw new Ret(x.q.length?valOf(x):undefined);
 case'console':{const w=(x.h[1]||'').toLowerCase(),cc=x.o.find(q=>q[0].toLowerCase()==='color'),col=cc?cs(cc.slice(1)):undefined,tq=x.q.find(s=>/^text;/i.test(s)),tx=tq?fm(tq.slice(5)):'';
 if(w==='init'){const b=x.o.find(q=>q[0].toLowerCase()==='bg');Con.cols=Math.max(10,Math.min(160,+ev(og(x,'cols')??'53')));Con.rows=Math.max(5,Math.min(60,+ev(og(x,'rows')??'20')));if(col)Con.fg=col;if(b)Con.bg=cs(b.slice(1));setRes(Con.cols*Con.cw,Con.rows*Con.ch);Con.on=1;CV.style.imageRendering='auto';conClear()}
 else{conEns();if(w==='clear')conClear();else if(w==='refresh'){Con.sus=0;conMark()}else if(w==='at'){Con.cx=+ev(og(x,'col')??'0');Con.cy=+ev(og(x,'row')??'0')}else if(w==='print'||w==='put')conPut(tx+(w==='print'?'\n':''),col);
 else if(w==='read'){const n=og(x,'into');if(n===null||!(n in V))throw'Variable no declarada: '+(n||'(falta Into)');const pm=fm(og(x,'prompt')??'');conPut(pm?pm+' ':'',Con.fg);R.waiting=1;const s=await ask(pm||'Escribe y pulsa Enter');V=fl.v;TY=fl.t;R.waiting=0;conPut(s+'\n',Con.fg);const num=(TY[n]&&TY[n]!=='str')||typeof V[n]==='number';V[n]=cv(TY[n],num?(Number(s)||0):s)}else throw'Console: operacion desconocida: '+x.h[1]}break}
 case'mem':{const w=(x.h[1]||'').toLowerCase(),g=k=>{const v=og(x,k);return v===null?undefined:+ev(v)},a=g('addr');
-if(w==='write'){const v=g('value')??0,sz=g('size')??1;for(let i=0;i<sz;i++)MEM[mc(a+i)]=(v>>>(8*i))&255}
+const ty=(og(x,'type')||'').toLowerCase();
+if(w==='write'&&ty){const v=g('value')??0;if(ty==='f32'){mc(a);mc(a+3);DV.setFloat32(a,v,true)}else if(ty==='f64'){mc(a);mc(a+7);DV.setFloat64(a,v,true)}else throw'Mem: Type debe ser f32 o f64'}
+else if(w==='read'&&ty){const to=og(x,'into');if(to===null||!(to in V))throw'Variable no declarada: '+(to||'(falta Into)');mc(a);let v;if(ty==='f32'){mc(a+3);v=DV.getFloat32(a,true)}else if(ty==='f64'){mc(a+7);v=DV.getFloat64(a,true)}else throw'Mem: Type debe ser f32 o f64';V[to]=cv(TY[to],v)}
+else if(w==='write'){const v=g('value')??0,sz=g('size')??1;for(let i=0;i<sz;i++)MEM[mc(a+i)]=(v>>>(8*i))&255}
 else if(w==='read'){const sz=g('size')??1;let v=0;for(let i=sz-1;i>=0;i--)v=v*256+MEM[mc(a+i)];const to=og(x,'into');if(to===null||!(to in V))throw'Variable no declarada: '+(to||'(falta Into)');V[to]=cv(TY[to],v)}
 else if(w==='fill'){const n=g('len')??0,v=g('value')??0;mc(a);mc(a+n-1);for(let i=0;i<n;i++)MEM[a+i]=v&255}
 else if(w==='copy'){const f=g('from'),t=g('to'),n=g('len')??0;mc(f);mc(f+n-1);mc(t);mc(t+n-1);MEM.copyWithin(t,f,f+n)}
 else if(w==='writetext'){const s=String(valOf(x));for(let i=0;i<=s.length;i++)MEM[mc(a+i)]=i<s.length?s.charCodeAt(i)&255:0}
 else throw'Mem: usa Write, Read, Fill, Copy o WriteText';break}
-case'disk':{const w=(x.h[1]||'').toLowerCase(),f=fm(og(x,'file')||''),pv=()=>{if(!R.k)throw'Operacion privilegiada: Disk:'+x.h[1]+' solo funciona con run # archivo (modo kernel)'},into=v=>{const to=og(x,'into');if(to!==null){if(!(to in V))throw'Variable no declarada: '+to;V[to]=cv(TY[to],v)}};
+case'disk':{const w=(x.h[1]||'').toLowerCase(),f=fm(og(x,'file')||''),into=v=>{const to=og(x,'into');if(to!==null){if(!(to in V))throw'Variable no declarada: '+to;V[to]=cv(TY[to],v)}},txt=()=>String(valOf(x)).split('\\n').join(String.fromCharCode(10));
+if(w==='list'){const pf=fm(og(x,'prefix')||'');into(Object.keys(VD).filter(k=>k.startsWith(pf)).sort())}
+else if(w==='read'){if(VD[f]===undefined)throw'Disk: no existe '+f;into(VD[f])}
+else if(w==='exists')into(VD[f]!==undefined?1:0);
+else if(w==='size')into(VD[f]===undefined?-1:VD[f].length);
+else if(w==='usage')into(Object.values(VD).reduce((a,s)=>a+s.length,0));
+else if(w==='write'){if(!f)throw'Disk: falta File';VD[f]=txt();vdSave()}
+else if(w==='append'){if(!f)throw'Disk: falta File';VD[f]=(VD[f]||'')+txt();vdSave()}
+else if(w==='delete'){delete VD[f];vdSave()}
+else if(w==='rename'||w==='copy'){const t=fm(og(x,'to')||'');if(!t)throw'Disk: falta To';if(VD[f]===undefined)throw'Disk: no existe '+f;VD[t]=VD[f];if(w==='rename')delete VD[f];vdSave()}
+else if(w==='format'){for(const k of Object.keys(VD))delete VD[k];vdSave()}
+else throw'Disk: usa List, Read, Exists, Size, Usage, Write, Append, Delete, Rename, Copy o Format';break}
+case'host':{const w=(x.h[1]||'').toLowerCase(),f=fm(og(x,'file')||''),pv=()=>{if(!R.k)throw'Operacion privilegiada: Host:'+x.h[1]+' solo funciona con run # archivo (modo kernel)'},into=v=>{const to=og(x,'into');if(to!==null){if(!(to in V))throw'Variable no declarada: '+to;V[to]=cv(TY[to],v)}},txt=()=>String(valOf(x)).split('\\n').join(String.fromCharCode(10));
 if(w==='list')into(Object.keys(files).sort());
-else if(w==='read'){if(files[f]===undefined)throw'Disk: no existe '+f;into(files[f])}
+else if(w==='read'){if(files[f]===undefined)throw'Host: no existe '+f;into(files[f])}
 else if(w==='exists')into(files[f]!==undefined?1:0);
-else if(w==='write'){pv();if(!f)throw'Disk: falta File';files[f]=String(valOf(x)).split('\\n').join(String.fromCharCode(10));sv()}
+else if(w==='write'){pv();if(!f)throw'Host: falta File';files[f]=txt();sv()}
 else if(w==='delete'){pv();delete files[f];sv()}
-else throw'Disk: usa List, Read, Exists, Write o Delete';break}
-case'exec':{const f=fm(og(x,'file')||''),to=og(x,'into');if(files[f]===undefined)throw'Exec: no existe '+f;
-const p=parse(files[f],f);if(p.nodes){chk(p.nodes,p.E,p.W,{});chkx(p.nodes,p.E,p.W,{ids:new Set(ids(p.nodes)),fns:new Set(fnn(p.nodes))},0)}
+else throw'Host: usa List, Read, Exists, Write o Delete';break}
+case'exec':{const f=fm(og(x,'file')||''),to=og(x,'into'),fr=(og(x,'from')||(R.k?'disk':'host')).toLowerCase(),st=fr==='disk'?VD[f]:files[f];if(st===undefined)throw'Exec: no existe '+f+' (en '+fr+')';
+const p=parse(st,f);if(p.nodes){chk(p.nodes,p.E,p.W,{});chkx(p.nodes,p.E,p.W,{ids:new Set(ids(p.nodes)),fns:new Set(fnn(p.nodes))},0)}
 let code=0;if(p.E.length){code=1;p.E.forEach(e=>op(`[${f}] ERROR l.${e[0]}: ${e[1]}`,'err'))}
-else{const cf={v:{},t:{},fn:{},task:fl.task,xd:1};cf.v.args=fm(og(x,'args')||'');reg(p.nodes,cf.fn);
-try{await ex(p.nodes,cf)}catch(e){if(e==='STOP'||e==='KILL')throw e;if(!(e instanceof Ret)&&e!==BRK&&e!==CNT){code=1;op(`[${f}] ERROR ${typeof e==='string'?e:e.message}`,'err')}}}
+else{const pid=++R.pid,cf={v:mkChild({}),t:{},fn:{},task:fl.task,xd:1,proc:pid};cf.v.args=fm(og(x,'args')||'');reg(p.nodes,cf.fn);
+if(og(x,'bg')!==null){cf.main=1;startTask(fm(og(x,'id')||'')||f+'#'+(++R.tid),p.nodes,cf)}
+else{try{await ex(p.nodes,cf)}catch(e){if(e==='STOP'||e==='KILL')throw e;if(!(e instanceof Ret)&&e!==BRK&&e!==CNT){code=1;op(`[${f}] ERROR ${typeof e==='string'?e:e.message}`,'err')}}finally{killProc(pid)}}}
 V=fl.v;TY=fl.t;R.fn=fl.fn;if(to!==null){if(!(to in V))throw'Variable no declarada: '+to;V[to]=cv(TY[to],code)}break}
-case'panic':{const m=fm(x.q.length?x.q[0].replace(/^text;/i,exceptions=''):'sin mensaje');if(!res)setRes(318,180);Con.on=0;clearTimeout(Con.t);Con.t=0;cx.fillStyle='#7a0000';cx.fillRect(0,0,res.w,res.h);cx.fillStyle='#ffffff';cx.font='8px ui-monospace,Menlo,Consolas,monospace';cx.textBaseline='top';cx.fillText('KERNEL PANIC',6,6);const ln=(m.match(/.{1,48}/g)||['']);ln.forEach((s,i)=>cx.fillText(s,6,22+i*10));cx.fillText('Sistema detenido.',6,28+ln.length*10);throw'KERNEL PANIC: '+m}
+case'surface':{const w=(x.h[1]||'').toLowerCase(),id=og(x,'id');if(!id)throw'Surface: falta Id';if(w==='new'){const W=Math.max(1,Math.min(1920,+ev(og(x,'w')??'64'))),Hh=Math.max(1,Math.min(1080,+ev(og(x,'h')??'64'))),c=document.createElement('canvas');c.width=W;c.height=Hh;const g=c.getContext('2d');g.fillStyle='#000';g.fillRect(0,0,W,Hh);SURF[id]={c,g,w:W,h:Hh}}else if(w==='free')delete SURF[id];else throw'Surface: usa New o Free';break}
+case'try':{try{await ex(x.body,fl)}catch(e){if(e==='STOP'||e==='KILL'||e===BRK||e===CNT||e instanceof Ret)throw e;V=fl.v;TY=fl.t;R.fn=fl.fn;const m=(typeof e==='string'?e:(e&&e.message)||String(e)).replace(/^l\.\d+: /,'');if(x.cv)V[x.cv]=m;await ex(x.cat||[],fl)}break}
+case'lock':{R.locks=R.locks||{};const n=x.h[1]||'';R.waiting=1;while(R.locks[n]&&!R.stop&&!(fl.task&&fl.task.stop))await sleep(1);R.waiting=0;if(R.stop)throw'STOP';if(fl.task&&fl.task.stop)throw'KILL';R.locks[n]=1;break}
+case'unlock':{R.locks=R.locks||{};R.locks[x.h[1]||'']=0;break}
+case'send':{R.queues=R.queues||{};(R.queues[x.h[1]]=R.queues[x.h[1]]||[]).push(valOf(x));break}
+case'recv':{R.queues=R.queues||{};const n=x.h[1],to=og(x,'into'),okv=og(x,'ok'),tm=og(x,'timeout'),dl=tm===null?Infinity:Date.now()+(+ev(tm));R.waiting=1;while(!(R.queues[n]&&R.queues[n].length)&&!R.stop&&!(fl.task&&fl.task.stop)&&Date.now()<dl)await sleep(5);R.waiting=0;V=fl.v;TY=fl.t;R.fn=fl.fn;if(R.stop)throw'STOP';if(fl.task&&fl.task.stop)throw'KILL';const got=!!(R.queues[n]&&R.queues[n].length);if(got){const v=R.queues[n].shift();if(to!==null){if(!(to in V))throw'Variable no declarada: '+to;V[to]=cv(TY[to],v)}}if(okv!==null){if(!(okv in V))throw'Variable no declarada: '+okv;V[okv]=got?1:0}break}
+case'yield':await sleep(0);break;
+case'assert':{const c=og(x,'cond');if(c===null)throw'Assert necesita Cond';if(!ev(c))throw'Assert fallo: '+fm(og(x,'text')||c);break}
+case'sys':{const to=og(x,'into');if(to===null||!(to in V))throw'Variable no declarada: '+(to||'(falta Into)');V[to]={ghz:3,cpu:'Log-SoC 3.0 GHz',ram_mb:4096,mem_bytes:MEM.length,width:res?res.w:0,height:res?res.h:0,kernel:R.k?1:0,uptime_ms:Date.now()-R.t0,tasks:Object.values(R.tasks).filter(t=>t.on).length,version:'0.8'};break}
+case'proc':{const w=(x.h[1]||'').toLowerCase(),to=og(x,'into');if(to===null||!(to in V))throw'Variable no declarada: '+(to||'(falta Into)');if(w==='list')V[to]=cv(TY[to],Object.values(R.tasks).filter(t=>t.on).map(t=>t.n));else if(w==='alive'){const t=R.tasks[fm(og(x,'id')||'')];V[to]=cv(TY[to],t&&t.on?1:0)}else throw'Proc: usa List o Alive';break}
+case'panic':{const m=fm(x.q.length?x.q[0].replace(/^text;/i,''):'sin mensaje');if(!res)setRes(318,180);Con.on=0;clearTimeout(Con.t);Con.t=0;cx.fillStyle='#7a0000';cx.fillRect(0,0,res.w,res.h);cx.fillStyle='#ffffff';cx.font='8px ui-monospace,Menlo,Consolas,monospace';cx.textBaseline='top';cx.fillText('KERNEL PANIC',6,6);const ln=(m.match(/.{1,48}/g)||['']);ln.forEach((s,i)=>cx.fillText(s,6,22+i*10));cx.fillText('Sistema detenido.',6,28+ln.length*10);throw'KERNEL PANIC: '+m}
 case'stop':if(fl.xd)throw new Ret();R.stop=1;R.fin&&R.fin();throw'STOP';
 case'input':{const n=x.h[1];if(!(n in V))throw`Variable no declarada: ${n} (declarala antes con Var)`;const pq=fm((x.q[0]||'').replace(/^prompt;/i,''));R.waiting=1;
 for(;;){const s=await ask(pq);V=fl.v;TY=fl.t;op('> '+s,'ok');if(TY[n]==='str'||typeof V[n]==='string'){V[n]=TY[n]?CAST[TY[n]](s):s;break}const v=Number(s);if(s.trim()===''||isNaN(v)){op('Escribe un numero','wrn');continue}V[n]=TY[n]?CAST[TY[n]](v):v;break}R.waiting=0;break}
@@ -301,16 +330,16 @@ if(k==='var'&&dc!==null)v=Object.fromEntries((dc.trim()?sp(dc):[]).map(e=>{const
 if(ky!==null){const o=V[n];if(!o||typeof o!=='object'||Array.isArray(o))throw n+' no es un diccionario';o[fm(ky)]=v;break}
 if(ix!==null){let a=V[n];if(!Array.isArray(a))throw n+' no es una lista';const p=sp(ix).map(e=>ev(e));for(let i=0;i<p.length-1;i++)a=a[p[i]];const li=p[p.length-1];if(!Array.isArray(a)||!Number.isInteger(li)||li<0||li>=a.length)throw'Indice fuera de rango: '+p.join(',');a[li]=TY[n]?CAST[TY[n]](v):v;break}
 V[n]=cv(TY[n],v);break}
-case'wait':R.waiting=1;if(/^press$/i.test(x.o[0][0]))await new Promise((f,j)=>{R.pw=f;R.pj=j});else await sleep(ev(x.o[0][1]));R.waiting=0;break;
+case'wait':R.waiting=1;if(/^press$/i.test(x.o[0][0]))await new Promise((f,j)=>{R.pw=f;R.pj=j});else if(/^until$/i.test(x.o[0][0])){const c=x.o[0].slice(1).join(';');for(;;){V=fl.v;TY=fl.t;R.fn=fl.fn;if(ev(c)||R.stop||(fl.task&&fl.task.stop))break;await sleep(10)}}else await sleep(ev(x.o[0][1]));R.waiting=0;break;
 case'repeat':{const n=ev(x.a[0]);for(let i=0;i<n;i++)if(await lp(x.body,fl))break;break}
-case'for':{const v=x.h[1],a=ev(x.a[0]),b=ev(x.a[1]),s=x.a[2]?ev(x.a[2]):1;if(!s)throw'El paso de For no puede ser 0';for(let i=a;s>0?i<b:i>b;i+=s){V[v]=i;if(await lp(x.body,fl))break}break}
+case'for':{const v=x.h[1],a=ev(x.a[0]),b=ev(x.a[1]),s=x.a[2]?ev(x.a[2]):1;if(!s)throw'El paso de For no puede ser 0';for(let i=a;s>0?i<b:i>b;i+=s){V=fl.v;TY=fl.t;V[v]=i;if(await lp(x.body,fl))break}break}
 case'if':if(ev(x.a[0]))await ex(x.body,fl);else if(x.alt)await ex(x.alt,fl);break;
-case'while':while(ev(x.a[0])){if(R.stop)throw'STOP';if(await lp(x.body,fl))break;if(++R.st%2500===0)await sleep(0)}break;
+case'while':while((V=fl.v,TY=fl.t,R.fn=fl.fn,ev(x.a[0]))){if(R.stop)throw'STOP';if(await lp(x.body,fl))break;if(++R.st%2500===0)await sleep(0)}break;
 case'break':throw BRK;
 case'continue':throw CNT;
 case'setup':await ex(x.body,fl);break;
 case'loop':while(!R.stop){if(await lp(x.body,fl))break;await(R.k?tick():sleep(1))}break;
-case'on':{let nm=(x.h[1]||'').toLowerCase();const sc=fl;if(nm==='mouse')nm='mouse'+(((x.o[0]||[])[0])||'move').toLowerCase();if(/^(key|canvas|mouse)/.test(nm))showDev();if(nm.startsWith('mouse'))openPad();if(nm==='timer'){const ms=Math.max(10,+ev(og(x,'every')??'1000'));(R.tm=R.tm||[]).push(setInterval(()=>{if(R&&R.on&&!R.stop)runIn(sc,x.body)},ms))}else R.hd.push({n:nm,b:x.body,sc});break}
+case'on':{let nm=(x.h[1]||'').toLowerCase();const sc=fl;if(nm==='mouse')nm='mouse'+(((x.o[0]||[])[0])||'move').toLowerCase();else if(nm==='key'&&/^up$/i.test((x.o[0]||[])[0]||''))nm='keyup';if(/^(key|canvas|mouse)/.test(nm))showDev();if(nm.startsWith('mouse'))openPad();if(nm==='timer'){const ms=Math.max(10,+ev(og(x,'every')??'1000'));(R.tm=R.tm||[]).push({i:setInterval(()=>{if(R&&R.on&&!R.stop)runIn(sc,x.body)},ms),p:fl.proc})}else R.hd.push({n:nm,b:x.body,sc});break}
 case'pin':{const n=+x.h[1],a=x.o[0]||['?'],c=a[0].toLowerCase();$('#pins').hidden=false;if(c==='set'){PIN[n]=/^(high|1)$/i.test(a[1])?1:0;led(n);send(`${n}=${PIN[n]}`)}break}
 case'screen':case'display':case'reg':scr(x);break;
 case'expect':{if(!res)throw'Pantalla sin inicializar';const a=x.a.map(e=>ev(e)),d=cx.getImageData(a[0],a[1],1,1).data,e=kv(x.o[0]);
@@ -319,16 +348,16 @@ op(`Expect OK: pixel (${a}) verificado`,'ok');break}}}
 const ss=t=>{$('#os').textContent=(kmode?'KERNEL · ':'')+t;if(t!=='CORRIENDO')$('#inw').hidden=true};
 async function runFile(n,o){kmode=!!(o&&o.k);
 if(R&&R.on){R.stop=1;Object.values(R.tasks||{}).forEach(t=>t.stop=1);R.fin&&R.fin();R.pj&&R.pj('STOP');await new Promise(f=>R.dn=f)}
-OL.innerHTML='';G3.o={};Con.on=0;Con.sus=0;CV.style.imageRendering='';MEM.fill(0);$('#dev').hidden=true;$('#vk').hidden=true;$('#pad').hidden=true;$('#cur').hidden=true;held=0;$('#ph').textContent='Mantener';CV.style.touchAction='';$('#ui').innerHTML='';$('#ui').hidden=true;$('#inw').hidden=true;$('#app').classList.add('o');OUT.hidden=false;$('#on').textContent=n;res=null;$('#cw').hidden=true;$('#pins').hidden=true;hd();
+OL.innerHTML='';G3.o={};Con.on=0;Con.sus=0;CV.style.imageRendering='';MEM.fill(0);for(const k in SURF)delete SURF[k];$('#dev').hidden=true;$('#vk').hidden=true;$('#pad').hidden=true;$('#cur').hidden=true;held=0;$('#ph').textContent='Mantener';CV.style.touchAction='';$('#ui').innerHTML='';$('#ui').hidden=true;$('#inw').hidden=true;$('#app').classList.add('o');OUT.hidden=false;$('#on').textContent=n;res=null;$('#cw').hidden=true;$('#pins').hidden=true;hd();
 PIN.fill(0);[...$('#pins').children].forEach(e=>e.className='');V={};TY={};
 SL=files[n].split('\n');const p=parse(files[n],n);if(p.nodes){chk(p.nodes,p.E,p.W,{});chkx(p.nodes,p.E,p.W,{ids:new Set(ids(p.nodes)),fns:new Set(fnn(p.nodes))},0)}
 p.E.sort((a,b)=>a[0]-b[0]);p.W.forEach(w=>show('ADVERTENCIA',w,'wrn'));p.E.forEach(e=>show('ERROR',e,'err'));
 if(p.E.length){op(`Compilacion abortada: ${p.E.length} error(es)`,'err');ss('ERROR');return}
 op(`Compilado sin errores (${p.W.length} advertencia(s)). Ejecutando...`,'ok');
-const r=R={on:1,stop:0,st:0,hd:[],t0:Date.now(),n,fn:{},k:kmode,tasks:{},tid:0,tn:0};r.root={v:V,t:TY,fn:r.fn};reg(p.nodes);if(kmode)showDev();ss('CORRIENDO');let bad=0;
-try{await ex(p.nodes,r.root);r.done=1;if((r.hd.length||r.ui||r.tm||r.tn>0)&&!r.stop){op('Esperando eventos (Detener para salir)','ok');await new Promise(f=>{r.fin=f;taskEnd()})}}
+const r=R={on:1,stop:0,st:0,hd:[],t0:Date.now(),n,fn:{},k:kmode,tasks:{},tid:0,tn:0,pid:0,locks:{},queues:{}};Object.keys(KD).forEach(k=>delete KD[k]);r.root={v:V,t:TY,fn:r.fn};V.keys=KD;reg(p.nodes);if(kmode)showDev();ss('CORRIENDO');let bad=0;
+try{await ex(p.nodes,r.root);r.done=1;if((r.hd.length||r.ui||(r.tm&&r.tm.length)||r.tn>0)&&!r.stop){op('Esperando eventos (Detener para salir)','ok');await new Promise(f=>{r.fin=f;taskEnd()})}}
 catch(e){if(e!=='STOP'){bad=1;const m=String(e).match(/^l\.(\d+): ([\s\S]*)$/);if(m)show('ERROR',[+m[1],m[2]],'err');else op('ERROR '+e,'err')}}
-r.on=0;(r.tm||[]).forEach(clearInterval);Object.values(r.tasks).forEach(t=>t.stop=1);ss(bad?'ERROR':r.stop?'DETENIDO':'TERMINADO');r.dn&&r.dn()}
+r.on=0;(r.tm||[]).forEach(t=>clearInterval(t.i));Object.values(r.tasks).forEach(t=>t.stop=1);ss(bad?'ERROR':r.stop?'DETENIDO':'TERMINADO');r.dn&&r.dn()}
 const stopRun=()=>{if(R&&R.on){R.stop=1;Object.values(R.tasks||{}).forEach(t=>t.stop=1);R.fin&&R.fin();R.pj&&R.pj('STOP')}};
 /* ---------- terminal y editor ---------- */
 for(let i=0;i<16;i++){const e=document.createElement('i');e.title='pin '+i;$('#pins').appendChild(e)}
@@ -339,7 +368,7 @@ function cmd(s){pr('log@chip:~$ '+s,'p');s=s.trim();if(!s)return;
 const m=s.match(/^start\s+<?\s*(log\+\+|log\+-|log\+|log-|logall|log\*)\s*>?\s*(\S+)?/i);
 if(m){const k=norm(m[1]);let n=m[2]||'main.'+k;if(!n.includes('.'))n+='.'+k;if(!files[n]){files[n]=TPL[k];fresh=n;pr('archivo creado: '+n,'ok')}return openEd(n)}
 const tk=s.split(/\s+/);if(tk[1]==='#'&&tk[0]!=='run')tk.splice(1,1);const[c,a,b]=tk;
-if(c==='help')return['Comandos:','  Start <Log-> | <Log+> | <Log++> | <LogAll> [archivo]  crea y abre el editor','  edit <archivo>   abrir     run <archivo>   ejecutar','  ls   cat <a>   rm <a>   cp <a> <b>   mv <a> <b>   echo texto   stop   clear   reboot','  upload   cargar archivos de tu dispositivo (se guardan solos)','  connect [baudios]   enlazar un microcontrolador real por USB   disconnect','  pkg list | install <nombre> | remove <nombre> | info <nombre>   extensiones (UIVisuals, Storage, Graphics3D)','  run # <archivo>   ejecutar como kernel (modo privilegiado)    boot <archivo> | boot off   kernel de arranque','  En codigo: Use("archivo")  Sound("Freq;440","ms;200")  Serial("Write;hola")'].forEach(l=>pr(l));
+if(c==='help')return['Comandos:','  Start <Log-> | <Log+> | <Log++> | <LogAll> [archivo]  crea y abre el editor','  edit <archivo>   abrir     run <archivo>   ejecutar','  ls   cat <a>   rm <a>   cp <a> <b>   mv <a> <b>   echo texto   stop   clear   reboot','  upload   cargar archivos de tu dispositivo (se guardan solos)','  connect [baudios]   enlazar un microcontrolador real por USB   disconnect','  pkg list | install <nombre> | remove <nombre> | info <nombre>   extensiones (UIVisuals, Storage, Graphics3D)','  run # <archivo>   ejecutar como kernel (modo privilegiado)    boot <archivo> | boot off   kernel de arranque','  vd ls | cat f | rm f | import <archivo> [nombre] | export <nombre> [archivo] | format | reset   disco virtual del kernel','  En codigo: Use("archivo")  Sound("Freq;440","ms;200")  Serial("Write;hola")'].forEach(l=>pr(l));
 if(c==='ls')return pr(Object.keys(files).join('   ')||'(sin archivos: prueba Start <Log+>)');
 if(c==='echo')return pr(s.slice(5));
 if(c==='cp'||c==='mv'){if(!files[a]||!b)return pr(`uso: ${c} <origen> <destino>`,'err');files[b]=files[a];if(c==='mv')delete files[a];return pr('listo: '+b,'ok')}
@@ -347,6 +376,7 @@ if(c==='upload')return $('#upl').click();
 if(c==='connect')return connect(+a||115200);
 if(c==='disconnect')return disc();
 if(c==='pkg')return pkg(a,b);
+if(c==='vd')return vdcmd(a,b,tk[3]);
 if(c==='run'&&a==='#'){if(!files[b])return pr('run #: no existe '+(b||'(falta el nombre)'),'err');return runFile(b,{k:1})}
 if(c==='boot'){if(!a)return pr(BOOT?'kernel de arranque: '+BOOT:'sin kernel de arranque (usa: boot archivo)');if(a==='off'){BOOT='';lsB();return pr('arranque normal')}if(!files[a])return pr('boot: no existe '+a,'err');BOOT=a;lsB();return pr('kernel de arranque: '+a+' (se ejecuta al iniciar y con reboot)','ok')}
 if(c==='clear')return[...T.children].forEach(e=>e!==PR&&e.remove());
@@ -391,11 +421,11 @@ const og=(x,k)=>{const a=x.o.find(q=>q[0].toLowerCase()===k);return a?a.slice(1)
 let SL=[];function show(t,e,c){op(`${t} l.${e[0]}: ${e[1]}`,c);if(SL[e[0]-1]!==undefined)op(`   ${e[0]} | ${SL[e[0]-1].trim()}`,'src');if(e[2])op('   -> '+e[2],'hint')}
 function lev(a,b){const m=[...Array(b.length+1).keys()];for(let i=1;i<=a.length;i++){let p=m[0];m[0]=i;for(let j=1;j<=b.length;j++){const t=m[j];m[j]=Math.min(m[j]+1,m[j-1]+1,p+(a[i-1]===b[j-1]?0:1));p=t}}return m[b.length]}
 function sug(w,L){L=L||KN;w=w.toLowerCase();let b='',d=9;for(const c of L){const m=lev(w,c);if(m<d){d=m;b=c}}return d<=2?'Quisiste decir "'+b+'"?':''}
-function diag(t){if(/^[A-Za-z_][\w:]*:\s+\S/.test(t))return'Hay un espacio despues de ":". Escribelo pegado: '+t.replace(/^([A-Za-z_][\w:]*:)\s+/,$1);
+function diag(t){if(/^[A-Za-z_][\w:]*:\s+\S/.test(t))return'Hay un espacio despues de ":". Escribelo pegado: '+t.replace(/^([A-Za-z_][\w:]*:)\s+/,'$1');
 if((t.match(/"/g)||[]).length%2)return'Falta cerrar una comilla (")';const a=(t.match(/\(/g)||[]).length,b=(t.match(/\)/g)||[]).length;if(a>b)return'Falta cerrar un parentesis ")"';if(b>a)return'Sobra un parentesis ")"';return'Despues de los parentesis no puede haber texto suelto'}
 const ids=ns=>ns.flatMap(x=>[...(x.h[0].toLowerCase()==='ui'&&x.o?x.o.filter(q=>q[0].toLowerCase()==='id').map(q=>q[1].toLowerCase()):[]),...ids(x.body||[]),...ids(x.alt||[])]);
-const OA=(()=>{const S=['w','h','bits','set','color','write','text'];return{var:['value','text','list','size','fill','index','dict','key'],set:['value','text','index','key'],push:['value','text'],insert:['index','value','text'],remove:['index','key'],pop:['into'],sort:['order'],call:['into'],return:['value','text'],wait:['ms','press'],pin:['set','output','input','mode'],screen:S,display:S,reg:S,sound:['freq','ms'],expect:['equals'],input:['prompt'],ui:['id','label','text','min','max','value'],store:['key','value','into','default'],g3d:['id','x','y','z','size','color','rx','ry','rz','s','tx','ty','tz','fov','mode','bg'],console:['cols','rows','color','bg','text','col','row','into','prompt'],mem:['addr','value','size','len','from','to','text','into'],disk:['file','into','text','value'],exec:['file','args','into'],panic:['text'],spawn:['id']}})();
-const ARG={text:[2],each:[1],pixel:[2],rect:[4],line:[4],circle:[3],repeat:[1],if:[1],while:[1],for:[2,3]};
+const OA=(()=>{const S=['w','h','bits','set','color','write','text','target','style','size','src','into'];return{var:['value','text','list','size','fill','index','dict','key'],set:['value','text','index','key'],push:['value','text'],insert:['index','value','text'],remove:['index','key'],pop:['into'],sort:['order'],call:['into'],return:['value','text'],wait:['ms','press','until'],pin:['set','output','input','mode'],screen:S,display:S,reg:S,sound:['freq','ms'],expect:['equals'],input:['prompt'],ui:['id','label','text','min','max','value'],store:['key','value','into','default'],g3d:['id','x','y','z','size','color','rx','ry','rz','s','tx','ty','tz','fov','mode','bg'],console:['cols','rows','color','bg','text','col','row','into','prompt'],mem:['addr','value','size','len','from','to','text','into','type'],disk:['file','into','text','value','prefix','to'],host:['file','into','text','value'],exec:['file','args','into','from','bg','id'],surface:['id','w','h'],proc:['id','into'],recv:['into','timeout','ok'],send:['value','text'],sys:['into'],assert:['cond','text'],kill:['id'],join:['id'],panic:['text'],spawn:['id']}})();
+const ARG={blit:[2],get:[2],text:[2],each:[1],pixel:[2],rect:[4],line:[4],circle:[3],repeat:[1],if:[1],while:[1],for:[2,3]};
 function chkx(ns,E,W,s,lp){s.ids=s.ids||new Set();for(const x of ns){if(x.bad||!KN.includes(x.h[0].toLowerCase()))continue;const k=x.h[0].toLowerCase(),l=x.lg,n=x.n;
 if(!['print','serial','use'].includes(k))x.o.forEach(q=>{const a=q[0];if(/[:\s]/.test(a))E.push([n,`La orden "${q.join(';')}" no esta bien separada`,`Usa ";" para separar: "${a.split(/[:\s]+/).filter(Boolean).join(';')}"`]);else if(OA[k]&&!OA[k].includes(a.toLowerCase()))W.push([n,`Orden desconocida "${a}" en ${x.h[0]}`,sug(a,OA[k])||'Validas: '+OA[k].join(', ')])});
 const ck=['repeat','if','while','for','each'].includes(k)?k:k==='expect'?'pixel':['screen','display','reg'].includes(k)?x.h.map(v=>v.toLowerCase()).find(v=>OPS.includes(v)):null;
@@ -409,8 +439,13 @@ if(k==='on'){const m=(x.h[1]||'').toLowerCase();if(m!=='start_button'&&m!=='key'
 if(k==='var'&&x.o[0]&&x.o[0][0].toLowerCase()==='text'&&l==='log-'&&x.h.length>2&&x.h[1].toLowerCase()!=='str')E.push([n,'Log- exige tipo STR para texto','Escribe Var:STR:nombre("Text;Hola")']);
 if(k==='console'){const o=(x.h[1]||'').toLowerCase(),CO=['init','clear','print','put','at','read','refresh'];if(l==='log++')E.push([n,'Log++ no tiene pantalla: Console no puede usarse aqui','Usa Log+ o Log-']);else if(o==='init')s.res=1;else if(l==='log-'&&!s.res)E.push([n,'Log- exige Console:Init (o Screen:Resolution) antes de usar la consola','Agrega Console:Init("Cols;53","Rows;20") arriba']);if(!CO.includes(o))E.push([n,'Operacion Console desconocida: '+(x.h[1]||''),sug(o,CO)||'Validas: '+CO.join(', ')])}
 if(k==='mem'&&!['write','read','fill','copy','writetext'].includes((x.h[1]||'').toLowerCase()))E.push([n,'Operacion Mem desconocida: '+(x.h[1]||''),'Validas: write, read, fill, copy, writetext']);
-if(k==='disk'&&!['list','read','exists','write','delete'].includes((x.h[1]||'').toLowerCase()))E.push([n,'Operacion Disk desconocida: '+(x.h[1]||''),'Validas: list, read, exists, write, delete']);
-if(['if','while','for','repeat','each','def','loop','setup','on','task'].includes(k)&&!x.body)E.push([n,'Falta el bloque { } de '+x.h[0],'Escribe { en la linea siguiente (o al final de esta) y cierralo con } mas abajo']);
+if(k==='disk'&&!['list','read','exists','size','usage','write','append','delete','rename','copy','format'].includes((x.h[1]||'').toLowerCase()))E.push([n,'Operacion Disk desconocida: '+(x.h[1]||''),'Validas: list, read, exists, size, usage, write, append, delete, rename, copy, format']);
+if(k==='host'&&!['list','read','exists','write','delete'].includes((x.h[1]||'').toLowerCase()))E.push([n,'Operacion Host desconocida: '+(x.h[1]||''),'Validas: list, read, exists, write, delete']);
+if(k==='surface'&&!['new','free'].includes((x.h[1]||'').toLowerCase()))E.push([n,'Operacion Surface desconocida: '+(x.h[1]||''),'Validas: new, free']);
+if(k==='surface'&&l==='log++')E.push([n,'Log++ no tiene pantalla: Surface no puede usarse aqui','Usa Log+ o Log-']);
+if(k==='proc'&&!['list','alive'].includes((x.h[1]||'').toLowerCase()))E.push([n,'Operacion Proc desconocida: '+(x.h[1]||''),'Validas: list, alive']);
+if(k==='try'&&!x.cat)E.push([n,'Try necesita su bloque Catch','Escribe Catch:error { ... } justo despues del } del Try']);
+if(['if','while','for','repeat','each','def','loop','setup','on','task','try'].includes(k)&&!x.body)E.push([n,'Falta el bloque { } de '+x.h[0],'Escribe { en la linea siguiente (o al final de esta) y cierralo con } mas abajo']);
 if(k==='return'&&!s.fn)E.push([n,'Return solo puede usarse dentro de una funcion (Def)','Mueve el Return dentro de Def:nombre(...){ ... }']);if((k==='call'||k==='spawn')&&s.fns&&!s.fns.has(x.h[1]))W.push([n,'Funcion no definida en este archivo: '+x.h[1],'Si viene de otro archivo con Use("...") ignora esta advertencia']);if(k==='def'||k==='task')s.fn=(s.fn||0)+1;if(x.body)chkx(x.body,E,W,s,lp||['repeat','for','while','loop','each'].includes(k));if(k==='def'||k==='task')s.fn--;if(x.alt)chkx(x.alt,E,W,s,lp)}}
 const CAT={uivisuals:{n:'UIVisuals',d:'Botones, etiquetas, deslizadores, casillas y cajas de texto. Solo Log+ y lineas #+ de archivos mixtos.',kb:14},storage:{n:'Storage',d:'Guardar y cargar datos entre ejecuciones con Store:Save y Store:Load. Todas las variantes.',kb:6},graphics3d:{n:'Graphics3D',d:'Motor 3D por software: cubo, esfera, toro y piramide, camara con lookAt, luz con brillo, caras ocultas y orden por profundidad. Log+ y Log- (Log++ no tiene pantalla).',kb:22}};
 const EXT=new Set((()=>{try{return JSON.parse(localStorage.getItem('logpkgs')||'[]')}catch(_){return[]}})());
@@ -460,7 +495,8 @@ const cv=(t,v)=>t?Array.isArray(v)?v.map(CAST[t]):(v&&typeof v==='object')?v:CAS
 const valOf=x=>{const i=x.q.findIndex(s=>/^(value|text);/i.test(s));if(i<0)throw'Falta la orden Value o Text';return/^text;/i.test(x.q[i])?fm(x.q[i].slice(5)):ev(x.o[i][1])};
 const reg=(ns,f)=>ns.forEach(x=>{if(x.h[0].toLowerCase()==='def')(f||R.fn)[x.h[1]]=x});
 const fnn=ns=>ns.flatMap(x=>[...(x.h[0].toLowerCase()==='def'?[x.h[1]]:[]),...fnn(x.body||[]),...fnn(x.alt||[])]);
-document.addEventListener('keydown',e=>{if(R&&R.on&&!/INPUT|TEXTAREA/.test((e.target||{}).tagName||'')){RV().key=e.key;fire('key')}});
+document.addEventListener('keyup',e=>{if(R&&R.on){const g=RV();g.key=e.key;delete KD[e.key];g.keys=KD;fire('keyup')}});
+document.addEventListener('keydown',e=>{if(R&&R.on&&!/INPUT|TEXTAREA/.test((e.target||{}).tagName||'')){const g=RV();g.key=e.key;KD[e.key]=1;g.keys=KD;fire('key')}});
 CV.addEventListener('pointerdown',e=>{if(R&&R.on&&res){const r=CV.getBoundingClientRect();const g=RV();g.mx=Math.floor((e.clientX-r.left)/r.width*res.w);g.my=Math.floor((e.clientY-r.top)/r.height*res.h);fire('canvas')}});
 let fresh=null;
 function hd(){const on=!$('#cw').hidden||!$('#ui').hidden;$('#hdmi').hidden=!on;$('#hr').textContent=res?res.w+'x'+res.h:'1280x720'}
@@ -857,7 +893,356 @@ While(vivo)
 }
 `;
 SEED['LEEME.txt']=`Archivos de ejemplo de Log OS\nkernel.log-   sistema operativo con cursor\nhola.log+     app de texto\nespiral.log+  app grafica\nArrancar:  run # kernel.log-\nAutoarranque:  boot kernel.log-\nEn el shell: help, gui`;
-try{if(localStorage.getItem('logseed3')!=='1'){const k0=files['kernel.log-'];if(k0!==undefined&&!k0.includes('On:Mouse'))files['kernel.v1.log-']=k0;files['kernel.log-']=SEED['kernel.log-'];files['LEEME.txt']=SEED['LEEME.txt'];for(const k in SEED)if(files[k]===undefined)files[k]=SEED[k];localStorage.setItem('logseed3','1');sv()}}catch(_){for(const k in SEED)if(files[k]===undefined)files[k]=SEED[k]}
+SEED['kernel.log-']=`<log->
+// KERNEL.LOG- v3 - sistema operativo minimo para Log OS
+// Ejecutalo con:  run # kernel.log-   (modo kernel)   |   arranque automatico:  boot kernel.log-
+// Tiene su propio DISCO VIRTUAL, aislado de los archivos del simulador (ver: vd ls).
+// Entradas: botones Teclado y Mouse debajo de la pantalla, o toca la pantalla.
+// Memoria: 0x0010 ticks (32 bits)  |  0x0100 tabla de procesos (16 bytes c/u)
+Screen:Resolution("W;318","H;180","Bits;24")
+Console:Init("Cols;53","Rows;20","Color;#9be7b4","Bg;#04110a")
+Var:U32:ticks("Value;0")
+Var:U8:procs("Value;0")
+Var:I32:codigo("Value;0")
+Var:I32:ok("Value;0")
+Var:I32:vivo("Value;1")
+Var:I32:modo("Value;0")
+Var:I32:mx("Value;159")
+Var:I32:my("Value;90")
+Var:I32:mb("Value;0")
+Var:I32:ox("Value;159")
+Var:I32:oy("Value;90")
+Var:STR:linea("Text;")
+Var:STR:cmd("Text;")
+Var:STR:rest("Text;")
+Var:STR:arg("Text;")
+Var:STR:arg2("Text;")
+Var:STR:txt("Text;")
+Var:STR:ruta("Text;")
+Var:STR:err("Text;")
+Var:STR:archivos("List;")
+Var:STR:lista("List;")
+Var:I32:info("Dict;")
+
+// servicio del kernel: registra un proceso en la tabla (0x0100)
+Def:spawn(nombre)
+{
+    Mem:Write("Addr;256+procs*16","Value;procs+1")
+    Mem:Write("Addr;257+procs*16","Value;1")
+    Mem:WriteText("Addr;258+procs*16","Text;{nombre}")
+    Set:procs("Value;procs+1")
+}
+
+// servicio del kernel: borra el cursor anterior y dibuja el nuevo
+Def:cursor()
+{
+    Screen:Rect(ox-1,oy-1,12,16)("Color;#000000")
+    Screen:Rect(0,0,60,10)("Color;#000000")
+    Screen:Line(mx,my,mx,my+11)("Color;#ffffff")
+    Screen:Line(mx,my,mx+8,my+8)("Color;#ffffff")
+    Screen:Line(mx,my+11,mx+3,my+8)("Color;#ffffff")
+    Screen:Line(mx+3,my+8,mx+8,my+8)("Color;#ffffff")
+    Screen:Text(2,1)("Text;{mx},{my}","Color;#9be7b4")
+    Set:ox("Value;mx")
+    Set:oy("Value;my")
+}
+
+// servicio del kernel: busca una app en el disco y deja su ruta en 'ruta'
+Def:buscar(nombre)
+{
+    Set:ruta("Text;")
+    Disk:Exists("File;{nombre}","Into;ok")
+    If(ok==1)
+    {
+        Set:ruta("Text;{nombre}")
+        Return
+    }
+    Disk:Exists("File;bin/{nombre}","Into;ok")
+    If(ok==1)
+    {
+        Set:ruta("Text;bin/{nombre}")
+        Return
+    }
+    Disk:Exists("File;bin/{nombre}.log+","Into;ok")
+    If(ok==1)
+    {
+        Set:ruta("Text;bin/{nombre}.log+")
+    }
+}
+
+// interrupcion del reloj: una vez por segundo
+On:Timer("Every;1000")
+{
+    Set:ticks("Value;ticks+1")
+    Mem:Write("Addr;16","Value;ticks","Size;4")
+}
+
+// interrupciones del mouse y del teclado
+On:Mouse("Move")
+{
+    If(modo==1)
+    {
+        Call:cursor()
+    }
+}
+On:Mouse("Down")
+{
+    If(modo==1&&mb==2)
+    {
+        Set:modo("Value;0")
+        Console:Refresh
+    }
+}
+On:Key("Down")
+{
+    If(modo==1&&key=='Escape')
+    {
+        Set:modo("Value;0")
+        Console:Refresh
+    }
+}
+
+// ---- arranque ----
+Console:Print("Text;LOGOS 0.3 - kernel en Log-","Color;#ffffff")
+Wait("ms;300")
+Console:Print("Text;CPU 3.0 GHz ............ OK")
+Mem:Fill("Addr;1024","Len;4096","Value;170")
+Mem:Read("Addr;3000","Into;ok")
+If(ok!=170)
+{
+    Panic("Text;fallo en la prueba de memoria")
+}
+Mem:Fill("Addr;1024","Len;4096","Value;0")
+Console:Print("Text;RAM 1024 KB ........... OK")
+Wait("ms;300")
+Disk:List("Into;archivos")
+Console:Print("Text;Disco virtual: {archivos.length} archivos ... OK")
+Console:Print("Text;Mouse y teclado ........ OK")
+Call:spawn('init')
+Call:spawn('shell')
+Try
+{
+    Disk:Read("File;etc/motd.txt","Into;txt")
+    Console:Print("Text;{txt}","Color;#ffd479")
+}
+Catch:err
+{
+}
+Console:Print("Text;Escribe help para ver los comandos.")
+Console:Print("Text;")
+
+// ---- shell ----
+While(vivo)
+{
+    If(modo==1)
+    {
+        Wait("ms;30")
+        Continue
+    }
+    Console:Read("Into;linea","Prompt;logos>")
+    Set:cmd("Value;linea.trim().split(' ')[0].toLowerCase()")
+    Set:rest("Value;linea.trim().split(' ').slice(1).join(' ')")
+    Set:arg("Value;rest.split(' ')[0]")
+    Set:arg2("Value;rest.split(' ').slice(1).join(' ')")
+    If(cmd=='')
+    {
+        Continue
+    }
+    Try
+    {
+        If(cmd=='help')
+        {
+            Console:Print("Text;help ver clear echo mem ps jobs uptime date sys")
+            Console:Print("Text;ls cat write append rm cp mv df import export hostls")
+            Console:Print("Text;run bg kill mouse gui panic halt")
+        }
+        ElseIf(cmd=='ver')
+        {
+            Console:Print("Text;LOGOS 0.3 (kernel escrito en Log-)")
+        }
+        ElseIf(cmd=='clear')
+        {
+            Console:Clear
+        }
+        ElseIf(cmd=='echo')
+        {
+            Console:Print("Text;{rest}")
+        }
+        ElseIf(cmd=='date')
+        {
+            Console:Print("Text;{new Date().toLocaleString()}")
+        }
+        ElseIf(cmd=='uptime')
+        {
+            Console:Print("Text;encendido hace {ticks} s")
+        }
+        ElseIf(cmd=='sys')
+        {
+            Sys("Into;info")
+            Console:Print("Text;{info.cpu}  RAM {info.ram_mb} MB")
+            Console:Print("Text;memoria {info.mem_bytes} bytes  pantalla {info.width}x{info.height}")
+            Console:Print("Text;tareas activas: {info.tasks}  version {info.version}")
+        }
+        ElseIf(cmd=='mem')
+        {
+            Mem:Read("Addr;16","Into;ok","Size;4")
+            Console:Print("Text;RAM total: 1024 KB")
+            Console:Print("Text;ticks guardados en 0x10: {ok}")
+            Console:Print("Text;tabla de procesos (0x100): {procs} entradas")
+        }
+        ElseIf(cmd=='ps')
+        {
+            Console:Print("Text;PID  ESTADO  NOMBRE")
+            For:p(0,procs)
+            {
+                Console:Print("Text;{peek(256+p*16)}    {peek(257+p*16)}       {peekstr(258+p*16)}")
+            }
+        }
+        ElseIf(cmd=='jobs')
+        {
+            Proc:List("Into;lista")
+            Console:Print("Text;en segundo plano: {lista.length}")
+            Each:j(lista)
+            {
+                Console:Print("Text;  {j}")
+            }
+        }
+        ElseIf(cmd=='ls')
+        {
+            Disk:List("Prefix;{rest}","Into;archivos")
+            Each:f(archivos)
+            {
+                Disk:Size("File;{f}","Into;ok")
+                Console:Print("Text;  {f}  ({ok} B)")
+            }
+        }
+        ElseIf(cmd=='cat')
+        {
+            Disk:Read("File;{arg}","Into;txt")
+            Console:Print("Text;{txt}")
+        }
+        ElseIf(cmd=='write')
+        {
+            Disk:Write("File;{arg}","Text;{arg2}")
+        }
+        ElseIf(cmd=='append')
+        {
+            Disk:Append("File;{arg}","Text;{arg2}")
+        }
+        ElseIf(cmd=='rm')
+        {
+            Disk:Delete("File;{arg}")
+        }
+        ElseIf(cmd=='cp')
+        {
+            Disk:Copy("File;{arg}","To;{arg2}")
+        }
+        ElseIf(cmd=='mv')
+        {
+            Disk:Rename("File;{arg}","To;{arg2}")
+        }
+        ElseIf(cmd=='df')
+        {
+            Disk:List("Into;archivos")
+            Disk:Usage("Into;ok")
+            Console:Print("Text;{archivos.length} archivos, {ok} bytes en el disco virtual")
+        }
+        ElseIf(cmd=='hostls')
+        {
+            Host:List("Into;lista")
+            Each:f(lista)
+            {
+                Console:Print("Text;  {f}")
+            }
+        }
+        ElseIf(cmd=='import')
+        {
+            Host:Read("File;{arg}","Into;txt")
+            Disk:Write("File;{arg}","Text;{txt}")
+            Console:Print("Text;importado {arg}")
+        }
+        ElseIf(cmd=='export')
+        {
+            Disk:Read("File;{arg}","Into;txt")
+            Host:Write("File;{arg}","Text;{txt}")
+            Console:Print("Text;exportado {arg}")
+        }
+        ElseIf(cmd=='run')
+        {
+            Call:buscar(arg)
+            If(ruta=='')
+            {
+                Console:Print("Text;run: no existe la app {arg}","Color;#ff7b7b")
+            }
+            Else
+            {
+                Call:spawn(arg)
+                Exec("File;{ruta}","Args;{arg2}","Into;codigo")
+                Console:Refresh
+                Console:Print("Text;proceso {arg} termino con codigo {codigo}")
+                Set:procs("Value;procs-1")
+            }
+        }
+        ElseIf(cmd=='bg')
+        {
+            Call:buscar(arg)
+            If(ruta=='')
+            {
+                Console:Print("Text;bg: no existe la app {arg}","Color;#ff7b7b")
+            }
+            Else
+            {
+                Exec("File;{ruta}","Args;{arg2}","Bg;1","Id;{arg}")
+                Console:Print("Text;{arg} corre en segundo plano (jobs, kill {arg})")
+            }
+        }
+        ElseIf(cmd=='kill')
+        {
+            Kill("Id;{arg}")
+            Console:Print("Text;pedida la parada de {arg}")
+        }
+        ElseIf(cmd=='mouse')
+        {
+            Console:Print("Text;mouse en {mx},{my} boton {mb}")
+        }
+        ElseIf(cmd=='gui')
+        {
+            Set:modo("Value;1")
+            Set:ox("Value;mx")
+            Set:oy("Value;my")
+            Screen:Clear("Color;#000000")
+            Screen:Text(2,170)("Text;Esc o clic derecho: salir","Color;#7f8c85")
+            Call:cursor()
+        }
+        ElseIf(cmd=='panic')
+        {
+            Panic("Text;panico pedido desde el shell")
+        }
+        ElseIf(cmd=='halt')
+        {
+            Console:Print("Text;Apagando el sistema...")
+            Wait("ms;600")
+            Stop
+        }
+        Else
+        {
+            Console:Print("Text;comando desconocido: {cmd}","Color;#ff7b7b")
+        }
+    }
+    Catch:err
+    {
+        Console:Print("Text;error: {err}","Color;#ff7b7b")
+    }
+}
+`;
+SEED['LEEME.txt']=`Archivos de ejemplo de Log OS
+kernel.log-   sistema operativo (v3)
+hola.log+     app de texto
+espiral.log+  app grafica
+Arrancar:  run # kernel.log-
+Autoarranque:  boot kernel.log-
+El kernel tiene su disco virtual (vd ls)`;
+try{if(localStorage.getItem('logseed4')!=='1'){const k0=files['kernel.log-'];if(k0!==undefined&&!k0.includes('LOGOS 0.3'))files['kernel.v2.log-']=k0;files['kernel.log-']=SEED['kernel.log-'];files['LEEME.txt']=SEED['LEEME.txt'];for(const k in SEED)if(files[k]===undefined)files[k]=SEED[k];localStorage.setItem('logseed4','1');sv()}}catch(_){for(const k in SEED)if(files[k]===undefined)files[k]=SEED[k]}
 const PM={x:0,y:0,last:null};
 function showDev(){$('#dev').hidden=false;CV.style.touchAction='none'}
 function mev(k,x,y,b){const g=RV();g.mx=x;g.my=y;PM.x=x;PM.y=y;if(b!==undefined)g.mb=b;const c=$('#cur');if(c&&!c.hidden&&res){c.style.left=x/res.w*100+'%';c.style.top=y/res.h*100+'%'}if(!(R&&R.on))return;if(k==='mousemove'){if(R.mm&&Date.now()-R.mm<250)return;R.mm=Date.now();fire(k).finally(()=>{if(R)R.mm=0})}else fire(k)}
@@ -876,17 +1261,92 @@ const VL={Backspace:'⌫',Enter:'↵',Shift:'⇧',Escape:'Esc',ArrowLeft:'←',A
 let vs=0;
 function vkey(k){const i=$('#ini'),act=!$('#inw').hidden;if(k==='Shift'){vs^=1;return}const c=k.length===1&&vs?k.toUpperCase():k;if(k.length===1)vs=0;
 if(act){if(k==='Backspace')i.value=i.value.slice(0,-1);else if(k==='Enter')i.onkeydown&&i.onkeydown({key:'Enter'});else if(c.length===1)i.value+=c;return}
-if(R&&R.on){RV().key=c;fire('key')}}
+if(R&&R.on){const g=RV();g.key=c;KD[c]=1;g.keys=KD;fire('key');setTimeout(()=>{if(R&&R.on){delete KD[c];g.key=c;fire('keyup')}},90)}}
 (function(){const v=$('#vk');VK.forEach(r=>{const d=document.createElement('div');d.className='vr';r.forEach(k=>{const b=document.createElement('button');b.className='g';b.textContent=VL[k]||k;b.onpointerdown=e=>{e.preventDefault();vkey(k)};d.appendChild(b)});v.appendChild(d)})})();
 $('#bk').onclick=()=>{const v=$('#vk');v.hidden=!v.hidden;$('#bk').textContent=v.hidden?'Teclado':'Ocultar teclado'};
 $('#bm').onclick=()=>{const p=$('#pad');p.hidden=!p.hidden;$('#cur').hidden=p.hidden;if(!p.hidden&&res){PM.x=res.w/2;PM.y=res.h/2}};
 const RV=()=>R&&R.root?R.root.v:V;
 const mkScope=(p,l)=>new Proxy(l,{get:(t,k)=>k in t?t[k]:p[k],set:(t,k,v)=>{if(k in t)t[k]=v;else p[k]=v;return true},has:(t,k)=>k in t||k in p,deleteProperty:(t,k)=>{delete t[k];return true},ownKeys:t=>[...new Set([...Reflect.ownKeys(p),...Reflect.ownKeys(t)])],getOwnPropertyDescriptor:(t,k)=>(k in t||k in p)?{value:k in t?t[k]:p[k],enumerable:true,configurable:true,writable:true}:undefined});
-function taskEnd(){const r=R;if(r&&r.on&&!r.stop&&r.done&&r.tn===0&&!r.hd.length&&!r.ui&&!r.tm&&r.fin)r.fin()}
-function startTask(nm,body,sc){if(R.tasks[nm]&&R.tasks[nm].on)throw'La tarea ya esta corriendo: '+nm;const t={n:nm,on:1,stop:0},r=R;R.tasks[nm]=t;R.tn++;const tf={v:sc.v,t:sc.t,fn:sc.fn,task:t,xd:sc.xd};
-(async()=>{try{await ex(body,tf)}catch(e){if(e!=='STOP'&&e!=='KILL'&&e!==BRK&&e!==CNT&&!(e instanceof Ret))op(`ERROR [tarea ${nm}] ${typeof e==='string'?e:e.message}`,'err')}finally{t.on=0;r.tn--;taskEnd()}})();return t}
+function taskEnd(){const r=R;if(r&&r.on&&!r.stop&&r.done&&r.tn===0&&!r.hd.length&&!r.ui&&!(r.tm&&r.tm.length)&&r.fin)r.fin()}
+function startTask(nm,body,sc){if(R.tasks[nm]&&R.tasks[nm].on)throw'La tarea ya esta corriendo: '+nm;const t={n:nm,on:1,stop:0,proc:sc.proc},r=R;R.tasks[nm]=t;R.tn++;const tf={v:sc.v,t:sc.t,fn:sc.fn,task:t,xd:sc.xd,proc:sc.proc};
+(async()=>{try{await ex(body,tf)}catch(e){if(e!=='STOP'&&e!=='KILL'&&e!==BRK&&e!==CNT&&!(e instanceof Ret))op(`ERROR [tarea ${nm}] ${typeof e==='string'?e:e.message}`,'err')}finally{t.on=0;r.tn--;if(sc.main)killProc(sc.proc,r);taskEnd()}})();return t}
 let held=0;
 function openPad(){$('#pad').hidden=false;$('#cur').hidden=false;if(res){PM.x=res.w/2;PM.y=res.h/2}}
 $('#ph').onclick=()=>{held^=1;$('#ph').textContent=held?'Mantener \u25cf':'Mantener';mev(held?'mousedown':'mouseup',PM.x|0,PM.y|0,held?1:0)};
+const VDSEED={
+'readme.txt':`Disco virtual de Log OS
+Es independiente de los archivos del simulador.
+Comandos: ls cat write rm cp mv df import run
+Apps en bin/: hola espiral paint`,
+'etc/motd.txt':`Bienvenido a LOGOS 0.3`,
+'bin/hola.log+':`<log+>
+// App de ejemplo. En el shell:  run hola
+Console:Print("Text;Hola! Soy un proceso hijo (hola.log+)","Color;#ffd479")
+Console:Print("Text;args = [{args}]")
+`,
+'bin/espiral.log+':`<log+>
+// App grafica. En el shell:  run espiral
+Screen:Clear("Color;black")
+For:i(0,300)
+{
+    Screen:Circle(160+i*0.45*cos(i/6),90+i*0.28*sin(i/6),2)("Color;hsl;i*1.2")
+}
+Wait("ms;1500")
+`,
+'bin/paint.log+':`<log+>
+// Paint. En el shell:  run paint   (Esc o clic derecho: salir)
+Var:pintar("Value;0")
+Var:fin("Value;0")
+Screen:Clear("Color;#101820")
+Screen:Text(2,2)("Text;Paint - Esc o clic derecho: salir","Color;#7f8c85")
+On:Mouse("Down")
+{
+    If(mb==2)
+    {
+        Set:fin("Value;1")
+    }
+    Else
+    {
+        Set:pintar("Value;1")
+    }
+}
+On:Mouse("Up")
+{
+    Set:pintar("Value;0")
+}
+On:Mouse("Move")
+{
+    If(pintar==1)
+    {
+        Screen:Circle(mx,my,3)("Color;hsl;mx")
+    }
+}
+On:Key("Down")
+{
+    If(key=='Escape')
+    {
+        Set:fin("Value;1")
+    }
+}
+Wait("Until;fin==1")
+`};
+let VD=null;try{VD=JSON.parse(localStorage.getItem('logvd')||'null')}catch(_){}
+if(!VD||typeof VD!=='object'||Array.isArray(VD))VD=Object.assign({},VDSEED);
+const vdSave=()=>{try{localStorage.setItem('logvd',JSON.stringify(VD))}catch(_){op('Disk: no hay espacio para guardar el disco virtual','wrn')}};
+try{localStorage.setItem('logvd',JSON.stringify(VD))}catch(_){}
+function vdcmd(a,b,c){if(!a||a==='ls'){const k=Object.keys(VD).sort();return pr(k.length?k.map(n=>n+'  ('+VD[n].length+' B)').join('\n'):'(disco virtual vacio)')}
+if(a==='cat'){if(VD[b]===undefined)return pr('vd: no existe '+(b||'(falta el nombre)'),'err');return VD[b].split('\n').forEach(l=>pr(l))}
+if(a==='rm'){if(VD[b]===undefined)return pr('vd: no existe '+(b||'(falta el nombre)'),'err');delete VD[b];vdSave();return pr('borrado '+b)}
+if(a==='import'){if(files[b]===undefined)return pr('vd import: no existe en el simulador: '+(b||'(falta el nombre)'),'err');VD[c||b]=files[b];vdSave();return pr('copiado al disco virtual: '+(c||b),'ok')}
+if(a==='export'){if(VD[b]===undefined)return pr('vd export: no existe en el disco: '+(b||'(falta el nombre)'),'err');files[c||b]=VD[b];sv();return pr('copiado al simulador: '+(c||b),'ok')}
+if(a==='format'){for(const k of Object.keys(VD))delete VD[k];vdSave();return pr('disco virtual formateado')}
+if(a==='reset'){for(const k of Object.keys(VD))delete VD[k];Object.assign(VD,VDSEED);vdSave();return pr('disco virtual restaurado','ok')}
+pr('uso: vd ls | cat f | rm f | import archivo [nombre] | export nombre [archivo] | format | reset','err')}
+const SURF={},KD={},DV=new DataView(MEM.buffer);
+const EVK=['mx','my','mb','key','keys'];
+const mkChild=l=>new Proxy(l,{get:(t,k)=>k in t?t[k]:EVK.includes(k)?RV()[k]:undefined,has:(t,k)=>k in t||(EVK.includes(k)&&k in RV()),set:(t,k,v)=>{t[k]=v;return true},deleteProperty:(t,k)=>{delete t[k];return true},ownKeys:t=>[...new Set([...Reflect.ownKeys(t),...EVK.filter(k=>k in RV())])],getOwnPropertyDescriptor:(t,k)=>(k in t||(EVK.includes(k)&&k in RV()))?{value:k in t?t[k]:RV()[k],enumerable:true,configurable:true,writable:true}:undefined});
+function killProc(p,r){r=r||R;if(!r)return;r.hd=r.hd.filter(h=>!(h.sc&&h.sc.proc===p));(r.tm||[]).filter(t=>t.p===p).forEach(t=>clearInterval(t.i));if(r.tm)r.tm=r.tm.filter(t=>t.p!==p);Object.values(r.tasks).filter(t=>t.proc===p).forEach(t=>t.stop=1)}
+const HF={pin:n=>PIN[n]|0,rnd:(a,b)=>a+Math.floor(Math.random()*(b-a+1)),peek:pk,peek16:pk16,peek32:pk32,peekstr:pks,peekf:a=>{a=mc(a);mc(a+3);return DV.getFloat32(a,true)},peekd:a=>{a=mc(a);mc(a+7);return DV.getFloat64(a,true)},fix:(v,n)=>(+v).toFixed(n===undefined?2:n)};
+Object.defineProperty(HF,'t',{get:()=>Date.now()-R.t0});
 boot();
 </script></body></html>
