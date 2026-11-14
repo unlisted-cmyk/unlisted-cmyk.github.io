@@ -160,7 +160,7 @@ Loop
 }
 `};
 /* ---------- parser ---------- */
-const KN=['use','print','var','set','repeat','for','if','wait','screen','display','reg','pin','on','loop','setup','expect','sound','serial','else','while','break','continue','input','ui','store','g3d','push','pop','remove','insert','sort','shuffle','each','def','call','return','elseif','console','mem','disk','exec','panic','stop','task','spawn','kill','join','try','lock','unlock','send','recv','yield','assert','sys','proc','surface','host'],OPS=['pixel','rect','line','circle','clear','resolution','text','blit','get'],TYP=['u8','u16','u32','i32','f32','f64','str'];
+const KN=['use','print','var','set','repeat','for','if','wait','screen','display','reg','pin','on','loop','setup','expect','sound','serial','else','while','break','continue','input','ui','store','g3d','push','pop','remove','insert','sort','shuffle','each','def','call','return','elseif','console','mem','disk','exec','panic','stop','task','spawn','kill','join','import','try','lock','unlock','send','recv','yield','assert','sys','proc','surface','host'],OPS=['pixel','rect','line','circle','clear','resolution','text','blit','get'],TYP=['u8','u16','u32','i32','f32','f64','str'];
 const CAST={u8:v=>v&255,u16:v=>v&65535,u32:v=>v>>>0,i32:v=>v|0,f32:v=>Math.fround(+v),f64:v=>+v,str:v=>String(v).slice(0,65535)};
 function sp(s){const a=[];let d=0,q=0,b=0;for(let i=0;i<=s.length;i++){const c=s[i];if(c==='"')q^=1;if(!q){if(c==='('||c==='[')d++;if(c===')'||c===']')d--}if(i===s.length||(c===','&&!d&&!q)){a.push(s.slice(b,i).trim());b=i+1}}return a}
 function grp(s){const g=[];let d=0,b=0;for(let i=0;i<s.length;i++){const c=s[i];if(c==='"'){if(!d)return null;const j=s.indexOf('"',i+1);if(j<0)return null;i=j}else if(c==='('){if(d++===0)b=i+1}else if(c===')'){if(--d<0)return null;if(d===0)g.push(s.slice(b,i))}else if(!d&&c!==' ')return null}return d?null:g}
@@ -226,7 +226,7 @@ async function ex(ns,fl){for(const x of ns){if(R.stop)throw'STOP';if(fl.task&&fl
 try{await one(x,fl)}catch(e){if(e==='STOP'||e==='KILL'||e===BRK||e===CNT||e instanceof Ret||/^l\.\d+:/.test(e))throw e;throw`l.${x.n}: ${typeof e==='string'?e:e.message}`}}}
 async function one(x,fl){const k=x.h[0].toLowerCase();
 switch(k){
-case'use':if(x.q[0]){const f=x.q[0],fr=(((x.q[1]||'').match(/^from;(.*)$/i)||[])[1]||(R.k?'disk':'host')).toLowerCase(),st=fr==='disk'?VD[f]:files[f];if(st===undefined)throw'Use: no existe el archivo '+f+' (en '+fr+')';if((R.inc=(R.inc||0)+1)>8)throw'Use: demasiados niveles';const p=parse(st,f);if(p.nodes){chk(p.nodes,p.E,p.W,{});chkx(p.nodes,p.E,p.W,{},0)}if(p.E.length)throw`${f} l.${p.E[0][0]}: ${p.E[0][1]}`;op(`[use] ${f} incluido`);reg(p.nodes);await ex(p.nodes,fl);R.inc--}else op(`[lib] ${x.h[1]||''} cargada desde el silicio`);break;
+case'use':if(x.q[0]){const f=resolveP(fl.path,x.q[0]),fr=(((x.q[1]||'').match(/^from;(.*)$/i)||[])[1]||(R.k?'disk':'host')).toLowerCase(),st=fr==='disk'?VD[f]:files[f];if(st===undefined)throw'Use: no existe el archivo '+f+' (en '+fr+')';if((R.inc=(R.inc||0)+1)>8)throw'Use: demasiados niveles';const p=parse(st,f);if(p.nodes){chk(p.nodes,p.E,p.W,{});chkx(p.nodes,p.E,p.W,{},0)}if(p.E.length)throw`${f} l.${p.E[0][0]}: ${p.E[0][1]}`;op(`[use] ${f} incluido`);reg(p.nodes);const p0=fl.path;fl.path=dirOf(f);try{await ex(p.nodes,fl)}finally{fl.path=p0}R.inc--}else op(`[lib] ${x.h[1]||''} cargada desde el silicio`);break;
 case'sound':{const g=k=>ev((x.o.find(a=>a[0].toLowerCase()===k)||['',k==='ms'?200:440])[1]),m=g('ms');beep(g('freq'),m);R.waiting=1;await sleep(m);R.waiting=0;break}
 case'serial':send(fm((x.q[0]||'').replace(/^write;/i,'')));break;
 case'g3d':g3(x);break;
@@ -240,13 +240,13 @@ else for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i]
 break}
 case'each':{const a=ev(x.a[0]);if(!Array.isArray(a))throw'Each necesita una lista';for(const el of a.slice()){V=fl.v;TY=fl.t;V[x.h[1]]=el;if(await lp(x.body,fl))break}break}
 case'def':R.fn[x.h[1]]=x;break;
-case'call':{const f=R.fn[x.h[1]];if(!f)throw'Funcion no definida: '+x.h[1];if((fl.dp=(fl.dp||0)+1)>200){fl.dp=0;throw'Demasiada recursion (limite 200)'}
+case'call':{let f,par=fl.v,fnt=fl.fn,pth=fl.path;const mod=x.h.length>2;if(mod){const m=R.mods[x.h[1]];if(!m)throw'Modulo no importado: '+x.h[1];f=m.fn[x.h[2]];if(!f)throw'Funcion no definida en el modulo '+x.h[1]+': '+x.h[2];par=mkChild(m.v);fnt=m.fn;pth=dirOf(m.file)}else f=R.fn[x.h[1]];if(!f)throw'Funcion no definida: '+x.h[1];if((fl.dp=(fl.dp||0)+1)>200){fl.dp=0;throw'Demasiada recursion (limite 200)'}
 const ps=f.a,args=x.a.map(e=>ev(e));if(args.length!==ps.length)throw`${x.h[1]} espera ${ps.length} argumento(s) y recibio ${args.length}`;
-const loc={},tl={};ps.forEach((p,i)=>{loc[p]=args[i];tl[p]=undefined});const f2={v:mkScope(fl.v,loc),t:mkScope(fl.t,tl),fn:fl.fn,task:fl.task,xd:fl.xd,dp:fl.dp,proc:fl.proc};let rv;
+const loc={},tl={};ps.forEach((p,i)=>{loc[p]=args[i];tl[p]=undefined});const f2={v:mkScope(par,loc),t:mkScope(mod?{}:fl.t,tl),fn:fnt,task:fl.task,xd:fl.xd,dp:fl.dp,proc:fl.proc,path:pth};let rv;
 try{await ex(f.body,f2)}catch(e){if(e instanceof Ret)rv=e.v;else throw e}finally{fl.dp=Math.max(0,(fl.dp||1)-1)}
 V=fl.v;TY=fl.t;R.fn=fl.fn;const to=og(x,'into');if(to!==null){if(!(to in V))throw'Variable no declarada: '+to;V[to]=cv(TY[to],rv)}break}
 case'task':{if(!x.h[1])throw'Task necesita un nombre: Task:enemigo{ ... }';if(!x.body)throw'Task necesita un bloque { }';startTask(x.h[1],x.body,fl);break}
-case'spawn':{const f=R.fn[x.h[1]];if(!f)throw'Funcion no definida: '+x.h[1];const ps=f.a,args=x.a.map(e=>ev(e));if(args.length!==ps.length)throw`${x.h[1]} espera ${ps.length} argumento(s) y recibio ${args.length}`;const loc={},tl={};ps.forEach((p,i)=>{loc[p]=args[i];tl[p]=undefined});startTask(fm(og(x,'id')||'')||x.h[1]+'#'+(++R.tid),f.body,{v:mkScope(fl.v,loc),t:mkScope(fl.t,tl),fn:fl.fn,xd:fl.xd,proc:fl.proc});break}
+case'spawn':{let f,par=fl.v,fnt=fl.fn,pth=fl.path;const mod=x.h.length>2;if(mod){const m=R.mods[x.h[1]];if(!m)throw'Modulo no importado: '+x.h[1];f=m.fn[x.h[2]];if(!f)throw'Funcion no definida en el modulo '+x.h[1]+': '+x.h[2];par=mkChild(m.v);fnt=m.fn;pth=dirOf(m.file)}else f=R.fn[x.h[1]];if(!f)throw'Funcion no definida: '+x.h[1];const ps=f.a,args=x.a.map(e=>ev(e));if(args.length!==ps.length)throw`${x.h[1]} espera ${ps.length} argumento(s) y recibio ${args.length}`;const loc={},tl={};ps.forEach((p,i)=>{loc[p]=args[i];tl[p]=undefined});startTask(fm(og(x,'id')||'')||x.h[1]+'#'+(++R.tid),f.body,{v:mkScope(par,loc),t:mkScope(mod?{}:fl.t,tl),fn:fnt,xd:fl.xd,proc:fl.proc,path:pth});break}
 case'kill':{const nm=x.h[1]||fm(og(x,'id')||'');if(nm.toLowerCase()==='all'){Object.values(R.tasks).forEach(t=>t.stop=1);break}const t=R.tasks[nm];if(!t)throw'Tarea desconocida: '+nm;t.stop=1;if(t.proc)killProc(t.proc);break}
 case'join':{const jn=x.h[1]||fm(og(x,'id')||''),t=R.tasks[jn];if(!t)throw'Tarea desconocida: '+jn;R.waiting=1;while(t.on&&!R.stop)await sleep(10);R.waiting=0;break}
 case'return':throw new Ret(x.q.length?valOf(x):undefined);
@@ -265,7 +265,7 @@ else if(w==='copy'){const f=g('from'),t=g('to'),n=g('len')??0;mc(f);mc(f+n-1);mc
 else if(w==='writetext'){const s=String(valOf(x));for(let i=0;i<=s.length;i++)MEM[mc(a+i)]=i<s.length?s.charCodeAt(i)&255:0}
 else throw'Mem: usa Write, Read, Fill, Copy o WriteText';break}
 case'disk':{const w=(x.h[1]||'').toLowerCase(),f=fm(og(x,'file')||''),into=v=>{const to=og(x,'into');if(to!==null){if(!(to in V))throw'Variable no declarada: '+to;V[to]=cv(TY[to],v)}},txt=()=>String(valOf(x)).split('\\n').join(String.fromCharCode(10));
-if(w==='list'){const pf=fm(og(x,'prefix')||'');into(Object.keys(VD).filter(k=>k.startsWith(pf)).sort())}
+if(w==='list'){const pf=fm(og(x,'prefix')||'');into(Object.keys(VD).filter(k=>k.startsWith(pf)&&!k.endsWith('/.dir')).sort())}
 else if(w==='read'){if(VD[f]===undefined)throw'Disk: no existe '+f;into(VD[f])}
 else if(w==='exists')into(VD[f]!==undefined?1:0);
 else if(w==='size')into(VD[f]===undefined?-1:VD[f].length);
@@ -274,22 +274,33 @@ else if(w==='write'){if(!f)throw'Disk: falta File';VD[f]=txt();vdSave()}
 else if(w==='append'){if(!f)throw'Disk: falta File';VD[f]=(VD[f]||'')+txt();vdSave()}
 else if(w==='delete'){delete VD[f];vdSave()}
 else if(w==='rename'||w==='copy'){const t=fm(og(x,'to')||'');if(!t)throw'Disk: falta To';if(VD[f]===undefined)throw'Disk: no existe '+f;VD[t]=VD[f];if(w==='rename')delete VD[f];vdSave()}
+else if(w==='mkdir'){if(!f)throw'Disk: falta File';VD[f.replace(/\/+$/,'')+'/.dir']='';vdSave()}
+else if(w==='listdir')into(childrenOf(VD,fm(og(x,'prefix')||'')));
+else if(w==='isdir')into(VD[f]===undefined&&isDirIn(VD,f)?1:0);
+else if(w==='rmdir'){const d=f.replace(/\/+$/,'');for(const k of Object.keys(VD))if(k.startsWith(d+'/'))delete VD[k];vdSave()}
 else if(w==='format'){for(const k of Object.keys(VD))delete VD[k];vdSave()}
-else throw'Disk: usa List, Read, Exists, Size, Usage, Write, Append, Delete, Rename, Copy o Format';break}
+else throw'Disk: usa List, ListDir, Read, Exists, IsDir, Size, Usage, Write, Append, Mkdir, Rmdir, Delete, Rename, Copy o Format';break}
 case'host':{const w=(x.h[1]||'').toLowerCase(),f=fm(og(x,'file')||''),pv=()=>{if(!R.k)throw'Operacion privilegiada: Host:'+x.h[1]+' solo funciona con run # archivo (modo kernel)'},into=v=>{const to=og(x,'into');if(to!==null){if(!(to in V))throw'Variable no declarada: '+to;V[to]=cv(TY[to],v)}},txt=()=>String(valOf(x)).split('\\n').join(String.fromCharCode(10));
-if(w==='list')into(Object.keys(files).sort());
+if(w==='list')into(Object.keys(files).filter(k=>!k.endsWith('/.dir')).sort());else if(w==='listdir')into(childrenOf(files,fm(og(x,'prefix')||'')));
 else if(w==='read'){if(files[f]===undefined)throw'Host: no existe '+f;into(files[f])}
 else if(w==='exists')into(files[f]!==undefined?1:0);
+else if(w==='mkdir'){pv();if(!f)throw'Host: falta File';files[f.replace(/\/+$/,'')+'/.dir']='';sv()}
+else if(w==='isdir')into(files[f]===undefined&&isDirIn(files,f)?1:0);
 else if(w==='write'){pv();if(!f)throw'Host: falta File';files[f]=txt();sv()}
 else if(w==='delete'){pv();delete files[f];sv()}
-else throw'Host: usa List, Read, Exists, Write o Delete';break}
-case'exec':{const f=fm(og(x,'file')||''),to=og(x,'into'),fr=(og(x,'from')||(R.k?'disk':'host')).toLowerCase(),st=fr==='disk'?VD[f]:files[f];if(st===undefined)throw'Exec: no existe '+f+' (en '+fr+')';
+else throw'Host: usa List, ListDir, Read, Exists, IsDir, Mkdir, Write o Delete';break}
+case'exec':{const f=resolveP(fl.path,fm(og(x,'file')||'')),to=og(x,'into'),fr=(og(x,'from')||(R.k?'disk':'host')).toLowerCase(),st=fr==='disk'?VD[f]:files[f];if(st===undefined)throw'Exec: no existe '+f+' (en '+fr+')';
 const p=parse(st,f);if(p.nodes){chk(p.nodes,p.E,p.W,{});chkx(p.nodes,p.E,p.W,{ids:new Set(ids(p.nodes)),fns:new Set(fnn(p.nodes))},0)}
 let code=0;if(p.E.length){code=1;p.E.forEach(e=>op(`[${f}] ERROR l.${e[0]}: ${e[1]}`,'err'))}
-else{const pid=++R.pid,cf={v:mkChild({}),t:{},fn:{},task:fl.task,xd:1,proc:pid};cf.v.args=fm(og(x,'args')||'');reg(p.nodes,cf.fn);
+else{const pid=++R.pid,cf={v:mkChild({}),t:{},fn:{},task:fl.task,xd:1,proc:pid,path:dirOf(f)};cf.v.args=fm(og(x,'args')||'');reg(p.nodes,cf.fn);
 if(og(x,'bg')!==null){cf.main=1;startTask(fm(og(x,'id')||'')||f+'#'+(++R.tid),p.nodes,cf)}
 else{try{await ex(p.nodes,cf)}catch(e){if(e==='STOP'||e==='KILL')throw e;if(!(e instanceof Ret)&&e!==BRK&&e!==CNT){code=1;op(`[${f}] ERROR ${typeof e==='string'?e:e.message}`,'err')}}finally{killProc(pid)}}}
 V=fl.v;TY=fl.t;R.fn=fl.fn;if(to!==null){if(!(to in V))throw'Variable no declarada: '+to;V[to]=cv(TY[to],code)}break}
+case'import':{const raw=x.q[0];if(!raw)throw'Import necesita el archivo: Import("lib/util.log+","As;u")';const f=resolveP(fl.path,raw),fr=(og(x,'from')||(R.k?'disk':'host')).toLowerCase(),al=og(x,'as')||f.split('/').pop().replace(/\.[^.]*$/,'').replace(/\W/g,'_');if(!/^[A-Za-z_]\w*$/.test(al))throw'Import: alias invalido: '+al;
+let m=R.modf[f];if(!m){const st=fr==='disk'?VD[f]:files[f];if(st===undefined)throw'Import: no existe '+f+' (en '+fr+')';const p=parse(st,f);if(p.nodes){chk(p.nodes,p.E,p.W,{});chkx(p.nodes,p.E,p.W,{ids:new Set(ids(p.nodes)),fns:new Set(fnn(p.nodes))},0)}if(p.E.length)throw`${f} l.${p.E[0][0]}: ${p.E[0][1]}`;
+const mv={};m={file:f,v:mv,fn:{}};R.modf[f]=m;const mf={v:mkChild(mv),t:{},fn:m.fn,task:fl.task,xd:fl.xd,proc:fl.proc,path:dirOf(f)};reg(p.nodes,m.fn);
+try{await ex(p.nodes,mf)}catch(e){if(!(e instanceof Ret)&&e!==BRK&&e!==CNT)throw e}}
+const cur=R.mods[al];if(cur&&cur!==m)throw'Import: el alias '+al+' ya esta en uso por '+cur.file;R.mods[al]=m;V=fl.v;TY=fl.t;R.fn=fl.fn;fl.v[al]=m.v;break}
 case'surface':{const w=(x.h[1]||'').toLowerCase(),id=og(x,'id');if(!id)throw'Surface: falta Id';if(w==='new'){const W=Math.max(1,Math.min(1920,+ev(og(x,'w')??'64'))),Hh=Math.max(1,Math.min(1080,+ev(og(x,'h')??'64'))),c=document.createElement('canvas');c.width=W;c.height=Hh;const g=c.getContext('2d');g.fillStyle='#000';g.fillRect(0,0,W,Hh);SURF[id]={c,g,w:W,h:Hh}}else if(w==='free')delete SURF[id];else throw'Surface: usa New o Free';break}
 case'try':{try{await ex(x.body,fl)}catch(e){if(e==='STOP'||e==='KILL'||e===BRK||e===CNT||e instanceof Ret)throw e;V=fl.v;TY=fl.t;R.fn=fl.fn;const m=(typeof e==='string'?e:(e&&e.message)||String(e)).replace(/^l\.\d+: /,'');if(x.cv)V[x.cv]=m;await ex(x.cat||[],fl)}break}
 case'lock':{R.locks=R.locks||{};const n=x.h[1]||'';R.waiting=1;while(R.locks[n]&&!R.stop&&!(fl.task&&fl.task.stop))await sleep(1);R.waiting=0;if(R.stop)throw'STOP';if(fl.task&&fl.task.stop)throw'KILL';R.locks[n]=1;break}
@@ -354,7 +365,7 @@ SL=files[n].split('\n');const p=parse(files[n],n);if(p.nodes){chk(p.nodes,p.E,p.
 p.E.sort((a,b)=>a[0]-b[0]);p.W.forEach(w=>show('ADVERTENCIA',w,'wrn'));p.E.forEach(e=>show('ERROR',e,'err'));
 if(p.E.length){op(`Compilacion abortada: ${p.E.length} error(es)`,'err');ss('ERROR');return}
 op(`Compilado sin errores (${p.W.length} advertencia(s)). Ejecutando...`,'ok');
-const r=R={on:1,stop:0,st:0,hd:[],t0:Date.now(),n,fn:{},k:kmode,tasks:{},tid:0,tn:0,pid:0,locks:{},queues:{}};Object.keys(KD).forEach(k=>delete KD[k]);r.root={v:V,t:TY,fn:r.fn};V.keys=KD;reg(p.nodes);if(kmode)showDev();ss('CORRIENDO');let bad=0;
+const r=R={on:1,stop:0,st:0,hd:[],t0:Date.now(),n,fn:{},k:kmode,tasks:{},tid:0,tn:0,pid:0,locks:{},queues:{},mods:{},modf:{}};Object.keys(KD).forEach(k=>delete KD[k]);r.root={v:V,t:TY,fn:r.fn,path:dirOf(n)};V.keys=KD;reg(p.nodes);if(kmode)showDev();ss('CORRIENDO');let bad=0;
 try{await ex(p.nodes,r.root);r.done=1;if((r.hd.length||r.ui||(r.tm&&r.tm.length)||r.tn>0)&&!r.stop){op('Esperando eventos (Detener para salir)','ok');await new Promise(f=>{r.fin=f;taskEnd()})}}
 catch(e){if(e!=='STOP'){bad=1;const m=String(e).match(/^l\.(\d+): ([\s\S]*)$/);if(m)show('ERROR',[+m[1],m[2]],'err');else op('ERROR '+e,'err')}}
 r.on=0;(r.tm||[]).forEach(t=>clearInterval(t.i));Object.values(r.tasks).forEach(t=>t.stop=1);ss(bad?'ERROR':r.stop?'DETENIDO':'TERMINADO');r.dn&&r.dn()}
@@ -364,12 +375,19 @@ for(let i=0;i<16;i++){const e=document.createElement('i');e.title='pin '+i;$('#p
 function openEd(n){cur=n;EA.value=files[n];$('#en').textContent=n;ED.hidden=false;EA.focus()}
 function closeEd(){files[cur]=EA.value;sv();$('#sa').hidden=true;ED.hidden=true;IN.focus()}
 function runCur(){files[cur]=EA.value;runFile(cur)}
-function cmd(s){pr('log@chip:~$ '+s,'p');s=s.trim();if(!s)return;
+function cmd(s){pr(PS()+s,'p');s=s.trim();if(!s)return;
 const m=s.match(/^start\s+<?\s*(log\+\+|log\+-|log\+|log-|logall|log\*)\s*>?\s*(\S+)?/i);
-if(m){const k=norm(m[1]);let n=m[2]||'main.'+k;if(!n.includes('.'))n+='.'+k;if(!files[n]){files[n]=TPL[k];fresh=n;pr('archivo creado: '+n,'ok')}return openEd(n)}
-const tk=s.split(/\s+/);if(tk[1]==='#'&&tk[0]!=='run')tk.splice(1,1);const[c,a,b]=tk;
-if(c==='help')return['Comandos:','  Start <Log-> | <Log+> | <Log++> | <LogAll> [archivo]  crea y abre el editor','  edit <archivo>   abrir     run <archivo>   ejecutar','  ls   cat <a>   rm <a>   cp <a> <b>   mv <a> <b>   echo texto   stop   clear   reboot','  upload   cargar archivos de tu dispositivo (se guardan solos)','  connect [baudios]   enlazar un microcontrolador real por USB   disconnect','  pkg list | install <nombre> | remove <nombre> | info <nombre>   extensiones (UIVisuals, Storage, Graphics3D)','  run # <archivo>   ejecutar como kernel (modo privilegiado)    boot <archivo> | boot off   kernel de arranque','  vd ls | cat f | rm f | import <archivo> [nombre] | export <nombre> [archivo] | format | reset   disco virtual del kernel','  En codigo: Use("archivo")  Sound("Freq;440","ms;200")  Serial("Write;hola")'].forEach(l=>pr(l));
-if(c==='ls')return pr(Object.keys(files).join('   ')||'(sin archivos: prueba Start <Log+>)');
+if(m){const k=norm(m[1]);let n=rp(m[2]||'main.'+k);if(!n.includes('.'))n+='.'+k;if(!files[n]){files[n]=TPL[k];fresh=n;pr('archivo creado: '+n,'ok')}return openEd(n)}
+const tk=s.split(/\s+/);if(tk[1]==='#'&&tk[0]!=='run')tk.splice(1,1);let[c,a,b]=tk;if(['cat','edit','run','rm','cp','mv'].includes(c)){if(a&&a!=='#'&&a!=='-r')a=rp(a);if(c==='run'&&a==='#'&&b)b=rp(b);if(c==='rm'&&a==='-r'&&b)b=rp(b);if((c==='cp'||c==='mv')&&b)b=rp(b)}
+if(c==='help')return['Comandos:','  Start <Log-> | <Log+> | <Log++> | <LogAll> [archivo]  crea y abre el editor','  edit <archivo>   abrir     run <archivo>   ejecutar','  ls   cat <a>   rm <a>   cp <a> <b>   mv <a> <b>   echo texto   stop   clear   reboot','  upload   cargar archivos de tu dispositivo (se guardan solos)','  connect [baudios]   enlazar un microcontrolador real por USB   disconnect','  pkg list | install <nombre> | remove <nombre> | info <nombre>   extensiones (UIVisuals, Storage, Graphics3D)','  run # <archivo>   ejecutar como kernel (modo privilegiado)    boot <archivo> | boot off   kernel de arranque','  vd ls | cat f | rm f | import <archivo> [nombre] | export <nombre> [archivo] | format | reset   disco virtual del kernel','  mkdir d | cd d | pwd | ls [d] | find | rm -r d   carpetas (d/archivo); Import("d/lib.log+") conecta archivos','  En codigo: Use("archivo")  Sound("Freq;440","ms;200")  Serial("Write;hola")'].forEach(l=>pr(l));
+if(c==='ls'){const d=a?rp(a):CWD;const ch=childrenOf(files,d);if(!ch.length&&d&&!isDirIn(files,d))return pr('ls: no existe '+a,'err');return pr(ch.join('   ')||'(vacio)')}
+if(c==='pwd')return pr('/'+CWD.replace(/\/$/,''));
+if(c==='mkdir'){if(!a)return pr('uso: mkdir <carpeta>','err');const d=rp(a);if(files[d]!==undefined)return pr('mkdir: ya existe un archivo con ese nombre','err');files[d+'/.dir']='';sv();return pr('carpeta creada: '+d+'/','ok')}
+if(c==='cd'){const d=a?resolveP(CWD,a):'';if(d&&!isDirIn(files,d))return pr('cd: no existe la carpeta '+a,'err');CWD=d?d+'/':'';const sp=PR.firstChild;if(sp)sp.textContent=PS();return}
+if(c==='find'){const rq=a?rp(a):'',p=a?(rq?rq+'/':''):CWD;return Object.keys(files).filter(k=>k.startsWith(p)&&!k.endsWith('/.dir')).sort().forEach(k=>pr(k))}
+if(c==='rm'&&a==='-r'){const d=(b||'').replace(/\/+$/,'');if(!d||!isDirIn(files,d))return pr('rm: no existe la carpeta '+(b||''),'err');for(const k of Object.keys(files))if(k.startsWith(d+'/'))delete files[k];sv();return pr('carpeta borrada: '+d+'/')}
+if((c==='rm'||c==='cat'||c==='edit')&&a&&files[a]===undefined&&isDirIn(files,a))return pr(c+': '+a+' es una carpeta'+(c==='rm'?' (usa rm -r)':''),'err');
+if(c==='mv'&&a&&b&&files[a]===undefined&&isDirIn(files,a)){const e=b.replace(/\/+$/,'');for(const k of Object.keys(files))if(k.startsWith(a+'/')){files[e+k.slice(a.length)]=files[k];delete files[k]}sv();return pr('carpeta movida: '+e+'/','ok')}
 if(c==='echo')return pr(s.slice(5));
 if(c==='cp'||c==='mv'){if(!files[a]||!b)return pr(`uso: ${c} <origen> <destino>`,'err');files[b]=files[a];if(c==='mv')delete files[a];return pr('listo: '+b,'ok')}
 if(c==='upload')return $('#upl').click();
@@ -424,10 +442,10 @@ function sug(w,L){L=L||KN;w=w.toLowerCase();let b='',d=9;for(const c of L){const
 function diag(t){if(/^[A-Za-z_][\w:]*:\s+\S/.test(t))return'Hay un espacio despues de ":". Escribelo pegado: '+t.replace(/^([A-Za-z_][\w:]*:)\s+/,'$1');
 if((t.match(/"/g)||[]).length%2)return'Falta cerrar una comilla (")';const a=(t.match(/\(/g)||[]).length,b=(t.match(/\)/g)||[]).length;if(a>b)return'Falta cerrar un parentesis ")"';if(b>a)return'Sobra un parentesis ")"';return'Despues de los parentesis no puede haber texto suelto'}
 const ids=ns=>ns.flatMap(x=>[...(x.h[0].toLowerCase()==='ui'&&x.o?x.o.filter(q=>q[0].toLowerCase()==='id').map(q=>q[1].toLowerCase()):[]),...ids(x.body||[]),...ids(x.alt||[])]);
-const OA=(()=>{const S=['w','h','bits','set','color','write','text','target','style','size','src','into'];return{var:['value','text','list','size','fill','index','dict','key'],set:['value','text','index','key'],push:['value','text'],insert:['index','value','text'],remove:['index','key'],pop:['into'],sort:['order'],call:['into'],return:['value','text'],wait:['ms','press','until'],pin:['set','output','input','mode'],screen:S,display:S,reg:S,sound:['freq','ms'],expect:['equals'],input:['prompt'],ui:['id','label','text','min','max','value'],store:['key','value','into','default'],g3d:['id','x','y','z','size','color','rx','ry','rz','s','tx','ty','tz','fov','mode','bg'],console:['cols','rows','color','bg','text','col','row','into','prompt'],mem:['addr','value','size','len','from','to','text','into','type'],disk:['file','into','text','value','prefix','to'],host:['file','into','text','value'],exec:['file','args','into','from','bg','id'],surface:['id','w','h'],proc:['id','into'],recv:['into','timeout','ok'],send:['value','text'],sys:['into'],assert:['cond','text'],kill:['id'],join:['id'],panic:['text'],spawn:['id']}})();
+const OA=(()=>{const S=['w','h','bits','set','color','write','text','target','style','size','src','into'];return{var:['value','text','list','size','fill','index','dict','key'],set:['value','text','index','key'],push:['value','text'],insert:['index','value','text'],remove:['index','key'],pop:['into'],sort:['order'],call:['into'],return:['value','text'],wait:['ms','press','until'],pin:['set','output','input','mode'],screen:S,display:S,reg:S,sound:['freq','ms'],expect:['equals'],input:['prompt'],ui:['id','label','text','min','max','value'],store:['key','value','into','default'],g3d:['id','x','y','z','size','color','rx','ry','rz','s','tx','ty','tz','fov','mode','bg'],console:['cols','rows','color','bg','text','col','row','into','prompt'],mem:['addr','value','size','len','from','to','text','into','type'],disk:['file','into','text','value','prefix','to'],import:['as','from'],host:['file','into','text','value'],exec:['file','args','into','from','bg','id'],surface:['id','w','h'],proc:['id','into'],recv:['into','timeout','ok'],send:['value','text'],sys:['into'],assert:['cond','text'],kill:['id'],join:['id'],panic:['text'],spawn:['id']}})();
 const ARG={blit:[2],get:[2],text:[2],each:[1],pixel:[2],rect:[4],line:[4],circle:[3],repeat:[1],if:[1],while:[1],for:[2,3]};
 function chkx(ns,E,W,s,lp){s.ids=s.ids||new Set();for(const x of ns){if(x.bad||!KN.includes(x.h[0].toLowerCase()))continue;const k=x.h[0].toLowerCase(),l=x.lg,n=x.n;
-if(!['print','serial','use'].includes(k))x.o.forEach(q=>{const a=q[0];if(/[:\s]/.test(a))E.push([n,`La orden "${q.join(';')}" no esta bien separada`,`Usa ";" para separar: "${a.split(/[:\s]+/).filter(Boolean).join(';')}"`]);else if(OA[k]&&!OA[k].includes(a.toLowerCase()))W.push([n,`Orden desconocida "${a}" en ${x.h[0]}`,sug(a,OA[k])||'Validas: '+OA[k].join(', ')])});
+if(!['print','serial','use','import'].includes(k))x.o.forEach(q=>{const a=q[0];if(/[:\s]/.test(a))E.push([n,`La orden "${q.join(';')}" no esta bien separada`,`Usa ";" para separar: "${a.split(/[:\s]+/).filter(Boolean).join(';')}"`]);else if(OA[k]&&!OA[k].includes(a.toLowerCase()))W.push([n,`Orden desconocida "${a}" en ${x.h[0]}`,sug(a,OA[k])||'Validas: '+OA[k].join(', ')])});
 const ck=['repeat','if','while','for','each'].includes(k)?k:k==='expect'?'pixel':['screen','display','reg'].includes(k)?x.h.map(v=>v.toLowerCase()).find(v=>OPS.includes(v)):null;
 if(ck&&ARG[ck]&&!ARG[ck].includes(x.a.length))E.push([n,`${ck} necesita ${ARG[ck].join(' o ')} argumentos y recibio ${x.a.length}`,'Los argumentos numericos van en el primer parentesis, separados por comas']);
 if((k==='break'||k==='continue')&&!lp)E.push([n,`${x.h[0]} solo puede usarse dentro de un bucle`,'Usalo dentro de Repeat, For, While o Loop']);
@@ -439,14 +457,15 @@ if(k==='on'){const m=(x.h[1]||'').toLowerCase();if(m!=='start_button'&&m!=='key'
 if(k==='var'&&x.o[0]&&x.o[0][0].toLowerCase()==='text'&&l==='log-'&&x.h.length>2&&x.h[1].toLowerCase()!=='str')E.push([n,'Log- exige tipo STR para texto','Escribe Var:STR:nombre("Text;Hola")']);
 if(k==='console'){const o=(x.h[1]||'').toLowerCase(),CO=['init','clear','print','put','at','read','refresh'];if(l==='log++')E.push([n,'Log++ no tiene pantalla: Console no puede usarse aqui','Usa Log+ o Log-']);else if(o==='init')s.res=1;else if(l==='log-'&&!s.res)E.push([n,'Log- exige Console:Init (o Screen:Resolution) antes de usar la consola','Agrega Console:Init("Cols;53","Rows;20") arriba']);if(!CO.includes(o))E.push([n,'Operacion Console desconocida: '+(x.h[1]||''),sug(o,CO)||'Validas: '+CO.join(', ')])}
 if(k==='mem'&&!['write','read','fill','copy','writetext'].includes((x.h[1]||'').toLowerCase()))E.push([n,'Operacion Mem desconocida: '+(x.h[1]||''),'Validas: write, read, fill, copy, writetext']);
-if(k==='disk'&&!['list','read','exists','size','usage','write','append','delete','rename','copy','format'].includes((x.h[1]||'').toLowerCase()))E.push([n,'Operacion Disk desconocida: '+(x.h[1]||''),'Validas: list, read, exists, size, usage, write, append, delete, rename, copy, format']);
-if(k==='host'&&!['list','read','exists','write','delete'].includes((x.h[1]||'').toLowerCase()))E.push([n,'Operacion Host desconocida: '+(x.h[1]||''),'Validas: list, read, exists, write, delete']);
+if(k==='disk'&&!['list','listdir','read','exists','isdir','size','usage','write','append','mkdir','rmdir','delete','rename','copy','format'].includes((x.h[1]||'').toLowerCase()))E.push([n,'Operacion Disk desconocida: '+(x.h[1]||''),'Validas: list, listdir, read, exists, isdir, size, usage, write, append, mkdir, rmdir, delete, rename, copy, format']);
+if(k==='host'&&!['list','listdir','read','exists','isdir','mkdir','write','delete'].includes((x.h[1]||'').toLowerCase()))E.push([n,'Operacion Host desconocida: '+(x.h[1]||''),'Validas: list, read, exists, write, delete']);
 if(k==='surface'&&!['new','free'].includes((x.h[1]||'').toLowerCase()))E.push([n,'Operacion Surface desconocida: '+(x.h[1]||''),'Validas: new, free']);
 if(k==='surface'&&l==='log++')E.push([n,'Log++ no tiene pantalla: Surface no puede usarse aqui','Usa Log+ o Log-']);
 if(k==='proc'&&!['list','alive'].includes((x.h[1]||'').toLowerCase()))E.push([n,'Operacion Proc desconocida: '+(x.h[1]||''),'Validas: list, alive']);
+if(k==='import'&&!x.q[0])E.push([n,'Import necesita el archivo','Import("lib/util.log+","As;u")']);
 if(k==='try'&&!x.cat)E.push([n,'Try necesita su bloque Catch','Escribe Catch:error { ... } justo despues del } del Try']);
 if(['if','while','for','repeat','each','def','loop','setup','on','task','try'].includes(k)&&!x.body)E.push([n,'Falta el bloque { } de '+x.h[0],'Escribe { en la linea siguiente (o al final de esta) y cierralo con } mas abajo']);
-if(k==='return'&&!s.fn)E.push([n,'Return solo puede usarse dentro de una funcion (Def)','Mueve el Return dentro de Def:nombre(...){ ... }']);if((k==='call'||k==='spawn')&&s.fns&&!s.fns.has(x.h[1]))W.push([n,'Funcion no definida en este archivo: '+x.h[1],'Si viene de otro archivo con Use("...") ignora esta advertencia']);if(k==='def'||k==='task')s.fn=(s.fn||0)+1;if(x.body)chkx(x.body,E,W,s,lp||['repeat','for','while','loop','each'].includes(k));if(k==='def'||k==='task')s.fn--;if(x.alt)chkx(x.alt,E,W,s,lp)}}
+if(k==='return'&&!s.fn)E.push([n,'Return solo puede usarse dentro de una funcion (Def)','Mueve el Return dentro de Def:nombre(...){ ... }']);if((k==='call'||k==='spawn')&&x.h.length===2&&s.fns&&!s.fns.has(x.h[1]))W.push([n,'Funcion no definida en este archivo: '+x.h[1],'Si viene de otro archivo con Use("...") ignora esta advertencia']);if(k==='def'||k==='task')s.fn=(s.fn||0)+1;if(x.body)chkx(x.body,E,W,s,lp||['repeat','for','while','loop','each'].includes(k));if(k==='def'||k==='task')s.fn--;if(x.alt)chkx(x.alt,E,W,s,lp)}}
 const CAT={uivisuals:{n:'UIVisuals',d:'Botones, etiquetas, deslizadores, casillas y cajas de texto. Solo Log+ y lineas #+ de archivos mixtos.',kb:14},storage:{n:'Storage',d:'Guardar y cargar datos entre ejecuciones con Store:Save y Store:Load. Todas las variantes.',kb:6},graphics3d:{n:'Graphics3D',d:'Motor 3D por software: cubo, esfera, toro y piramide, camara con lookAt, luz con brillo, caras ocultas y orden por profundidad. Log+ y Log- (Log++ no tiene pantalla).',kb:22}};
 const EXT=new Set((()=>{try{return JSON.parse(localStorage.getItem('logpkgs')||'[]')}catch(_){return[]}})());
 const svp=()=>{try{localStorage.setItem('logpkgs',JSON.stringify([...EXT]))}catch(_){}};
@@ -1268,7 +1287,7 @@ $('#bm').onclick=()=>{const p=$('#pad');p.hidden=!p.hidden;$('#cur').hidden=p.hi
 const RV=()=>R&&R.root?R.root.v:V;
 const mkScope=(p,l)=>new Proxy(l,{get:(t,k)=>k in t?t[k]:p[k],set:(t,k,v)=>{if(k in t)t[k]=v;else p[k]=v;return true},has:(t,k)=>k in t||k in p,deleteProperty:(t,k)=>{delete t[k];return true},ownKeys:t=>[...new Set([...Reflect.ownKeys(p),...Reflect.ownKeys(t)])],getOwnPropertyDescriptor:(t,k)=>(k in t||k in p)?{value:k in t?t[k]:p[k],enumerable:true,configurable:true,writable:true}:undefined});
 function taskEnd(){const r=R;if(r&&r.on&&!r.stop&&r.done&&r.tn===0&&!r.hd.length&&!r.ui&&!(r.tm&&r.tm.length)&&r.fin)r.fin()}
-function startTask(nm,body,sc){if(R.tasks[nm]&&R.tasks[nm].on)throw'La tarea ya esta corriendo: '+nm;const t={n:nm,on:1,stop:0,proc:sc.proc},r=R;R.tasks[nm]=t;R.tn++;const tf={v:sc.v,t:sc.t,fn:sc.fn,task:t,xd:sc.xd,proc:sc.proc};
+function startTask(nm,body,sc){if(R.tasks[nm]&&R.tasks[nm].on)throw'La tarea ya esta corriendo: '+nm;const t={n:nm,on:1,stop:0,proc:sc.proc},r=R;R.tasks[nm]=t;R.tn++;const tf={v:sc.v,t:sc.t,fn:sc.fn,task:t,xd:sc.xd,proc:sc.proc,path:sc.path};
 (async()=>{try{await ex(body,tf)}catch(e){if(e!=='STOP'&&e!=='KILL'&&e!==BRK&&e!==CNT&&!(e instanceof Ret))op(`ERROR [tarea ${nm}] ${typeof e==='string'?e:e.message}`,'err')}finally{t.on=0;r.tn--;if(sc.main)killProc(sc.proc,r);taskEnd()}})();return t}
 let held=0;
 function openPad(){$('#pad').hidden=false;$('#cur').hidden=false;if(res){PM.x=res.w/2;PM.y=res.h/2}}
@@ -1348,5 +1367,14 @@ const mkChild=l=>new Proxy(l,{get:(t,k)=>k in t?t[k]:EVK.includes(k)?RV()[k]:und
 function killProc(p,r){r=r||R;if(!r)return;r.hd=r.hd.filter(h=>!(h.sc&&h.sc.proc===p));(r.tm||[]).filter(t=>t.p===p).forEach(t=>clearInterval(t.i));if(r.tm)r.tm=r.tm.filter(t=>t.p!==p);Object.values(r.tasks).filter(t=>t.proc===p).forEach(t=>t.stop=1)}
 const HF={pin:n=>PIN[n]|0,rnd:(a,b)=>a+Math.floor(Math.random()*(b-a+1)),peek:pk,peek16:pk16,peek32:pk32,peekstr:pks,peekf:a=>{a=mc(a);mc(a+3);return DV.getFloat32(a,true)},peekd:a=>{a=mc(a);mc(a+7);return DV.getFloat64(a,true)},fix:(v,n)=>(+v).toFixed(n===undefined?2:n)};
 Object.defineProperty(HF,'t',{get:()=>Date.now()-R.t0});
+let CWD='';
+const normP=p=>{const o=[];for(const s of String(p).split('/')){if(!s||s==='.')continue;if(s==='..')o.pop();else o.push(s)}return o.join('/')};
+const resolveP=(dir,p)=>String(p).startsWith('/')?normP(p):normP((dir||'')+p);
+const dirOf=n=>{const i=String(n).lastIndexOf('/');return i<0?'':String(n).slice(0,i+1)};
+const rp=n=>n?resolveP(CWD,n):n;
+const isDirIn=(M,d)=>{d=String(d).replace(/\/+$/,'');return d===''||Object.keys(M).some(k=>k.startsWith(d+'/'))};
+const childrenOf=(M,d)=>{d=d?String(d).replace(/\/+$/,'')+'/':'';const s=new Set();for(const k of Object.keys(M)){if(!k.startsWith(d))continue;const r=k.slice(d.length),i=r.indexOf('/');if(i<0){if(r!=='.dir')s.add(r)}else s.add(r.slice(0,i+1))}return[...s].sort()};
+const PS=()=>'log@chip:'+(CWD?'/'+CWD.replace(/\/$/,''):'~')+'$ ';
+HF.pathres=resolveP;HF.dirname=dirOf;HF.basename=p=>String(p).split('/').pop();
 boot();
 </script></body></html>
