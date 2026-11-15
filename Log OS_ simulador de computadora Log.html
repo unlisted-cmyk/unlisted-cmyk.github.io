@@ -422,7 +422,7 @@ $('#vp').textContent=res?res.w+'x'+res.h:'-';$('#vb').style.width=Math.min(100,f
 $('#up').textContent=(s/60|0)+'m '+s%60+'s';$('#pc').textContent=on?(R.k?'[K] ':'')+R.n:'ninguno'},500);
 const sv=()=>{try{localStorage.setItem('logfs',JSON.stringify(files))}catch(_){}};
 setInterval(sv,1500);EA.addEventListener('input',()=>{if(cur)files[cur]=EA.value});
-$('#upl').onchange=async e=>{for(const f of e.target.files){files[f.name]=await f.text();pr(`cargado ${f.name} (${f.size} bytes)`,'ok')}e.target.value='';sv()};
+$('#upl').onchange=async e=>{for(const f of e.target.files){const nm=rp(f.name);files[nm]=await f.text();pr(`cargado ${nm} (${f.size} bytes)`,'ok')}e.target.value='';sv()};
 function beep(f,ms){try{AC=AC||new(window.AudioContext||window.webkitAudioContext)();AC.resume&&AC.resume();const o=AC.createOscillator(),g=AC.createGain();o.frequency.value=f;g.gain.value=.15;o.connect(g);g.connect(AC.destination);o.start();o.stop(AC.currentTime+ms/1000)}catch(_){op('Sound: el navegador bloqueo el audio','wrn')}}
 const send=t=>{if(wr)wr.write(new TextEncoder().encode(t+'\n')).catch(()=>{})};
 async function connect(b){if(!navigator.serial)return pr('Este navegador no soporta Web Serial. Usa Chrome o Edge en computadora, o Chrome en Android.','err');
@@ -480,7 +480,7 @@ const EF0=$('#ef').textContent;
 function flash(t){const f=$('#ef');f.textContent=t;clearTimeout(flash.h);flash.h=setTimeout(()=>f.textContent=EF0,2200)}
 function save(){if(fresh===cur)fresh=null;files[cur]=EA.value;sv();flash('Guardado: '+cur)}
 function saveAs(){$('#sa').hidden=false;const i=$('#san');i.value=cur;i.focus();i.select&&i.select()}
-function doSaveAs(){let n=$('#san').value.trim().replace(/\s+/g,'_');if(!n)return flash('Escribe un nombre para el archivo');if(!n.includes('.'))n+='.'+cur.split('.').pop();const ow=files[n]!==undefined&&n!==cur;files[n]=EA.value;if(fresh===cur&&n!==cur)delete files[cur];fresh=null;cur=n;$('#en').textContent=n;$('#sa').hidden=true;sv();EA.focus();flash((ow?'Sobrescrito: ':'Guardado como: ')+n)}
+function doSaveAs(){let n=$('#san').value.trim().replace(/\s+/g,'_');if(!n)return flash('Escribe un nombre para el archivo');if(!n.includes('.'))n+='.'+cur.split('.').pop();if(!n.includes('/'))n=rp(n);const ow=files[n]!==undefined&&n!==cur;files[n]=EA.value;if(fresh===cur&&n!==cur)delete files[cur];fresh=null;cur=n;$('#en').textContent=n;$('#sa').hidden=true;sv();EA.focus();flash((ow?'Sobrescrito: ':'Guardado como: ')+n)}
 /* ---- Graphics3D ---- */
 const G3={o:{},c:{p:[0,2,6],t:[0,0,0],fov:60},l:[3,5,4],bg:[5,7,22],mode:'solid'};
 const G3O=['cube','sphere','torus','pyramid','set','render','clear','scene','camera','light'];
@@ -1356,8 +1356,8 @@ try{localStorage.setItem('logvd',JSON.stringify(VD))}catch(_){}
 function vdcmd(a,b,c){if(!a||a==='ls'){const k=Object.keys(VD).sort();return pr(k.length?k.map(n=>n+'  ('+VD[n].length+' B)').join('\n'):'(disco virtual vacio)')}
 if(a==='cat'){if(VD[b]===undefined)return pr('vd: no existe '+(b||'(falta el nombre)'),'err');return VD[b].split('\n').forEach(l=>pr(l))}
 if(a==='rm'){if(VD[b]===undefined)return pr('vd: no existe '+(b||'(falta el nombre)'),'err');delete VD[b];vdSave();return pr('borrado '+b)}
-if(a==='import'){if(files[b]===undefined)return pr('vd import: no existe en el simulador: '+(b||'(falta el nombre)'),'err');VD[c||b]=files[b];vdSave();return pr('copiado al disco virtual: '+(c||b),'ok')}
-if(a==='export'){if(VD[b]===undefined)return pr('vd export: no existe en el disco: '+(b||'(falta el nombre)'),'err');files[c||b]=VD[b];sv();return pr('copiado al simulador: '+(c||b),'ok')}
+if(a==='import'){b=b?rp(b):b;if(files[b]===undefined)return pr('vd import: no existe en el simulador: '+(b||'(falta el nombre)'),'err');VD[c||b]=files[b];vdSave();return pr('copiado al disco virtual: '+(c||b),'ok')}
+if(a==='export'){if(VD[b]===undefined)return pr('vd export: no existe en el disco: '+(b||'(falta el nombre)'),'err');files[rp(c||b)]=VD[b];sv();return pr('copiado al simulador: '+(c||b),'ok')}
 if(a==='format'){for(const k of Object.keys(VD))delete VD[k];vdSave();return pr('disco virtual formateado')}
 if(a==='reset'){for(const k of Object.keys(VD))delete VD[k];Object.assign(VD,VDSEED);vdSave();return pr('disco virtual restaurado','ok')}
 pr('uso: vd ls | cat f | rm f | import archivo [nombre] | export nombre [archivo] | format | reset','err')}
