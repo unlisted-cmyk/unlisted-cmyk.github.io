@@ -1,0 +1,184 @@
+<log+>
+// Atrapa frutas en la jarra. Si una cae al vacio, pierdes.
+// Mueve la jarra con el mouse (o el dedo) o con las flechas / A y D.
+
+// --- Estado del juego ---
+Var:vivo("Value;1")
+Var:n("Value;0")
+Var:tperdio("Value;0")
+
+// Jarra: jx es su borde izquierdo
+Var:jx("Value;138")
+Var:jw("Value;44")
+Var:jy("Value;130")
+Var:jh("Value;46")
+Var:piso("Value;173")
+
+// Fruta que cae (fh es su tono de color)
+Var:fx("Value;160")
+Var:fy("Value;-8")
+Var:fr("Value;6")
+Var:fh("Value;0")
+Var:vel("Value;2")
+
+// Montones: alt = cuantas frutas hay en cada una de las 3 columnas
+Var:alt("Size;3","Fill;0")
+Var:pc("Size;300","Fill;0")
+Var:pr("Size;300","Fill;0")
+Var:ph("Size;300","Fill;0")
+Var:tonos("List;0,28,55,120,290")
+
+// Auxiliares
+Var:ny("Value;0")
+Var:c("Value;0")
+Var:k("Value;0")
+Var:suelo("Value;0")
+Var:atrapada("Value;0")
+
+Def:nueva()
+{
+    Set:fx("Value;rnd(10,310)")
+    Set:fy("Value;-8")
+    Set:k("Value;rnd(0,4)")
+    Set:fh("Value;tonos[k]")
+    Set:vel("Value;min(5,2+n*0.12)")
+}
+
+Def:reiniciar()
+{
+    Set:n("Value;0")
+    Set:alt("Index;0","Value;0")
+    Set:alt("Index;1","Value;0")
+    Set:alt("Index;2","Value;0")
+    Set:jx("Value;138")
+    Set:vivo("Value;1")
+    Call:nueva()
+}
+
+Def:intentar()
+{
+    If(vivo==0&&t-tperdio>800)
+    {
+        Call:reiniciar()
+    }
+}
+
+Def:paso()
+{
+    Set:ny("Value;fy+vel")
+    Set:atrapada("Value;0")
+    If(fx>=jx+5&&fx<=jx+jw-5)
+    {
+        Set:c("Value;floor((fx-jx-4)/12)")
+        Set:suelo("Value;piso-12*alt[c]")
+        If(fy+fr<=suelo&&ny+fr>=suelo)
+        {
+            Set:pc("Index;n","Value;c")
+            Set:pr("Index;n","Value;alt[c]")
+            Set:ph("Index;n","Value;fh")
+            Set:alt("Index;c","Value;alt[c]+1")
+            Set:n("Value;n+1")
+            Set:atrapada("Value;1")
+        }
+    }
+    If(atrapada==1)
+    {
+        Call:nueva()
+    }
+    Else
+    {
+        Set:fy("Value;ny")
+        If(fy-fr>180)
+        {
+            Set:vivo("Value;0")
+            Set:tperdio("Value;t")
+        }
+    }
+}
+
+Def:dibujar()
+{
+    Screen:Clear("Color;#101820")
+
+    // Frutas amontonadas dentro de la jarra
+    For:i(0,n)
+    {
+        Screen:Circle(jx+10+12*pc[i],piso-6-12*pr[i],6)("Color;hsl;ph[i];50")
+        Screen:Circle(jx+8+12*pc[i],piso-8-12*pr[i],1)("Color;white")
+    }
+
+    // La jarra
+    Screen:Rect(jx,jy,3,jh)("Color;#9fd8ff")
+    Screen:Rect(jx+jw-3,jy,3,jh)("Color;#9fd8ff")
+    Screen:Rect(jx,jy+jh-3,jw,3)("Color;#9fd8ff")
+    Screen:Rect(jx-3,jy,7,3)("Color;white")
+    Screen:Rect(jx+jw-4,jy,7,3)("Color;white")
+
+    // Fruta que esta cayendo
+    If(vivo==1)
+    {
+        Screen:Circle(fx,fy,fr)("Color;hsl;fh;50")
+        Screen:Circle(fx-2,fy-2,1)("Color;white")
+    }
+
+    // Contador
+    Screen:Text(6,6)("Text;Frutas: {n}","Color;white")
+    Screen:Text(190,6)("Text;Mouse o flechas","Color;#7a8794")
+
+    // Pantalla de derrota
+    If(vivo==0)
+    {
+        Screen:Rect(60,54,200,66)("Color;black")
+        Screen:Text(80,62)("Text;PERDISTE","Color;#ff5c5c")
+        Screen:Text(80,80)("Text;Llevabas {n} frutas","Color;white")
+        Screen:Text(80,98)("Text;Toca para reintentar","Color;#7a8794")
+    }
+}
+
+// --- Controles ---
+On:Mouse("Move")
+{
+    If(vivo==1)
+    {
+        Set:jx("Value;max(0,min(276,mx-jw/2))")
+    }
+}
+
+On:Key("Down")
+{
+    If(vivo==1)
+    {
+        If(key=='ArrowLeft'||key=='a'||key=='A')
+        {
+            Set:jx("Value;max(0,jx-14)")
+        }
+        If(key=='ArrowRight'||key=='d'||key=='D')
+        {
+            Set:jx("Value;min(276,jx+14)")
+        }
+    }
+    Else
+    {
+        If(key=='Enter')
+        {
+            Call:intentar()
+        }
+    }
+}
+
+On:Canvas("Click")
+{
+    Call:intentar()
+}
+
+// --- Bucle principal ---
+Call:nueva()
+Loop:Forever
+{
+    If(vivo==1)
+    {
+        Call:paso()
+    }
+    Call:dibujar()
+    Wait("ms;30")
+}
