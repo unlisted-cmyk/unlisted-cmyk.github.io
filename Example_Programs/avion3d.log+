@@ -1,0 +1,336 @@
+<log+>
+// SIMULADOR DE AVION 3D - Requiere: pkg install Graphics3D (una sola vez, en la terminal)
+// A/D o flechas izquierda/derecha: girar. W o flecha arriba: bajar el morro. S o flecha abajo: subir el morro (como una palanca real).
+// E: mas motor. Q: menos motor (cada pulsacion cambia 10%).
+// Despega por la pista (la fila de bloques grises), evita las torres marrones y aterriza suave para sumar aterrizajes.
+// INICIAR: boton en pantalla, Enter o START_BUTTON. Estados de vivo: 2 = espera, 1 = volando, 0 = estrellado.
+// Si las alas del avion se ven giradas al reves de hacia donde vuelas, cambia sg a -1.
+
+Var:sg("Value;1")
+Var:px("Value;0")
+Var:py("Value;0.6")
+Var:pz("Value;14")
+Var:rum("Value;0")
+Var:cab("Value;0")
+Var:thr("Value;0")
+Var:spd("Value;0")
+Var:meta("Value;0")
+Var:hund("Value;0")
+Var:aire("Value;0")
+Var:puntos("Value;0")
+Var:alt("Value;0")
+Var:vel("Value;0")
+Var:pot("Value;0")
+Var:rumbo("Value;0")
+Var:vivo("Value;2")
+Var:izq("Value;0")
+Var:der("Value;0")
+Var:sube("Value;0")
+Var:baja("Value;0")
+Var:ddx("Value;0")
+Var:ddz("Value;0")
+Var:obx("List;40,-50,90,-80,30,-30")
+Var:obz("List;-60,-100,-30,20,-150,-200")
+
+Screen:Resolution("W;320","H;180","Bits;24")
+G3D:Scene("Bg;#6ec6ff","Fov;60")
+G3D:Light("X;30","Y;80","Z;40")
+G3D:Camera("X;0","Y;3.6","Z;24","TX;0","TY;0.6","TZ;8")
+
+G3D:Cube("Id;cuerpo","X;0","Y;0.6","Z;14","Size;0.9","Color;#f2f2f2")
+G3D:Cube("Id;nariz","X;0","Y;0.6","Z;13.3","Size;0.5","Color;rgb;230;60;80")
+G3D:Cube("Id;cola","X;0","Y;1","Z;14.8","Size;0.5","Color;rgb;230;60;80")
+G3D:Cube("Id;ala1","X;1","Y;0.6","Z;14","Size;0.6","Color;#c9d1dc")
+G3D:Cube("Id;ala2","X;-1","Y;0.6","Z;14","Size;0.6","Color;#c9d1dc")
+G3D:Cube("Id;ala3","X;1.6","Y;0.6","Z;14","Size;0.45","Color;#c9d1dc")
+G3D:Cube("Id;ala4","X;-1.6","Y;0.6","Z;14","Size;0.45","Color;#c9d1dc")
+
+G3D:Cube("Id;pi0","X;0","Y;-1.9","Z;12","Size;4","Color;#444a55")
+G3D:Cube("Id;pi1","X;0","Y;-1.9","Z;8","Size;4","Color;#444a55")
+G3D:Cube("Id;pi2","X;0","Y;-1.9","Z;4","Size;4","Color;#444a55")
+G3D:Cube("Id;pi3","X;0","Y;-1.9","Z;0","Size;4","Color;#444a55")
+G3D:Cube("Id;pi4","X;0","Y;-1.9","Z;-4","Size;4","Color;#444a55")
+G3D:Cube("Id;pi5","X;0","Y;-1.9","Z;-8","Size;4","Color;#444a55")
+G3D:Cube("Id;pi6","X;0","Y;-1.9","Z;-12","Size;4","Color;#444a55")
+G3D:Cube("Id;pi7","X;0","Y;-1.9","Z;-16","Size;4","Color;#444a55")
+
+G3D:Cube("Id;to0","X;40","Y;2.5","Z;-60","Size;5","Color;#8b5a2b")
+G3D:Cube("Id;to1","X;-50","Y;2.5","Z;-100","Size;5","Color;#8b5a2b")
+G3D:Cube("Id;to2","X;90","Y;2.5","Z;-30","Size;5","Color;#8b5a2b")
+G3D:Cube("Id;to3","X;-80","Y;2.5","Z;20","Size;5","Color;#8b5a2b")
+G3D:Cube("Id;to4","X;30","Y;2.5","Z;-150","Size;5","Color;#8b5a2b")
+G3D:Cube("Id;to5","X;-30","Y;2.5","Z;-200","Size;5","Color;#8b5a2b")
+
+G3D:Pyramid("Id;ar0","X;-40","Y;3","Z;-20","Size;6","Color;#2f9e5b")
+G3D:Pyramid("Id;ar1","X;45","Y;3","Z;-40","Size;6","Color;#2f9e5b")
+G3D:Pyramid("Id;ar2","X;-70","Y;3","Z;-60","Size;6","Color;#2f9e5b")
+G3D:Pyramid("Id;ar3","X;70","Y;3","Z;10","Size;6","Color;#2f9e5b")
+G3D:Pyramid("Id;ar4","X;-25","Y;3","Z;60","Size;6","Color;#2f9e5b")
+G3D:Pyramid("Id;ar5","X;20","Y;3","Z;90","Size;6","Color;#2f9e5b")
+G3D:Pyramid("Id;ar6","X;-100","Y;3","Z;30","Size;6","Color;#2f9e5b")
+G3D:Pyramid("Id;ar7","X;110","Y;3","Z;-80","Size;6","Color;#2f9e5b")
+G3D:Pyramid("Id;ar8","X;-60","Y;3","Z;-130","Size;6","Color;#2f9e5b")
+G3D:Pyramid("Id;ar9","X;60","Y;3","Z;-120","Size;6","Color;#2f9e5b")
+G3D:Pyramid("Id;ar10","X;0","Y;3","Z;-100","Size;6","Color;#2f9e5b")
+G3D:Pyramid("Id;ar11","X;-120","Y;3","Z;-30","Size;6","Color;#2f9e5b")
+G3D:Pyramid("Id;ar12","X;100","Y;3","Z;50","Size;6","Color;#2f9e5b")
+G3D:Pyramid("Id;ar13","X;-45","Y;3","Z;100","Size;6","Color;#2f9e5b")
+
+G3D:Pyramid("Id;mo0","X;-200","Y;30","Z;-200","Size;60","Color;hsl;220;35")
+G3D:Pyramid("Id;mo1","X;200","Y;30","Z;-220","Size;60","Color;hsl;220;35")
+G3D:Pyramid("Id;mo2","X;-250","Y;30","Z;100","Size;60","Color;hsl;220;35")
+G3D:Pyramid("Id;mo3","X;260","Y;30","Z;150","Size;60","Color;hsl;220;35")
+
+G3D:Cube("Id;nu0","X;-60","Y;45","Z;-80","Size;14","Color;#ffffff")
+G3D:Cube("Id;nu1","X;80","Y;45","Z;-150","Size;14","Color;#ffffff")
+G3D:Cube("Id;nu2","X;20","Y;45","Z;-250","Size;14","Color;#ffffff")
+
+Def:dibujar()
+{
+    G3D:Camera("X;px+sin(rum)*cos(cab)*10","Y;max(1.5,py-sin(cab)*10+3)","Z;pz+cos(rum)*cos(cab)*10","TX;px-sin(rum)*cos(cab)*6","TY;py+sin(cab)*6","TZ;pz-cos(rum)*cos(cab)*6")
+    G3D:Set("Id;cuerpo","X;px","Y;py","Z;pz","RY;sg*rum")
+    G3D:Set("Id;nariz","X;px-sin(rum)*0.7","Y;py+sin(cab)*0.7","Z;pz-cos(rum)*0.7","RY;sg*rum")
+    G3D:Set("Id;cola","X;px+sin(rum)*0.8","Y;py+0.4-sin(cab)*0.5","Z;pz+cos(rum)*0.8","RY;sg*rum")
+    G3D:Set("Id;ala1","X;px+cos(rum)*1","Y;py","Z;pz-sin(rum)*1","RY;sg*rum")
+    G3D:Set("Id;ala2","X;px-cos(rum)*1","Y;py","Z;pz+sin(rum)*1","RY;sg*rum")
+    G3D:Set("Id;ala3","X;px+cos(rum)*1.6","Y;py","Z;pz-sin(rum)*1.6","RY;sg*rum")
+    G3D:Set("Id;ala4","X;px-cos(rum)*1.6","Y;py","Z;pz+sin(rum)*1.6","RY;sg*rum")
+    G3D:Render
+    Screen:Text(4,4)("Text;Altura: {alt}","Color;white")
+    Screen:Text(4,16)("Text;Velocidad: {vel}","Color;white")
+    Screen:Text(4,28)("Text;Motor: {pot}%","Color;white")
+    Screen:Text(4,40)("Text;Rumbo: {rumbo}","Color;white")
+    Screen:Text(4,52)("Text;Aterrizajes: {puntos}","Color;white")
+    If(vivo==1 && py>0.7 && spd<0.15)
+    {
+        Screen:Text(94,30)("Text;PERDIDA DE SUSTENTACION","Color;yellow")
+    }
+    If(vivo==2)
+    {
+        Screen:Text(106,30)("Text;SIMULADOR DE AVION","Color;#101820")
+        Screen:Text(67,48)("Text;A/D girar  W/S cabeceo  Q/E motor","Color;#101820")
+        Screen:Text(40,60)("Text;Sube el motor con E, despega y aterriza suave","Color;#101820")
+        Screen:Rect(110,110,100,26)("Color;#4ade80")
+        Screen:Text(139,119)("Text;INICIAR","Color;#101820")
+    }
+    If(vivo==0)
+    {
+        Screen:Text(112,50)("Text;TE ESTRELLASTE","Color;yellow")
+        Screen:Text(100,68)("Text;Aterrizajes: {puntos}","Color;white")
+        Screen:Rect(110,110,100,26)("Color;#4ade80")
+        Screen:Text(133,119)("Text;REINICIAR","Color;#101820")
+    }
+}
+
+Def:reiniciar()
+{
+    Set:px("Value;0")
+    Set:py("Value;0.6")
+    Set:pz("Value;14")
+    Set:rum("Value;0")
+    Set:cab("Value;0")
+    Set:thr("Value;0")
+    Set:spd("Value;0")
+    Set:aire("Value;0")
+    Set:puntos("Value;0")
+    Set:alt("Value;0")
+    Set:vel("Value;0")
+    Set:pot("Value;0")
+    Set:rumbo("Value;0")
+    Set:izq("Value;0")
+    Set:der("Value;0")
+    Set:sube("Value;0")
+    Set:baja("Value;0")
+    Set:vivo("Value;2")
+}
+
+Def:iniciar()
+{
+    Set:vivo("Value;1")
+}
+
+Print("Simulador de avion: pulsa INICIAR. E sube el motor, A/D giran, W/S cabeceo")
+Call:dibujar()
+
+Task:juego
+{
+    Loop:Forever
+    {
+        If(vivo==1)
+        {
+            Set:meta("Value;thr*0.8")
+            Set:spd("Value;spd+(meta-spd)*0.02-sin(cab)*0.004")
+            Set:spd("Value;max(0,min(1,spd))")
+            If(sube==1)
+            {
+                Set:cab("Value;min(0.7,cab+0.02)")
+            }
+            If(baja==1)
+            {
+                Set:cab("Value;max(-0.7,cab-0.02)")
+            }
+            If(sube==0 && baja==0)
+            {
+                Set:cab("Value;cab*0.97")
+            }
+            If(izq==1)
+            {
+                Set:rum("Value;rum+0.03*min(1,spd/0.3)")
+            }
+            If(der==1)
+            {
+                Set:rum("Value;rum-0.03*min(1,spd/0.3)")
+            }
+            Set:hund("Value;0")
+            If(py>0.7 && spd<0.15)
+            {
+                Set:hund("Value;(0.15-spd)*0.6")
+                Set:cab("Value;cab-0.01")
+            }
+            Set:px("Value;px-sin(rum)*cos(cab)*spd")
+            Set:pz("Value;pz-cos(rum)*cos(cab)*spd")
+            Set:py("Value;min(150,py+sin(cab)*spd-hund)")
+            If(py>2)
+            {
+                Set:aire("Value;1")
+            }
+            If(py<=0.6)
+            {
+                If(cab<-0.25 || (spd>0.75 && cab<-0.1))
+                {
+                    Set:vivo("Value;0")
+                }
+                Else
+                {
+                    Set:py("Value;0.6")
+                    Set:spd("Value;spd*0.99")
+                    If(cab<0)
+                    {
+                        Set:cab("Value;0")
+                    }
+                    If(spd<0.3 && cab>0)
+                    {
+                        Set:cab("Value;0")
+                    }
+                    If(aire==1)
+                    {
+                        Set:aire("Value;0")
+                        Set:puntos("Value;puntos+1")
+                        Sound("Freq;660","ms;120")
+                    }
+                }
+            }
+            For:i(0,obx.length)
+            {
+                Set:ddx("Value;px-obx[i]")
+                Set:ddz("Value;pz-obz[i]")
+                If(ddx*ddx+ddz*ddz<9 && py<5.5)
+                {
+                    Set:vivo("Value;0")
+                }
+            }
+            Set:alt("Value;floor((py-0.6)*5)")
+            Set:vel("Value;floor(spd*300)")
+            Set:pot("Value;floor(thr*100)")
+            Set:rumbo("Value;floor(((0-rum*57.3)%360+360)%360)")
+            If(vivo==0)
+            {
+                Call:dibujar()
+                Sound("Freq;120","ms;400")
+            }
+        }
+        Call:dibujar()
+        Wait("ms;30")
+    }
+}
+
+On:START_BUTTON("Press")
+{
+    If(vivo==2)
+    {
+        Call:iniciar()
+    }
+}
+
+On:Canvas("Click")
+{
+    If(mx>=110 && mx<=210 && my>=110 && my<=136)
+    {
+        If(vivo==2)
+        {
+            Call:iniciar()
+        }
+        Else
+        {
+            If(vivo==0)
+            {
+                Call:reiniciar()
+            }
+        }
+    }
+}
+
+On:Key("Down")
+{
+    If(vivo==1)
+    {
+        If(key=='ArrowUp' || key=='w')
+        {
+            Set:baja("Value;1")
+        }
+        If(key=='ArrowDown' || key=='s')
+        {
+            Set:sube("Value;1")
+        }
+        If(key=='ArrowLeft' || key=='a')
+        {
+            Set:izq("Value;1")
+        }
+        If(key=='ArrowRight' || key=='d')
+        {
+            Set:der("Value;1")
+        }
+        If(key=='e')
+        {
+            Set:thr("Value;min(1,thr+0.1)")
+        }
+        If(key=='q')
+        {
+            Set:thr("Value;max(0,thr-0.1)")
+        }
+    }
+    Else
+    {
+        If(key=='Enter')
+        {
+            If(vivo==2)
+            {
+                Call:iniciar()
+            }
+            Else
+            {
+                Call:reiniciar()
+            }
+        }
+    }
+}
+
+On:Key("Up")
+{
+    If(key=='ArrowUp' || key=='w')
+    {
+        Set:baja("Value;0")
+    }
+    If(key=='ArrowDown' || key=='s')
+    {
+        Set:sube("Value;0")
+    }
+    If(key=='ArrowLeft' || key=='a')
+    {
+        Set:izq("Value;0")
+    }
+    If(key=='ArrowRight' || key=='d')
+    {
+        Set:der("Value;0")
+    }
+}

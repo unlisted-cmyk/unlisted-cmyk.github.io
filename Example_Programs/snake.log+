@@ -1,0 +1,221 @@
+<log+>
+// SNAKE para Log+ (rejilla de 32x18 celdas de 10 pixeles)
+// Pulsa el boton INICIAR (en pantalla, con Enter o con START_BUTTON) para empezar.
+// Flechas o W/A/S/D para girar. Al perder, Enter o el boton te llevan de nuevo a la pantalla de inicio.
+// Estados de vivo: 2 = esperando inicio, 1 = jugando, 0 = fin del juego.
+
+Var:sx("List;16,15,14")
+Var:sy("List;9,9,9")
+Var:dx("Value;1")
+Var:dy("Value;0")
+Var:ndx("Value;1")
+Var:ndy("Value;0")
+Var:nx("Value;0")
+Var:ny("Value;0")
+Var:fx("Value;24")
+Var:fy("Value;9")
+Var:puntos("Value;0")
+Var:demora("Value;130")
+Var:vivo("Value;2")
+Var:choca("Value;0")
+Var:libre("Value;0")
+Var:tmp("Value;0")
+
+Def:comida()
+{
+    Set:libre("Value;0")
+    While(libre==0)
+    {
+        Set:fx("Value;rnd(0,31)")
+        Set:fy("Value;rnd(0,17)")
+        Set:libre("Value;1")
+        For:k(0,sx.length)
+        {
+            If(sx[k]==fx && sy[k]==fy)
+            {
+                Set:libre("Value;0")
+            }
+        }
+    }
+}
+
+Def:dibujar()
+{
+    Screen:Clear("Color;#101820")
+    Screen:Rect(fx*10,fy*10,9,9)("Color;#ff5c5c")
+    For:j(0,sx.length)
+    {
+        Screen:Rect(sx[j]*10,sy[j]*10,9,9)("Color;#4ade80")
+    }
+    Screen:Rect(sx[0]*10,sy[0]*10,9,9)("Color;#d9ffe3")
+    Screen:Text(4,4)("Text;Puntos: {puntos}","Color;white")
+    If(vivo==2)
+    {
+        Screen:Text(139,60)("Text;SNAKE","Color;#4ade80")
+        Screen:Text(70,78)("Text;Preparate y pulsa INICIAR","Color;white")
+        Screen:Rect(110,110,100,26)("Color;#4ade80")
+        Screen:Text(139,119)("Text;INICIAR","Color;#101820")
+    }
+    If(vivo==0)
+    {
+        Screen:Text(112,60)("Text;FIN DEL JUEGO","Color;yellow")
+        Screen:Text(112,75)("Text;Puntos: {puntos}","Color;white")
+        Screen:Rect(110,110,100,26)("Color;#4ade80")
+        Screen:Text(133,119)("Text;REINICIAR","Color;#101820")
+    }
+}
+
+Def:reiniciar()
+{
+    Var:sx("List;16,15,14")
+    Var:sy("List;9,9,9")
+    Set:dx("Value;1")
+    Set:dy("Value;0")
+    Set:ndx("Value;1")
+    Set:ndy("Value;0")
+    Set:puntos("Value;0")
+    Set:demora("Value;130")
+    Set:vivo("Value;2")
+    Call:comida()
+    Call:dibujar()
+}
+
+Def:iniciar()
+{
+    Set:vivo("Value;1")
+}
+
+Print("Snake: pulsa INICIAR para empezar. Flechas o W/A/S/D para girar")
+Call:comida()
+Call:dibujar()
+
+Task:juego
+{
+    Loop:Forever
+    {
+        If(vivo==1)
+        {
+            Set:dx("Value;ndx")
+            Set:dy("Value;ndy")
+            Set:nx("Value;sx[0]+dx")
+            Set:ny("Value;sy[0]+dy")
+            Set:choca("Value;0")
+            If(nx<0 || nx>=32 || ny<0 || ny>=18)
+            {
+                Set:choca("Value;1")
+            }
+            For:i(0,sx.length-1)
+            {
+                If(sx[i]==nx && sy[i]==ny)
+                {
+                    Set:choca("Value;1")
+                }
+            }
+            If(choca==1)
+            {
+                Set:vivo("Value;0")
+                Call:dibujar()
+                Sound("Freq;150","ms;300")
+            }
+            Else
+            {
+                Insert:sx("Index;0","Value;nx")
+                Insert:sy("Index;0","Value;ny")
+                If(nx==fx && ny==fy)
+                {
+                    Set:puntos("Value;puntos+1")
+                    Set:demora("Value;max(60,demora-4)")
+                    Call:comida()
+                    Call:dibujar()
+                    Sound("Freq;880","ms;50")
+                }
+                Else
+                {
+                    Pop:sx("Into;tmp")
+                    Pop:sy("Into;tmp")
+                    Call:dibujar()
+                }
+            }
+        }
+        Wait("ms;demora")
+    }
+}
+
+On:START_BUTTON("Press")
+{
+    If(vivo==2)
+    {
+        Call:iniciar()
+    }
+}
+
+On:Canvas("Click")
+{
+    If(mx>=110 && mx<=210 && my>=110 && my<=136)
+    {
+        If(vivo==2)
+        {
+            Call:iniciar()
+        }
+        Else
+        {
+            If(vivo==0)
+            {
+                Call:reiniciar()
+            }
+        }
+    }
+}
+
+On:Key("Down")
+{
+    If(vivo==1)
+    {
+        If(key=='ArrowUp' || key=='w')
+        {
+            If(dy==0)
+            {
+                Set:ndx("Value;0")
+                Set:ndy("Value;-1")
+            }
+        }
+        If(key=='ArrowDown' || key=='s')
+        {
+            If(dy==0)
+            {
+                Set:ndx("Value;0")
+                Set:ndy("Value;1")
+            }
+        }
+        If(key=='ArrowLeft' || key=='a')
+        {
+            If(dx==0)
+            {
+                Set:ndx("Value;-1")
+                Set:ndy("Value;0")
+            }
+        }
+        If(key=='ArrowRight' || key=='d')
+        {
+            If(dx==0)
+            {
+                Set:ndx("Value;1")
+                Set:ndy("Value;0")
+            }
+        }
+    }
+    Else
+    {
+        If(key=='Enter')
+        {
+            If(vivo==2)
+            {
+                Call:iniciar()
+            }
+            Else
+            {
+                Call:reiniciar()
+            }
+        }
+    }
+}

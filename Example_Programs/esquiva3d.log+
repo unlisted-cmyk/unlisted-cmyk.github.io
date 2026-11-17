@@ -1,0 +1,191 @@
+<log+>
+// ESQUIVA 3D - Requiere: pkg install Graphics3D (una sola vez, en la terminal)
+// Manten pulsadas las flechas izquierda/derecha (o A y D) para mover tu cubo y esquivar los bloques rojos.
+// INICIAR: boton en pantalla, Enter o START_BUTTON. Estados de vivo: 2 = espera, 1 = jugando, 0 = fin.
+
+Var:px("Value;0")
+Var:vel("Value;0.25")
+Var:puntos("Value;0")
+Var:vivo("Value;2")
+Var:izq("Value;0")
+Var:der("Value;0")
+Var:fz("Value;0")
+Var:ox("List;0,0,0")
+Var:oz("List;-30,-46,-62")
+
+Screen:Resolution("W;320","H;180","Bits;24")
+G3D:Scene("Bg;#070b16","Fov;60")
+G3D:Camera("X;0","Y;3.5","Z;9","TX;0","TY;0","TZ;-6")
+G3D:Light("X;3","Y;8","Z;6")
+
+G3D:Cube("Id;jug","X;0","Y;0","Z;3","Size;1.2","Color;hsl;140")
+G3D:Cube("Id;o0","X;0","Y;0","Z;-30","Size;1.4","Color;rgb;230;60;80")
+G3D:Cube("Id;o1","X;0","Y;0","Z;-46","Size;1.4","Color;rgb;230;60;80")
+G3D:Cube("Id;o2","X;0","Y;0","Z;-62","Size;1.4","Color;rgb;230;60;80")
+G3D:Pyramid("Id;pl0","X;-7","Y;0","Z;-26","Size;1.5","Color;#44cc88")
+G3D:Pyramid("Id;pl1","X;-7","Y;0","Z;-16","Size;1.5","Color;#44cc88")
+G3D:Pyramid("Id;pl2","X;-7","Y;0","Z;-6","Size;1.5","Color;#44cc88")
+G3D:Pyramid("Id;pr0","X;7","Y;0","Z;-26","Size;1.5","Color;#44cc88")
+G3D:Pyramid("Id;pr1","X;7","Y;0","Z;-16","Size;1.5","Color;#44cc88")
+G3D:Pyramid("Id;pr2","X;7","Y;0","Z;-6","Size;1.5","Color;#44cc88")
+
+Def:dibujar()
+{
+    G3D:Set("Id;jug","X;px")
+    G3D:Set("Id;o0","X;ox[0]","Z;oz[0]")
+    G3D:Set("Id;o1","X;ox[1]","Z;oz[1]")
+    G3D:Set("Id;o2","X;ox[2]","Z;oz[2]")
+    G3D:Set("Id;pl0","Z;-26+(fz+0)%30")
+    G3D:Set("Id;pl1","Z;-26+(fz+10)%30")
+    G3D:Set("Id;pl2","Z;-26+(fz+20)%30")
+    G3D:Set("Id;pr0","Z;-26+(fz+0)%30")
+    G3D:Set("Id;pr1","Z;-26+(fz+10)%30")
+    G3D:Set("Id;pr2","Z;-26+(fz+20)%30")
+    G3D:Render
+    Screen:Text(4,4)("Text;Puntos: {puntos}","Color;white")
+    If(vivo==2)
+    {
+        Screen:Text(112,50)("Text;ESQUIVA 3D","Color;#4ade80")
+        Screen:Text(58,68)("Text;Esquiva los bloques rojos","Color;white")
+        Screen:Rect(110,110,100,26)("Color;#4ade80")
+        Screen:Text(139,119)("Text;INICIAR","Color;#101820")
+    }
+    If(vivo==0)
+    {
+        Screen:Text(112,50)("Text;FIN DEL JUEGO","Color;yellow")
+        Screen:Text(112,68)("Text;Puntos: {puntos}","Color;white")
+        Screen:Rect(110,110,100,26)("Color;#4ade80")
+        Screen:Text(133,119)("Text;REINICIAR","Color;#101820")
+    }
+}
+
+Def:reiniciar()
+{
+    Var:oz("List;-30,-46,-62")
+    Set:ox("Index;0","Value;rnd(-5,5)")
+    Set:ox("Index;1","Value;rnd(-5,5)")
+    Set:ox("Index;2","Value;rnd(-5,5)")
+    Set:px("Value;0")
+    Set:vel("Value;0.25")
+    Set:puntos("Value;0")
+    Set:izq("Value;0")
+    Set:der("Value;0")
+    Set:vivo("Value;2")
+}
+
+Def:iniciar()
+{
+    Set:vivo("Value;1")
+}
+
+Print("Esquiva 3D: pulsa INICIAR. Flechas o A/D para moverte")
+Call:reiniciar()
+Call:dibujar()
+
+Task:juego
+{
+    Loop:Forever
+    {
+        If(vivo==1)
+        {
+            If(izq==1)
+            {
+                Set:px("Value;max(-5,px-0.25)")
+            }
+            If(der==1)
+            {
+                Set:px("Value;min(5,px+0.25)")
+            }
+            Set:fz("Value;(fz+vel*2)%30")
+            For:i(0,3)
+            {
+                Set:oz("Index;i","Value;oz[i]+vel")
+                If(oz[i]>5.5)
+                {
+                    Set:oz("Index;i","Value;-48")
+                    Set:ox("Index;i","Value;rnd(-5,5)")
+                    Set:puntos("Value;puntos+1")
+                    Set:vel("Value;min(0.6,vel+0.01)")
+                }
+                If(oz[i]>1.8 && oz[i]<4.2 && ox[i]>px-1.3 && ox[i]<px+1.3)
+                {
+                    Set:vivo("Value;0")
+                }
+            }
+            If(vivo==0)
+            {
+                Call:dibujar()
+                Sound("Freq;150","ms;300")
+            }
+        }
+        Call:dibujar()
+        Wait("ms;30")
+    }
+}
+
+On:START_BUTTON("Press")
+{
+    If(vivo==2)
+    {
+        Call:iniciar()
+    }
+}
+
+On:Canvas("Click")
+{
+    If(mx>=110 && mx<=210 && my>=110 && my<=136)
+    {
+        If(vivo==2)
+        {
+            Call:iniciar()
+        }
+        Else
+        {
+            If(vivo==0)
+            {
+                Call:reiniciar()
+            }
+        }
+    }
+}
+
+On:Key("Down")
+{
+    If(vivo==1)
+    {
+        If(key=='ArrowLeft' || key=='a')
+        {
+            Set:izq("Value;1")
+        }
+        If(key=='ArrowRight' || key=='d')
+        {
+            Set:der("Value;1")
+        }
+    }
+    Else
+    {
+        If(key=='Enter')
+        {
+            If(vivo==2)
+            {
+                Call:iniciar()
+            }
+            Else
+            {
+                Call:reiniciar()
+            }
+        }
+    }
+}
+
+On:Key("Up")
+{
+    If(key=='ArrowLeft' || key=='a')
+    {
+        Set:izq("Value;0")
+    }
+    If(key=='ArrowRight' || key=='d')
+    {
+        Set:der("Value;0")
+    }
+}

@@ -1,0 +1,301 @@
+<log+>
+// CONDUCE 3D - Requiere: pkg install Graphics3D (una sola vez, en la terminal)
+// Flecha arriba o W: acelerar. Flecha abajo o S: frenar y reversa. Izquierda/derecha o A/D: girar.
+// Recoge las monedas amarillas antes de que se acabe el tiempo y esquiva las rocas grises.
+// INICIAR: boton en pantalla, Enter o START_BUTTON. Estados de vivo: 2 = espera, 1 = jugando, 0 = fin.
+// Si el cubo del carro se ve girado al reves que la camara, cambia sg a -1.
+
+Var:sg("Value;1")
+Var:carx("Value;0")
+Var:carz("Value;0")
+Var:a("Value;0")
+Var:v("Value;0")
+Var:spin("Value;0")
+Var:puntos("Value;0")
+Var:tiempo("Value;60")
+Var:seg("Value;60")
+Var:kmh("Value;0")
+Var:vivo("Value;2")
+Var:izq("Value;0")
+Var:der("Value;0")
+Var:acel("Value;0")
+Var:freno("Value;0")
+Var:ddx("Value;0")
+Var:ddz("Value;0")
+Var:coinx("List;15,-25,30,-40,5")
+Var:coinz("List;-30,-15,20,-5,45")
+Var:rockx("List;10,-15,25,-30,40,-8")
+Var:rockz("List;-20,-35,10,25,-10,30")
+
+Screen:Resolution("W;320","H;180","Bits;24")
+G3D:Scene("Bg;#1b2a41","Fov;60")
+G3D:Light("X;20","Y;40","Z;20")
+G3D:Camera("X;0","Y;4.5","Z;9","TX;0","TY;0","TZ;-4")
+
+G3D:Cube("Id;carro","X;0","Y;0.5","Z;0","Size;1.4","Color;rgb;230;60;80")
+G3D:Cube("Id;cabina","X;0","Y;1.2","Z;0.25","Size;0.8","Color;#f2f2f2")
+G3D:Sphere("Id;faro","X;0","Y;0.5","Z;-0.8","Size;0.3","Color;#ffe066")
+
+G3D:Pyramid("Id;m0","X;15","Y;0.8","Z;-30","Size;1.2","Color;#ffd400")
+G3D:Pyramid("Id;m1","X;-25","Y;0.8","Z;-15","Size;1.2","Color;#ffd400")
+G3D:Pyramid("Id;m2","X;30","Y;0.8","Z;20","Size;1.2","Color;#ffd400")
+G3D:Pyramid("Id;m3","X;-40","Y;0.8","Z;-5","Size;1.2","Color;#ffd400")
+G3D:Pyramid("Id;m4","X;5","Y;0.8","Z;45","Size;1.2","Color;#ffd400")
+
+G3D:Cube("Id;r0","X;10","Y;0.8","Z;-20","Size;2","Color;#7a7f8c")
+G3D:Cube("Id;r1","X;-15","Y;0.8","Z;-35","Size;2","Color;#7a7f8c")
+G3D:Cube("Id;r2","X;25","Y;0.8","Z;10","Size;2","Color;#7a7f8c")
+G3D:Cube("Id;r3","X;-30","Y;0.8","Z;25","Size;2","Color;#7a7f8c")
+G3D:Cube("Id;r4","X;40","Y;0.8","Z;-10","Size;2","Color;#7a7f8c")
+G3D:Cube("Id;r5","X;-8","Y;0.8","Z;30","Size;2","Color;#7a7f8c")
+
+G3D:Pyramid("Id;ta","X;-58","Y;1.5","Z;-58","Size;3","Color;#2f9e5b")
+G3D:Pyramid("Id;tb","X;0","Y;1.5","Z;-58","Size;3","Color;#2f9e5b")
+G3D:Pyramid("Id;tc","X;58","Y;1.5","Z;-58","Size;3","Color;#2f9e5b")
+G3D:Pyramid("Id;td","X;-58","Y;1.5","Z;0","Size;3","Color;#2f9e5b")
+G3D:Pyramid("Id;te","X;58","Y;1.5","Z;0","Size;3","Color;#2f9e5b")
+G3D:Pyramid("Id;tf","X;-58","Y;1.5","Z;58","Size;3","Color;#2f9e5b")
+G3D:Pyramid("Id;tg","X;0","Y;1.5","Z;58","Size;3","Color;#2f9e5b")
+G3D:Pyramid("Id;th","X;58","Y;1.5","Z;58","Size;3","Color;#2f9e5b")
+G3D:Pyramid("Id;ti","X;-30","Y;1.5","Z;-45","Size;3","Color;#2f9e5b")
+G3D:Pyramid("Id;tj","X;35","Y;1.5","Z;-50","Size;3","Color;#2f9e5b")
+G3D:Pyramid("Id;tk","X;-45","Y;1.5","Z;20","Size;3","Color;#2f9e5b")
+G3D:Pyramid("Id;tl","X;50","Y;1.5","Z;35","Size;3","Color;#2f9e5b")
+
+Def:dibujar()
+{
+    G3D:Camera("X;carx+sin(a)*9","Y;4.5","Z;carz+cos(a)*9","TX;carx-sin(a)*4","TY;0","TZ;carz-cos(a)*4")
+    G3D:Set("Id;carro","X;carx","Z;carz","RY;sg*a")
+    G3D:Set("Id;cabina","X;carx+sin(a)*0.25","Z;carz+cos(a)*0.25","RY;sg*a")
+    G3D:Set("Id;faro","X;carx-sin(a)*0.8","Z;carz-cos(a)*0.8")
+    G3D:Set("Id;m0","X;coinx[0]","Z;coinz[0]","RY;spin")
+    G3D:Set("Id;m1","X;coinx[1]","Z;coinz[1]","RY;spin")
+    G3D:Set("Id;m2","X;coinx[2]","Z;coinz[2]","RY;spin")
+    G3D:Set("Id;m3","X;coinx[3]","Z;coinz[3]","RY;spin")
+    G3D:Set("Id;m4","X;coinx[4]","Z;coinz[4]","RY;spin")
+    G3D:Render
+    Screen:Text(4,4)("Text;Monedas: {puntos}","Color;white")
+    Screen:Text(4,16)("Text;Tiempo: {seg}","Color;white")
+    Screen:Text(4,28)("Text;Velocidad: {kmh}","Color;white")
+    If(vivo==2)
+    {
+        Screen:Text(106,40)("Text;CONDUCE 3D","Color;#4ade80")
+        Screen:Text(40,58)("Text;Recoge las monedas en 60 segundos","Color;white")
+        Screen:Rect(110,110,100,26)("Color;#4ade80")
+        Screen:Text(139,119)("Text;INICIAR","Color;#101820")
+    }
+    If(vivo==0)
+    {
+        Screen:Text(106,50)("Text;SE ACABO EL TIEMPO","Color;yellow")
+        Screen:Text(112,68)("Text;Monedas: {puntos}","Color;white")
+        Screen:Rect(110,110,100,26)("Color;#4ade80")
+        Screen:Text(133,119)("Text;REINICIAR","Color;#101820")
+    }
+}
+
+Def:reiniciar()
+{
+    Var:coinx("List;15,-25,30,-40,5")
+    Var:coinz("List;-30,-15,20,-5,45")
+    Set:carx("Value;0")
+    Set:carz("Value;0")
+    Set:a("Value;0")
+    Set:v("Value;0")
+    Set:puntos("Value;0")
+    Set:tiempo("Value;60")
+    Set:seg("Value;60")
+    Set:kmh("Value;0")
+    Set:izq("Value;0")
+    Set:der("Value;0")
+    Set:acel("Value;0")
+    Set:freno("Value;0")
+    Set:vivo("Value;2")
+}
+
+Def:iniciar()
+{
+    Set:vivo("Value;1")
+}
+
+Print("Conduce 3D: pulsa INICIAR. Flechas o W/A/S/D para manejar")
+Call:reiniciar()
+Call:dibujar()
+
+Task:juego
+{
+    Loop:Forever
+    {
+        Set:spin("Value;spin+0.1")
+        If(vivo==1)
+        {
+            If(v>0.02 || v<-0.02)
+            {
+                If(izq==1)
+                {
+                    Set:a("Value;a+0.05")
+                }
+                If(der==1)
+                {
+                    Set:a("Value;a-0.05")
+                }
+            }
+            If(acel==1)
+            {
+                Set:v("Value;min(0.45,v+0.012)")
+            }
+            If(freno==1)
+            {
+                Set:v("Value;max(-0.15,v-0.02)")
+            }
+            If(acel==0 && freno==0)
+            {
+                Set:v("Value;v*0.97")
+            }
+            If(v<0.005 && v>-0.005 && acel==0 && freno==0)
+            {
+                Set:v("Value;0")
+            }
+            Set:carx("Value;carx-sin(a)*v")
+            Set:carz("Value;carz-cos(a)*v")
+            If(carx>55)
+            {
+                Set:carx("Value;55")
+                Set:v("Value;v*-0.3")
+            }
+            If(carx<-55)
+            {
+                Set:carx("Value;-55")
+                Set:v("Value;v*-0.3")
+            }
+            If(carz>55)
+            {
+                Set:carz("Value;55")
+                Set:v("Value;v*-0.3")
+            }
+            If(carz<-55)
+            {
+                Set:carz("Value;-55")
+                Set:v("Value;v*-0.3")
+            }
+            For:i(0,rockx.length)
+            {
+                Set:ddx("Value;carx-rockx[i]")
+                Set:ddz("Value;carz-rockz[i]")
+                If(ddx*ddx+ddz*ddz<3.2)
+                {
+                    Set:v("Value;v*-0.5")
+                    Set:carx("Value;carx+ddx*0.15")
+                    Set:carz("Value;carz+ddz*0.15")
+                }
+            }
+            For:j(0,coinx.length)
+            {
+                Set:ddx("Value;carx-coinx[j]")
+                Set:ddz("Value;carz-coinz[j]")
+                If(ddx*ddx+ddz*ddz<4)
+                {
+                    Set:puntos("Value;puntos+1")
+                    Set:coinx("Index;j","Value;rnd(-50,50)")
+                    Set:coinz("Index;j","Value;rnd(-50,50)")
+                    Sound("Freq;880","ms;50")
+                }
+            }
+            Set:tiempo("Value;tiempo-0.03")
+            Set:seg("Value;floor(tiempo)")
+            Set:kmh("Value;floor(v*200)")
+            If(tiempo<=0)
+            {
+                Set:tiempo("Value;0")
+                Set:seg("Value;0")
+                Set:vivo("Value;0")
+                Call:dibujar()
+                Sound("Freq;200","ms;300")
+            }
+        }
+        Call:dibujar()
+        Wait("ms;30")
+    }
+}
+
+On:START_BUTTON("Press")
+{
+    If(vivo==2)
+    {
+        Call:iniciar()
+    }
+}
+
+On:Canvas("Click")
+{
+    If(mx>=110 && mx<=210 && my>=110 && my<=136)
+    {
+        If(vivo==2)
+        {
+            Call:iniciar()
+        }
+        Else
+        {
+            If(vivo==0)
+            {
+                Call:reiniciar()
+            }
+        }
+    }
+}
+
+On:Key("Down")
+{
+    If(vivo==1)
+    {
+        If(key=='ArrowUp' || key=='w')
+        {
+            Set:acel("Value;1")
+        }
+        If(key=='ArrowDown' || key=='s')
+        {
+            Set:freno("Value;1")
+        }
+        If(key=='ArrowLeft' || key=='a')
+        {
+            Set:izq("Value;1")
+        }
+        If(key=='ArrowRight' || key=='d')
+        {
+            Set:der("Value;1")
+        }
+    }
+    Else
+    {
+        If(key=='Enter')
+        {
+            If(vivo==2)
+            {
+                Call:iniciar()
+            }
+            Else
+            {
+                Call:reiniciar()
+            }
+        }
+    }
+}
+
+On:Key("Up")
+{
+    If(key=='ArrowUp' || key=='w')
+    {
+        Set:acel("Value;0")
+    }
+    If(key=='ArrowDown' || key=='s')
+    {
+        Set:freno("Value;0")
+    }
+    If(key=='ArrowLeft' || key=='a')
+    {
+        Set:izq("Value;0")
+    }
+    If(key=='ArrowRight' || key=='d')
+    {
+        Set:der("Value;0")
+    }
+}
