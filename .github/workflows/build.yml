@@ -1,0 +1,62 @@
+name: build
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: gcc -O2 -static -o logl-linux logl.c -lm -lpthread
+      - run: ./logl-linux --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: logl-linux
+
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          install: mingw-w64-ucrt-x86_64-gcc
+      - run: gcc -O2 -static -o logl-windows.exe logl.c -lm -lpthread
+      - run: ./logl-windows.exe --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: logl-windows.exe
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: clang -O2 -arch arm64 -arch x86_64 -o logl-macos logl.c -lm -lpthread
+      - run: ./logl-macos --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: logl-macos
+
+  release:
+    needs: [linux, windows, macos]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
