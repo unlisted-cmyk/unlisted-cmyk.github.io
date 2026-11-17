@@ -48,6 +48,9 @@
   #ifndef S_ISREG
   #define S_ISREG(m) (((m) & S_IFMT) == S_IFREG)
   #endif
+  #ifndef S_ISDIR
+  #define S_ISDIR(m) (((m) & S_IFMT) == S_IFDIR)
+  #endif
   /* getline propio para no depender de la version de MinGW */
   static ssize_t getline_w(char **lp, size_t *cap, FILE *f){
     size_t n = 0; int c;
@@ -811,6 +814,11 @@ static void blk(PC *c, int lg, int ol, SL *o){
 /* parse: devuelve 1 si hay cabecera valida (nodes relleno) */
 static int parse(const char *src, const char *name, DV *E, DV *W, SL *nodes){
   PC c = {0}; c.E = E; c.W = W;
+  /* Windows editors (Notepad, PowerShell) may add a BOM or save as UTF-16 */
+  if((unsigned char)src[0] == 0xEF && (unsigned char)src[1] == 0xBB && (unsigned char)src[2] == 0xBF) src += 3;
+  if(((unsigned char)src[0] == 0xFF && (unsigned char)src[1] == 0xFE) || ((unsigned char)src[0] == 0xFE && (unsigned char)src[1] == 0xFF) || (src[0] && !src[1])){
+    dpush(E, 1, "File is saved as UTF-16: save it as UTF-8 (Notepad: Save As -> Encoding: UTF-8)"); return 0;
+  }
   int n = 0; const char *p = src; Line *L = NULL; int cap = 0;
   /* ignora una primera linea tipo "#!/usr/bin/env logl" */
   if(src[0] == '#' && src[1] == '!'){ const char *e0 = strchr(src, '\n'); n = 1; p = e0 ? e0 + 1 : src + strlen(src); }
@@ -1961,7 +1969,17 @@ int main(int argc, char **argv){
   S.vdpath = pjoin(S.root_dir, "logdisk.json"); S.stpath = pjoin(S.root_dir, "logdata.json"); S.vd = Vd();
   { char *tx = readfile(S.vdpath, NULL); if(tx){ int err; Val v = jparse(tx, &err); if(!err && v.t == T_DICT){ vdrop(S.vd); S.vd = v; } free(tx); } }
   if(repl_ || !file){ repl(lang); return 0; }
-  size_t n; char *src = readfile(file, &n); if(!src){ fprintf(stderr, "could not open %s\n", file); return 2; }
+  size_t n; struct stat fst; int isdir = !stat(file, &fst) && S_ISDIR(fst.st_mode);
+  char *src = isdir ? NULL : readfile(file, &n);
+  if(!src){
+    int en = errno;
+    if(isdir) fprintf(stderr, "could not open '%s': it is a folder, not a file\n", file);
+    else if(en == ENOENT){
+      fprintf(stderr, "could not open '%s': file not found (looked in: %s)\n", file, getcwd(cwd, sizeof cwd) ? cwd : ".");
+      fputs("tip: on Windows, make sure the file is not really named 'name.log+.txt' (enable View > File name extensions in Explorer)\n", stderr);
+    } else fprintf(stderr, "could not open '%s': %s\n", file, strerror(en));
+    return 2;
+  }
   DV E = {0}, W = {0}; SL *nodes = calloc(1, sizeof(SL)); const char *bn = strrchr(file, '/'); bn = bn ? bn + 1 : file;
   ChkSt cs = {0};
   if(parse(src, bn, &E, &W, nodes)) chk(nodes, &E, &W, &cs);
