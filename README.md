@@ -45,7 +45,8 @@ sudo mkdir -p /usr/local/bin
 sudo mv logl-macos /usr/local/bin/logl
 logl test.log+`
 
-
+**IMPORTANT** Running logl filename.log/x/ might cause some trouble. If it prints an error, make sure that the file is not actually .txt and the end. In case
+it´s, run including the .txt extension, but if you wanna avoid it, if you´re using the notepode, make sure to save as yourfilename.logvariantused and in file type choose something like all types or similar depending your environment.
 
 
 Option 2: Try official Log Build Programming Environment (LBPE) page on html code: https://unlisted-cmyk.github.io/
