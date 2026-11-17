@@ -1,0 +1,1981 @@
+/* logl.c - Interprete de Log (Log-, Log+, Log++, LogAll) escrito en C.
+ * Portable: Linux, macOS y Windows (MinGW-w64).
+ * Acceso REAL al equipo (solo con --hw, solo Linux):
+ *   Reg:Map/Read/Write/Set/Clear/Toggle/Unmap  registros mapeados en memoria (/dev/mem, /dev/gpiomem)
+ *   Port:In / Port:Out                         puertos de E/S x86 (iopl/ioperm)
+ *   Pin                                        GPIO real (Raspberry Pi 0-4 via /dev/gpiomem)
+ *   Mem:Load / Mem:Dump                        cargar/volcar archivos reales a la RAM emulada
+ *   Host:Read/Write/Append/Size/Delete/List/Exists/Mkdir  archivos reales
+ * Compilar Linux:    gcc -O2 -static -o logl logl.c -lm -lpthread
+ * Compilar Windows:  gcc -O2 -static -o logl.exe logl.c -lm -lpthread     (MinGW-w64 / MSYS2)
+ * Uso:       logl programa.log+ [--check] [--hw] [--root DIR] [--png out.png] [--repl]
+ *            logl            (sin argumentos abre el REPL)
+ */
+#define _GNU_SOURCE
+#define _USE_MATH_DEFINES
+#ifdef _WIN32
+  #define __USE_MINGW_ANSI_STDIO 1
+#endif
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <stdint.h>
+#include <stdarg.h>
+#include <math.h>
+#include <ctype.h>
+#include <time.h>
+#include <errno.h>
+#include <signal.h>
+#include <setjmp.h>
+#include <pthread.h>
+#include <sched.h>
+#include <fcntl.h>
+#include <dirent.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#ifdef _WIN32
+  #define WIN32_LEAN_AND_MEAN
+  #include <windows.h>
+  #include <io.h>
+  #include <direct.h>
+  #include <process.h>
+  #define usleep(us) Sleep(((us) + 999) / 1000)
+  #define isatty _isatty
+  #define getcwd _getcwd
+  #define getpid _getpid
+  #define mkdir(p, m) _mkdir(p)
+  #ifndef S_ISREG
+  #define S_ISREG(m) (((m) & S_IFMT) == S_IFREG)
+  #endif
+  /* getline propio para no depender de la version de MinGW */
+  static ssize_t getline_w(char **lp, size_t *cap, FILE *f){
+    size_t n = 0; int c;
+    if(!*lp || !*cap){ *cap = 128; *lp = (char *)malloc(*cap); if(!*lp) return -1; }
+    while((c = fgetc(f)) != EOF){
+      if(n + 2 > *cap){ *cap *= 2; char *t = (char *)realloc(*lp, *cap); if(!t) return -1; *lp = t; }
+      (*lp)[n++] = (char)c; if(c == '\n') break;
+    }
+    if(!n) return -1;
+    (*lp)[n] = 0; return (ssize_t)n;
+  }
+  #define getline getline_w
+#else
+  #include <unistd.h>
+  #include <sys/mman.h>
+  #include <sys/ioctl.h>
+  #include <sys/syscall.h>
+  #include <sys/utsname.h>
+  #ifdef __APPLE__
+    #include <sys/sysctl.h>
+  #endif
+#endif
+
+#define LOGL_VERSION "1.0"
+
+typedef long long ll;
+typedef unsigned long long ull;
+
+/* ---------------------------------------------------------------- utilidades */
+static void *xm(size_t n){ void *p = malloc(n ? n : 1); if(!p){ fputs("sin memoria\n", stderr); exit(3); } return p; }
+static void *xr(void *p, size_t n){ p = realloc(p, n ? n : 1); if(!p){ fputs("sin memoria\n", stderr); exit(3); } return p; }
+static char *xsn(const char *s, size_t n){ char *p = xm(n + 1); memcpy(p, s, n); p[n] = 0; return p; }
+static char *xs(const char *s){ return xsn(s, strlen(s)); }
+static char *strip_n(const char *s, size_t n){
+  while(n && isspace((unsigned char)*s)){ s++; n--; }
+  while(n && isspace((unsigned char)s[n-1])) n--;
+  return xsn(s, n);
+}
+static char *strip_dup(const char *s){ return strip_n(s, strlen(s)); }
+static char *lowerdup(const char *s){ char *p = xs(s); for(char *q = p; *q; q++) *q = tolower((unsigned char)*q); return p; }
+
+typedef struct { char *s; int n, cap; } Buf;
+static void bcat(Buf *b, const char *s, int n){
+  if(b->n + n + 1 > b->cap){ b->cap = (b->n + n + 1) * 2; b->s = xr(b->s, b->cap); }
+  memcpy(b->s + b->n, s, n); b->n += n; b->s[b->n] = 0;
+}
+static void bs(Buf *b, const char *s){ bcat(b, s, (int)strlen(s)); }
+static void bc(Buf *b, char c){ bcat(b, &c, 1); }
+static char *btake(Buf *b){ return b->s ? b->s : xs(""); }
+
+typedef struct { char **v; int n, cap; } SV;
+static void svp(SV *s, char *x){ if(s->n == s->cap){ s->cap = s->cap ? s->cap * 2 : 4; s->v = xr(s->v, s->cap * sizeof(char *)); } s->v[s->n++] = x; }
+
+/* rutas estilo posixpath */
+static char *normpath(const char *p){
+  if(!*p) return xs(".");
+  int ab = p[0] == '/';
+  char *cp = xs(p), **seg = xm(sizeof(char *) * (strlen(p) + 2)); int n = 0;
+  for(char *t = cp; ; ){
+    char *e = strchr(t, '/'); if(e) *e = 0;
+    if(*t && strcmp(t, ".")){
+      if(!strcmp(t, "..")){ if(n && strcmp(seg[n-1], "..")) n--; else if(!ab) seg[n++] = t; }
+      else seg[n++] = t;
+    }
+    if(!e) break; t = e + 1;
+  }
+  Buf b = {0}; if(ab) bc(&b, '/');
+  for(int i = 0; i < n; i++){ if(i) bc(&b, '/'); bs(&b, seg[i]); }
+  char *r = b.n ? btake(&b) : xs(ab ? "/" : ".");
+  free(cp); free(seg); return r;
+}
+static char *pjoin(const char *a, const char *b){
+  if(b[0] == '/' || !*a || (isalpha((unsigned char)b[0]) && b[1] == ':')) return xs(b);
+  Buf r = {0}; bs(&r, a); if(a[strlen(a)-1] != '/') bc(&r, '/'); bs(&r, b); return btake(&r);
+}
+static char *pdirname(const char *p){
+  const char *s = strrchr(p, '/'); if(!s) return xs("");
+  const char *e = s; while(e > p && e[-1] == '/') e--;
+  return e == p ? xs("/") : xsn(p, e - p);
+}
+static void fixslash(char *s){ for(; s && *s; s++) if(*s == '\\') *s = '/'; }
+
+static char *readfile(const char *p, size_t *len){
+  FILE *f = fopen(p, "rb"); if(!f) return NULL;
+  Buf b = {0}; char t[8192]; size_t n;
+  while((n = fread(t, 1, sizeof t, f)) > 0) bcat(&b, t, (int)n);
+  fclose(f); if(len) *len = b.n; return btake(&b);
+}
+static int writefile(const char *p, const char *d, size_t n, const char *mode){
+  FILE *f = fopen(p, mode); if(!f) return -1;
+  fwrite(d, 1, n, f); fclose(f); return 0;
+}
+
+/* ---------------------------------------------------------------- valores */
+enum { T_UND, T_BOOL, T_NUM, T_STR, T_LIST, T_DICT, T_FN };
+typedef struct { int t; union { double n; void *p; } u; } Val;
+typedef struct { int rc, len; char s[1]; } Str;
+typedef struct { int rc, n, cap; Val *a; } List;
+typedef struct { int rc, n, cap; char **k; Val *v; signed char *ty; } Dict;
+#define SP(v) ((Str *)(v).u.p)
+#define LP(v) ((List *)(v).u.p)
+#define DP(v) ((Dict *)(v).u.p)
+#define CSTR(v) (SP(v)->s)
+
+static Val Vu(void){ Val v; v.t = T_UND; v.u.n = 0; return v; }
+static Val Vn(double d){ Val v; v.t = T_NUM; v.u.n = d; return v; }
+static Val Vb(int b){ Val v; v.t = T_BOOL; v.u.n = b ? 1 : 0; return v; }
+static Val Vsn(const char *s, int n){ Str *p = xm(sizeof(Str) + n); p->rc = 1; p->len = n; memcpy(p->s, s, n); p->s[n] = 0; Val v; v.t = T_STR; v.u.p = p; return v; }
+static Val Vs(const char *s){ return Vsn(s, (int)strlen(s)); }
+static Val Vl(void){ List *l = calloc(1, sizeof *l); l->rc = 1; Val v; v.t = T_LIST; v.u.p = l; return v; }
+static Val Vd(void){ Dict *d = calloc(1, sizeof *d); d->rc = 1; Val v; v.t = T_DICT; v.u.p = d; return v; }
+static Val Vf(int i){ Val v; v.t = T_FN; v.u.n = i; return v; }
+static int isobj(Val v){ return v.t >= T_STR && v.t <= T_DICT; }
+static Val vref(Val v){ if(isobj(v)) (*(int *)v.u.p)++; return v; }
+static void vdrop(Val v){
+  if(!isobj(v)) return;
+  if(--*(int *)v.u.p > 0) return;
+  if(v.t == T_LIST){ List *l = LP(v); for(int i = 0; i < l->n; i++) vdrop(l->a[i]); free(l->a); }
+  else if(v.t == T_DICT){ Dict *d = DP(v); for(int i = 0; i < d->n; i++){ free(d->k[i]); vdrop(d->v[i]); } free(d->k); free(d->v); free(d->ty); }
+  free(v.u.p);
+}
+static void lpush(List *l, Val v){ if(l->n == l->cap){ l->cap = l->cap ? l->cap * 2 : 8; l->a = xr(l->a, l->cap * sizeof(Val)); } l->a[l->n++] = v; }
+static int dfind(Dict *d, const char *k){ for(int i = 0; i < d->n; i++) if(!strcmp(d->k[i], k)) return i; return -1; }
+static Val *dget(Dict *d, const char *k){ int i = dfind(d, k); return i < 0 ? NULL : &d->v[i]; }
+static int dset(Dict *d, const char *k, Val v){ /* toma posesion de v */
+  int i = dfind(d, k);
+  if(i >= 0){ vdrop(d->v[i]); d->v[i] = v; return i; }
+  if(d->n == d->cap){ d->cap = d->cap ? d->cap * 2 : 8; d->k = xr(d->k, d->cap * sizeof(char *)); d->v = xr(d->v, d->cap * sizeof(Val)); d->ty = xr(d->ty, d->cap); }
+  d->k[d->n] = xs(k); d->v[d->n] = v; d->ty[d->n] = -1; return d->n++;
+}
+static void dremove(Dict *d, const char *k){
+  int i = dfind(d, k); if(i < 0) return;
+  free(d->k[i]); vdrop(d->v[i]);
+  for(int j = i; j < d->n - 1; j++){ d->k[j] = d->k[j+1]; d->v[j] = d->v[j+1]; d->ty[j] = d->ty[j+1]; }
+  d->n--;
+}
+
+/* ---------------------------------------------------------------- hilo / errores */
+typedef struct Scope Scope;
+typedef struct Task Task;
+typedef struct Stmt Stmt;
+typedef struct { jmp_buf *jb; char err[1024]; Scope *cur; int depth, tick; Task *task; Val retv; } Th;
+static __thread Th *T;
+static pthread_mutex_t GIL = PTHREAD_MUTEX_INITIALIZER;
+static int nthreads = 0;
+
+static void lerr(const char *f, ...) __attribute__((noreturn, format(printf, 1, 2)));
+static void lerr(const char *f, ...){
+  va_list a; va_start(a, f); vsnprintf(T->err, sizeof T->err, f, a); va_end(a);
+  longjmp(*T->jb, 1);
+}
+
+/* ---------------------------------------------------------------- conversiones */
+static void fmtnum(Buf *b, double v){
+  if(v != v){ bs(b, "NaN"); return; }
+  if(isinf(v)){ bs(b, v > 0 ? "Infinity" : "-Infinity"); return; }
+  char t[64];
+  if(v == floor(v) && fabs(v) < 1e21){ if(v == 0) v = 0; snprintf(t, sizeof t, "%.0f", v); bs(b, t); return; }
+  for(int p = 1; p <= 17; p++){ snprintf(t, sizeof t, "%.*g", p, v); if(strtod(t, NULL) == v) break; }
+  bs(b, t);
+}
+static void jbuf(Buf *b, Val v){
+  switch(v.t){
+  case T_UND: bs(b, "undefined"); break;
+  case T_BOOL: bs(b, v.u.n ? "true" : "false"); break;
+  case T_NUM: fmtnum(b, v.u.n); break;
+  case T_STR: bcat(b, CSTR(v), SP(v)->len); break;
+  case T_LIST: { List *l = LP(v); for(int i = 0; i < l->n; i++){ if(i) bc(b, ','); jbuf(b, l->a[i]); } break; }
+  case T_DICT: bs(b, "[object Object]"); break;
+  default: bs(b, "function");
+  }
+}
+static char *jstr(Val v){ Buf b = {0}; jbuf(&b, v); return btake(&b); }
+static int truthy(Val v){
+  switch(v.t){
+  case T_UND: return 0;
+  case T_BOOL: case T_NUM: return v.u.n == v.u.n && v.u.n != 0;
+  case T_STR: return SP(v)->len > 0;
+  default: return 1;
+  }
+}
+static double tonumok(Val v, int *ok){
+  *ok = 1;
+  if(v.t == T_NUM || v.t == T_BOOL) return v.u.n;
+  if(v.t == T_STR){
+    const char *s = CSTR(v); char *e; while(isspace((unsigned char)*s)) s++;
+    if(*s){ double d = strtod(s, &e); while(isspace((unsigned char)*e)) e++; if(!*e) return d; }
+  }
+  *ok = 0; return NAN;
+}
+static double tonum(Val v){ int ok; return tonumok(v, &ok); }
+static ll dint(double d){ if(d != d || isinf(d)) return 0; if(d > 9.2e18) d = 9.2e18; if(d < -9.2e18) d = -9.2e18; return (ll)d; }
+static ll toint(Val v){ return dint(tonum(v)); }
+static ll i32v(ll x){ return (ll)(int32_t)(uint32_t)(ull)x; }
+
+static const char *TYP[] = {"u8", "u16", "u32", "i32", "f32", "f64", "str"};
+static int typidx(const char *s){ for(int i = 0; i < 7; i++) if(!strcasecmp(s, TYP[i])) return i; return -1; }
+static Val cv(int t, Val v){ /* consume v */
+  if(t < 0) return v;
+  Val r; int ok;
+  switch(t){
+  case 0: r = Vn((double)(toint(v) & 255)); break;
+  case 1: r = Vn((double)(toint(v) & 65535)); break;
+  case 2: r = Vn((double)(toint(v) & 0xFFFFFFFFLL)); break;
+  case 3: r = Vn((double)i32v(toint(v))); break;
+  case 4: { double d = tonumok(v, &ok); if(!ok) lerr("No se puede convertir a numero"); r = Vn((double)(float)d); break; }
+  case 5: { double d = tonumok(v, &ok); if(!ok) lerr("No se puede convertir a numero"); r = Vn(d); break; }
+  default: { char *s = jstr(v); int n = (int)strlen(s); if(n > 65535) n = 65535; r = Vsn(s, n); free(s); }
+  }
+  vdrop(v); return r;
+}
+static int veq(Val a, Val b){
+  int an = a.t == T_NUM || a.t == T_BOOL, bn = b.t == T_NUM || b.t == T_BOOL;
+  if(an && bn) return a.u.n == b.u.n;
+  if(a.t != b.t) return 0;
+  switch(a.t){
+  case T_UND: return 1;
+  case T_STR: return SP(a)->len == SP(b)->len && !memcmp(CSTR(a), CSTR(b), SP(a)->len);
+  case T_LIST: { List *x = LP(a), *y = LP(b); if(x == y) return 1; if(x->n != y->n) return 0;
+    for(int i = 0; i < x->n; i++) if(!veq(x->a[i], y->a[i])) return 0; return 1; }
+  case T_DICT: return a.u.p == b.u.p;
+  default: return a.u.n == b.u.n;
+  }
+}
+
+/* ---------------------------------------------------------------- JSON minimo */
+static const char *jp; static int jperr;
+static void jws(void){ while(isspace((unsigned char)*jp)) jp++; }
+static Val jval(int depth);
+static void utf8(Buf *b, unsigned c){
+  if(c < 0x80) bc(b, c);
+  else if(c < 0x800){ bc(b, 0xC0 | (c >> 6)); bc(b, 0x80 | (c & 63)); }
+  else { bc(b, 0xE0 | (c >> 12)); bc(b, 0x80 | ((c >> 6) & 63)); bc(b, 0x80 | (c & 63)); }
+}
+static char *jstring(void){
+  Buf b = {0}; jp++;
+  while(*jp && *jp != '"'){
+    if(*jp == '\\'){ jp++;
+      switch(*jp){ case 'n': bc(&b, '\n'); break; case 't': bc(&b, '\t'); break; case 'r': bc(&b, '\r'); break;
+        case 'b': bc(&b, '\b'); break; case 'f': bc(&b, '\f'); break;
+        case 'u': { unsigned c = 0; for(int i = 1; i <= 4; i++){ if(!isxdigit((unsigned char)jp[i])){ jperr = 1; return btake(&b); } c = c * 16 + (isdigit((unsigned char)jp[i]) ? jp[i] - '0' : (tolower(jp[i]) - 'a' + 10)); } utf8(&b, c); jp += 4; break; }
+        case 0: jperr = 1; return btake(&b);
+        default: bc(&b, *jp); }
+      jp++;
+    } else bc(&b, *jp++);
+  }
+  if(*jp != '"') jperr = 1; else jp++;
+  return btake(&b);
+}
+static Val jval(int depth){
+  jws();
+  if(depth > 64){ jperr = 1; return Vu(); }
+  if(*jp == '"'){ char *s = jstring(); Val v = Vs(s); free(s); return v; }
+  if(*jp == '{'){
+    Val d = Vd(); jp++; jws();
+    if(*jp == '}'){ jp++; return d; }
+    for(;;){
+      jws(); if(*jp != '"'){ jperr = 1; return d; }
+      char *k = jstring(); jws(); if(*jp != ':'){ jperr = 1; free(k); return d; } jp++;
+      dset(DP(d), k, jval(depth + 1)); free(k); if(jperr) return d; jws();
+      if(*jp == ','){ jp++; continue; } if(*jp == '}'){ jp++; return d; } jperr = 1; return d;
+    }
+  }
+  if(*jp == '['){
+    Val l = Vl(); jp++; jws();
+    if(*jp == ']'){ jp++; return l; }
+    for(;;){
+      lpush(LP(l), jval(depth + 1)); if(jperr) return l; jws();
+      if(*jp == ','){ jp++; continue; } if(*jp == ']'){ jp++; return l; } jperr = 1; return l;
+    }
+  }
+  if(!strncmp(jp, "true", 4)){ jp += 4; return Vb(1); }
+  if(!strncmp(jp, "false", 5)){ jp += 5; return Vb(0); }
+  if(!strncmp(jp, "null", 4)){ jp += 4; return Vu(); }
+  if(!strncmp(jp, "NaN", 3)){ jp += 3; return Vn(NAN); }
+  if(!strncmp(jp, "Infinity", 8)){ jp += 8; return Vn(INFINITY); }
+  if(!strncmp(jp, "-Infinity", 9)){ jp += 9; return Vn(-INFINITY); }
+  char *e; double d = strtod(jp, &e);
+  if(e == jp){ jperr = 1; return Vu(); }
+  jp = e; return Vn(d);
+}
+static Val jparse(const char *s, int *err){ jp = s; jperr = 0; Val v = jval(0); jws(); if(*jp) jperr = 1; *err = jperr; return v; }
+static void jdump(Buf *b, Val v){
+  switch(v.t){
+  case T_UND: bs(b, "null"); break;
+  case T_BOOL: bs(b, v.u.n ? "true" : "false"); break;
+  case T_NUM: fmtnum(b, v.u.n); break;
+  case T_STR: { bc(b, '"'); for(int i = 0; i < SP(v)->len; i++){ unsigned char c = CSTR(v)[i];
+      if(c == '"' || c == '\\'){ bc(b, '\\'); bc(b, c); } else if(c == '\n') bs(b, "\\n"); else if(c == '\t') bs(b, "\\t"); else if(c == '\r') bs(b, "\\r");
+      else if(c < 32){ char t[8]; snprintf(t, sizeof t, "\\u%04x", c); bs(b, t); } else bc(b, c); }
+    bc(b, '"'); break; }
+  case T_LIST: { bc(b, '['); for(int i = 0; i < LP(v)->n; i++){ if(i) bc(b, ','); jdump(b, LP(v)->a[i]); } bc(b, ']'); break; }
+  case T_DICT: { Dict *d = DP(v); bc(b, '{'); for(int i = 0; i < d->n; i++){ if(i) bc(b, ','); jdump(b, Vs(d->k[i])); bc(b, ':'); jdump(b, d->v[i]); } bc(b, '}'); break; }
+  default: bs(b, "null");
+  }
+}
+
+/* ---------------------------------------------------------------- ambitos */
+typedef struct { char *name; Stmt *x; Scope *sc; } Fn;
+struct Scope { int rc; Dict *v; Scope *p; Fn *fns; int nfn, cfn; int xd; };
+
+static Scope *scope_new(Scope *parent){
+  Scope *s = calloc(1, sizeof *s); s->rc = 1; Val d = Vd(); s->v = DP(d); s->p = parent;
+  if(parent) parent->rc++;
+  return s;
+}
+static void scope_ref(Scope *s){ s->rc++; }
+static void scope_unref(Scope *s){
+  if(--s->rc > 0) return;
+  Val d; d.t = T_DICT; d.u.p = s->v; vdrop(d);
+  for(int i = 0; i < s->nfn; i++) free(s->fns[i].name);
+  free(s->fns);
+  if(s->p) scope_unref(s->p);
+  free(s);
+}
+static Scope *stop_(Scope *s){ while(s->p) s = s->p; return s; }
+static Val *slookup(Scope *s, const char *n, Dict **dd, int *ix){
+  for(; s; s = s->p){ int i = dfind(s->v, n); if(i >= 0){ if(dd) *dd = s->v; if(ix) *ix = i; return &s->v->v[i]; } }
+  return NULL;
+}
+static int shas(Scope *s, const char *n){ return slookup(s, n, NULL, NULL) != NULL; }
+static Val sget(Scope *s, const char *n){ Val *p = slookup(s, n, NULL, NULL); if(!p) lerr("Variable no declarada: %s", n); return vref(*p); }
+static int sty(Scope *s, const char *n){ Dict *d; int i; if(!slookup(s, n, &d, &i)) return -1; return d->ty[i]; }
+static void sdecl(Scope *s, const char *n, Val v, int ty){ int i = dset(s->v, n, v); s->v->ty[i] = ty; }
+static void ssetv(Scope *s, const char *n, Val v){ /* consume v */
+  Dict *d; int i; if(!slookup(s, n, &d, &i)){ vdrop(v); lerr("Variable no declarada: %s", n); }
+  Val nv = cv(d->ty[i], v); vdrop(d->v[i]); d->v[i] = nv;
+}
+static void fn_set(Scope *top, const char *name, Stmt *x, Scope *sc){
+  for(int i = 0; i < top->nfn; i++) if(!strcmp(top->fns[i].name, name)){ top->fns[i].x = x; top->fns[i].sc = sc; return; }
+  if(top->nfn == top->cfn){ top->cfn = top->cfn ? top->cfn * 2 : 8; top->fns = xr(top->fns, top->cfn * sizeof(Fn)); }
+  top->fns[top->nfn].name = xs(name); top->fns[top->nfn].x = x; top->fns[top->nfn].sc = sc; top->nfn++;
+}
+static Fn *fn_get(Scope *top, const char *name){ for(int i = 0; i < top->nfn; i++) if(!strcmp(top->fns[i].name, name)) return &top->fns[i]; return NULL; }
+
+/* ---------------------------------------------------------------- expresiones: tokens */
+typedef struct { char k; double n; char *s; } Tok;
+static const char *OPN[] = {"??","||","&&","|","^","&","==","!=","===","!==","<",">","<=",">=","<<",">>",">>>","+","-","*","/","%","**"};
+static const int OPP[] = {1,2,3,4,5,6,7,7,7,7,8,8,8,8,9,9,9,10,10,11,11,11,12};
+enum { O_NC,O_OR,O_AND,O_BOR,O_XOR,O_BAND,O_EQ,O_NE,O_SEQ,O_SNE,O_LT,O_GT,O_LE,O_GE,O_SHL,O_SHR,O_USHR,O_ADD,O_SUB,O_MUL,O_DIV,O_MOD,O_POW, O_COUNT };
+static int binidx(const char *s){ for(int i = 0; i < O_COUNT; i++) if(!strcmp(OPN[i], s)) return i; return -1; }
+
+static Tok *tokenize(const char *src, int *cnt){
+  Tok *t = NULL; int n = 0, cap = 0;
+  size_t len = strlen(src); while(len && isspace((unsigned char)src[len-1])) len--;
+  const char *p = src, *end = src + len;
+#define PUSHT(K, N, S) do{ if(n == cap){ cap = cap ? cap * 2 : 16; t = xr(t, cap * sizeof(Tok)); } t[n].k = (K); t[n].n = (N); t[n].s = (S); n++; }while(0)
+  for(;;){
+    while(p < end && isspace((unsigned char)*p)) p++;
+    if(p >= end) break;
+    if(p[0] == '0' && (p[1] == 'x' || p[1] == 'X') && isxdigit((unsigned char)p[2])){
+      char *e; double d = (double)strtoull(p, &e, 16); PUSHT('n', d, NULL); p = e; continue;
+    }
+    if(isdigit((unsigned char)*p) || (*p == '.' && isdigit((unsigned char)p[1]))){
+      const char *q = p; while(isdigit((unsigned char)*q)) q++;
+      if(*q == '.'){ q++; while(isdigit((unsigned char)*q)) q++; }
+      if(*q == 'e' || *q == 'E'){ const char *r = q + 1; if(*r == '+' || *r == '-') r++; if(isdigit((unsigned char)*r)){ while(isdigit((unsigned char)*r)) r++; q = r; } }
+      char *tmp = xsn(p, q - p); double d = strtod(tmp, NULL); free(tmp); PUSHT('n', d, NULL); p = q; continue;
+    }
+    if(*p == '"' || *p == '\''){
+      char qc = *p++; Buf b = {0};
+      while(p < end && *p != qc){
+        if(*p == '\\' && p + 1 < end){ p++; bc(&b, *p == 'n' ? '\n' : *p == 't' ? '\t' : *p); p++; }
+        else bc(&b, *p++);
+      }
+      if(p >= end){ free(b.s); lerr("Expresion invalida: %s", src); }
+      p++; PUSHT('s', 0, btake(&b)); continue;
+    }
+    if(isalpha((unsigned char)*p) || *p == '_' || *p == '$'){
+      const char *q = p; while(isalnum((unsigned char)*q) || *q == '_' || *q == '$') q++;
+      PUSHT('i', 0, xsn(p, q - p)); p = q; continue;
+    }
+    static const char *o3[] = {">>>", "===", "!=="}, *o2[] = {"**","&&","||","??","<<",">>","==","!=","<=",">="};
+    int found = 0;
+    for(int i = 0; i < 3 && !found; i++) if(!strncmp(p, o3[i], 3)){ PUSHT('o', 0, xs(o3[i])); p += 3; found = 1; }
+    for(int i = 0; i < 10 && !found; i++) if(!strncmp(p, o2[i], 2)){ PUSHT('o', 0, xs(o2[i])); p += 2; found = 1; }
+    if(found) continue;
+    if(strchr("-+*/%<>=!&|^~?:.,()[]", *p)){ PUSHT('o', 0, xsn(p, 1)); p++; continue; }
+    lerr("Expresion invalida: caracter inesperado '%c'", *p);
+  }
+  *cnt = n; return t;
+}
+
+/* ---------------------------------------------------------------- expresiones: parser */
+typedef struct Node { char k; int op; double n; char *s; struct Node *a, *b, *c, **args; int na; } Node;
+typedef struct { Tok *t; int n, i; } PS;
+static Tok EOFT = {0, 0, NULL};
+static Tok *pk(PS *p){ return p->i < p->n ? &p->t[p->i] : &EOFT; }
+static Tok *nx(PS *p){ Tok *t = pk(p); p->i++; return t; }
+static int isop(Tok *t, const char *o){ return t->k == 'o' && !strcmp(t->s, o); }
+static void eat(PS *p, const char *o){ if(!isop(nx(p), o)) lerr("Expresion invalida: se esperaba %s", o); }
+static Node *mk(char k){ Node *n = calloc(1, sizeof *n); n->k = k; return n; }
+static Node *pexpr(PS *p);
+static Node *pprim(PS *p){
+  Tok *t = nx(p); Node *n;
+  if(t->k == 'n'){ n = mk('n'); n->n = t->n; return n; }
+  if(t->k == 's'){ n = mk('s'); n->s = t->s; return n; }
+  if(t->k == 'i'){ n = mk('i'); n->s = t->s; return n; }
+  if(isop(t, "(")){ n = pexpr(p); eat(p, ")"); return n; }
+  if(isop(t, "[")){
+    n = mk('A');
+    while(!isop(pk(p), "]")){ n->args = xr(n->args, (n->na + 1) * sizeof(Node *)); n->args[n->na++] = pexpr(p); if(isop(pk(p), ",")) nx(p); }
+    eat(p, "]"); return n;
+  }
+  lerr("Expresion invalida");
+}
+static Node *ppost(PS *p){
+  Node *e = pprim(p);
+  for(;;){
+    if(isop(pk(p), ".")){
+      nx(p); Tok *t = nx(p); if(t->k != 'i') lerr("Expresion invalida");
+      Node *n = mk('.'); n->a = e; n->s = t->s; e = n;
+    } else if(isop(pk(p), "[")){
+      nx(p); Node *n = mk('['); n->a = e; n->b = pexpr(p); eat(p, "]"); e = n;
+    } else if(isop(pk(p), "(")){
+      nx(p); Node *n = mk('C'); n->a = e;
+      while(!isop(pk(p), ")")){ n->args = xr(n->args, (n->na + 1) * sizeof(Node *)); n->args[n->na++] = pexpr(p); if(isop(pk(p), ",")) nx(p); }
+      eat(p, ")"); e = n;
+    } else return e;
+  }
+}
+static Node *pun(PS *p){
+  Tok *t = pk(p);
+  if(t->k == 'o' && t->s[1] == 0 && strchr("-+!~", t->s[0])){ nx(p); Node *n = mk('u'); n->op = t->s[0]; n->a = pun(p); return n; }
+  return ppost(p);
+}
+static Node *pbin(PS *p, int mp){
+  Node *l = pun(p);
+  for(;;){
+    Tok *t = pk(p); int o;
+    if(t->k != 'o' || (o = binidx(t->s)) < 0 || OPP[o] <= mp) return l;
+    nx(p); Node *r = pbin(p, o == O_POW ? OPP[o] - 1 : OPP[o]);
+    Node *n = mk('B'); n->op = o; n->a = l; n->b = r; l = n;
+  }
+}
+static Node *pexpr(PS *p){
+  Node *c = pbin(p, 0);
+  if(isop(pk(p), "?")){ nx(p); Node *n = mk('?'); n->a = c; n->b = pexpr(p); eat(p, ":"); n->c = pexpr(p); return n; }
+  return c;
+}
+typedef struct { char *key; Node *n; } CE;
+static CE *cache; static int ccap, ccnt;
+static unsigned hstr(const char *s){ unsigned h = 5381; while(*s) h = h * 33 + (unsigned char)*s++; return h; }
+static void cput(const char *k, Node *n);
+static void cgrow(void){
+  CE *old = cache; int oc = ccap; ccap = ccap ? ccap * 2 : 256; cache = calloc(ccap, sizeof(CE)); ccnt = 0;
+  for(int i = 0; i < oc; i++) if(old[i].key) cput(old[i].key, old[i].n);
+  free(old);
+}
+static void cput(const char *k, Node *n){
+  if((ccnt + 1) * 2 > ccap) cgrow();
+  unsigned i = hstr(k) & (ccap - 1);
+  while(cache[i].key) i = (i + 1) & (ccap - 1);
+  cache[i].key = (char *)k; cache[i].n = n; ccnt++;
+}
+static Node *compile(const char *e){
+  if(ccap){ unsigned i = hstr(e) & (ccap - 1); while(cache[i].key){ if(!strcmp(cache[i].key, e)) return cache[i].n; i = (i + 1) & (ccap - 1); } }
+  int n; Tok *t = tokenize(e, &n); PS p = {t, n, 0};
+  Node *r = pexpr(&p); cput(xs(e), r); return r;
+}
+
+/* ---------------------------------------------------------------- Math */
+enum { F_abs, F_floor, F_ceil, F_round, F_trunc, F_sqrt, F_pow, F_min, F_max, F_sin, F_cos, F_tan, F_asin, F_acos, F_atan, F_atan2, F_exp, F_log, F_log2, F_log10, F_hypot, F_random, F_fround, F_sign, F_cbrt, F_COUNT };
+static const char *FNN[] = {"abs","floor","ceil","round","trunc","sqrt","pow","min","max","sin","cos","tan","asin","acos","atan","atan2","exp","log","log2","log10","hypot","random","fround","sign","cbrt"};
+static Val MATHV;
+static ull rngs = 88172645463325252ULL;
+static double rnd(void){ rngs ^= rngs << 13; rngs ^= rngs >> 7; rngs ^= rngs << 17; return (double)(rngs >> 11) / 9007199254740992.0; }
+static double numarg(Val v){ if(v.t == T_NUM || v.t == T_BOOL) return v.u.n; lerr("Math: se esperaba un numero"); }
+static Val callfn(int f, Val *a, int na){
+  if(f == F_random) return Vn(rnd());
+  if(f == F_min || f == F_max){
+    if(!na) lerr("Math: faltan argumentos");
+    double r = numarg(a[0]);
+    for(int i = 1; i < na; i++){ double q = numarg(a[i]); r = f == F_min ? (q < r ? q : r) : (q > r ? q : r); }
+    return Vn(r);
+  }
+  int need = (f == F_pow || f == F_atan2 || f == F_hypot) ? 2 : 1;
+  if(na < need) lerr("Math: argumentos insuficientes");
+  double x = numarg(a[0]), y = need > 1 ? numarg(a[1]) : 0;
+  switch(f){
+  case F_abs: return Vn(fabs(x)); case F_floor: return Vn(floor(x)); case F_ceil: return Vn(ceil(x));
+  case F_round: return Vn(floor(x + 0.5)); case F_trunc: return Vn(trunc(x));
+  case F_sqrt: return Vn(x >= 0 ? sqrt(x) : NAN); case F_pow: return Vn(pow(x, y));
+  case F_sin: return Vn(sin(x)); case F_cos: return Vn(cos(x)); case F_tan: return Vn(tan(x));
+  case F_asin: return Vn(asin(x)); case F_acos: return Vn(acos(x)); case F_atan: return Vn(atan(x)); case F_atan2: return Vn(atan2(x, y));
+  case F_exp: return Vn(exp(x)); case F_log: return Vn(log(x)); case F_log2: return Vn(log2(x)); case F_log10: return Vn(log10(x));
+  case F_hypot: return Vn(hypot(x, y)); case F_fround: return Vn((double)(float)x);
+  case F_sign: return Vn((x > 0) - (x < 0)); default: return Vn(cbrt(x));
+  }
+}
+static void math_init(void){
+  MATHV = Vd(); dset(DP(MATHV), "PI", Vn(M_PI)); dset(DP(MATHV), "E", Vn(M_E));
+  for(int i = 0; i < F_COUNT; i++) dset(DP(MATHV), FNN[i], Vf(i));
+}
+
+/* ---------------------------------------------------------------- evaluacion */
+static int isnumv(Val v){ return v.t == T_NUM || v.t == T_BOOL; }
+static Val binop(int op, Val a, Val b){
+  switch(op){
+  case O_ADD:
+    if(a.t == T_STR || b.t == T_STR){ Buf r = {0}; jbuf(&r, a); jbuf(&r, b); char *s = btake(&r); Val v = Vsn(s, r.n); free(s); return v; }
+    if(isnumv(a) && isnumv(b)) return Vn(a.u.n + b.u.n);
+    lerr("Operandos invalidos para +");
+  case O_SUB: case O_MUL: case O_DIV: case O_MOD: case O_POW:
+    if(!isnumv(a) || !isnumv(b)) lerr("Operandos invalidos para %s", OPN[op]);
+    switch(op){ case O_SUB: return Vn(a.u.n - b.u.n); case O_MUL: return Vn(a.u.n * b.u.n);
+      case O_DIV: return Vn(a.u.n / b.u.n); case O_MOD: return Vn(b.u.n == 0 ? NAN : fmod(a.u.n, b.u.n));
+      default: return Vn(pow(a.u.n, b.u.n)); }
+  case O_EQ: case O_SEQ: return Vb(veq(a, b));
+  case O_NE: case O_SNE: return Vb(!veq(a, b));
+  case O_LT: case O_GT: case O_LE: case O_GE: {
+    int c;
+    if(a.t == T_STR && b.t == T_STR){ int r = strcmp(CSTR(a), CSTR(b)); c = op == O_LT ? r < 0 : op == O_GT ? r > 0 : op == O_LE ? r <= 0 : r >= 0; }
+    else if(isnumv(a) && isnumv(b)){ double x = a.u.n, y = b.u.n; c = op == O_LT ? x < y : op == O_GT ? x > y : op == O_LE ? x <= y : x >= y; }
+    else lerr("No se pueden comparar estos valores");
+    return Vb(c);
+  }
+  case O_BAND: return Vn((double)i32v(toint(a) & toint(b)));
+  case O_BOR: return Vn((double)i32v(toint(a) | toint(b)));
+  case O_XOR: return Vn((double)i32v(toint(a) ^ toint(b)));
+  case O_SHL: return Vn((double)i32v((ll)((ull)toint(a) << (toint(b) & 31))));
+  case O_SHR: return Vn((double)(i32v(toint(a)) >> (toint(b) & 31)));
+  case O_USHR: return Vn((double)((toint(a) & 0xFFFFFFFFLL) >> (toint(b) & 31)));
+  }
+  lerr("Operador no soportado: %s", OPN[op]);
+}
+static void slice_idx(int len, Val *a, int na, int *s, int *e){
+  ll st = na > 0 ? toint(a[0]) : 0, en = na > 1 ? toint(a[1]) : len;
+  if(st < 0){ st += len; if(st < 0) st = 0; } if(st > len) st = len;
+  if(en < 0){ en += len; if(en < 0) en = 0; } if(en > len) en = len;
+  if(en < st) en = st; *s = (int)st; *e = (int)en;
+}
+static Val methods(Val o, const char *name, Val *a, int na){
+  if(o.t == T_STR){
+    char *s = CSTR(o); int len = SP(o)->len;
+    if(!strcmp(name, "toUpperCase") || !strcmp(name, "toLowerCase")){
+      Val r = Vsn(s, len); for(int i = 0; i < len; i++) CSTR(r)[i] = name[2] == 'U' ? toupper((unsigned char)s[i]) : tolower((unsigned char)s[i]); return r; }
+    if(!strcmp(name, "trim")){ char *t = strip_n(s, len); Val r = Vs(t); free(t); return r; }
+    if(!strcmp(name, "includes")){ if(!na || a[0].t != T_STR) lerr("includes necesita un texto"); return Vb(strstr(s, CSTR(a[0])) != NULL); }
+    if(!strcmp(name, "indexOf")){ if(!na || a[0].t != T_STR) lerr("indexOf necesita un texto"); char *p = strstr(s, CSTR(a[0])); return Vn(p ? p - s : -1); }
+    if(!strcmp(name, "charCodeAt")){ ll i = na ? toint(a[0]) : 0; if(i < 0 || i >= len) lerr("Indice fuera de rango"); return Vn((unsigned char)s[i]); }
+    if(!strcmp(name, "slice")){ int st, en; slice_idx(len, a, na, &st, &en); return Vsn(s + st, en - st); }
+  } else if(o.t == T_LIST){
+    List *l = LP(o);
+    if(!strcmp(name, "includes") || !strcmp(name, "indexOf")){
+      if(!na) lerr("%s necesita un argumento", name);
+      int ix = -1; for(int i = 0; i < l->n; i++) if(veq(l->a[i], a[0])){ ix = i; break; }
+      return name[0] == 'i' && name[1] == 'n' && name[2] == 'c' ? Vb(ix >= 0) : Vn(ix);
+    }
+    if(!strcmp(name, "slice")){ int st, en; slice_idx(l->n, a, na, &st, &en); Val r = Vl(); for(int i = st; i < en; i++) lpush(LP(r), vref(l->a[i])); return r; }
+    if(!strcmp(name, "join")){
+      char *sep = na ? jstr(a[0]) : xs(","); Buf b = {0};
+      for(int i = 0; i < l->n; i++){ if(i) bs(&b, sep); jbuf(&b, l->a[i]); }
+      free(sep); char *s = btake(&b); Val r = Vsn(s, b.n); free(s); return r;
+    }
+  }
+  if(!strcmp(name, "toString")){ char *s = jstr(o); Val r = Vs(s); free(s); return r; }
+  lerr("Metodo desconocido: %s", name);
+}
+static Val eval(Node *n, Scope *sc){
+  switch(n->k){
+  case 'n': return Vn(n->n);
+  case 's': return Vs(n->s);
+  case 'i': {
+    Val *p = slookup(sc, n->s, NULL, NULL); if(p) return vref(*p);
+    if(!strcmp(n->s, "true")) return Vb(1); if(!strcmp(n->s, "false")) return Vb(0);
+    if(!strcmp(n->s, "null") || !strcmp(n->s, "undefined")) return Vu();
+    if(!strcmp(n->s, "Infinity")) return Vn(INFINITY); if(!strcmp(n->s, "NaN")) return Vn(NAN);
+    if(!strcmp(n->s, "Math")) return vref(MATHV);
+    Val *m = dget(DP(MATHV), n->s); if(m) return vref(*m);
+    lerr("Variable no declarada: %s", n->s);
+  }
+  case 'A': { Val l = Vl(); for(int i = 0; i < n->na; i++) lpush(LP(l), eval(n->args[i], sc)); return l; }
+  case '?': { Val c = eval(n->a, sc); int t = truthy(c); vdrop(c); return eval(t ? n->b : n->c, sc); }
+  case 'u': {
+    Val v = eval(n->a, sc), r;
+    if(n->op == '!') r = Vb(!truthy(v));
+    else if(n->op == '~') r = Vn((double)i32v(~toint(v)));
+    else { if(!isnumv(v)){ vdrop(v); lerr("Operando invalido para %c", n->op); } r = Vn(n->op == '-' ? -v.u.n : v.u.n); }
+    vdrop(v); return r;
+  }
+  case 'B': {
+    int op = n->op;
+    if(op == O_AND || op == O_OR || op == O_NC){
+      Val a = eval(n->a, sc); int go = op == O_AND ? truthy(a) : op == O_OR ? !truthy(a) : a.t == T_UND;
+      if(go){ vdrop(a); return eval(n->b, sc); } return a;
+    }
+    Val a = eval(n->a, sc), b = eval(n->b, sc);
+    Val r; jmp_buf jb, *old = T->jb; T->jb = &jb;
+    if(setjmp(jb)){ T->jb = old; vdrop(a); vdrop(b); longjmp(*old, 1); }
+    r = binop(op, a, b); T->jb = old; vdrop(a); vdrop(b); return r;
+  }
+  case '.': {
+    Val o = eval(n->a, sc), r = Vu();
+    if(!strcmp(n->s, "length") && (o.t == T_LIST || o.t == T_STR)) r = Vn(o.t == T_LIST ? LP(o)->n : SP(o)->len);
+    else if(o.t == T_DICT){ Val *p = dget(DP(o), n->s); if(p) r = vref(*p); }
+    vdrop(o); return r;
+  }
+  case '[': {
+    Val o = eval(n->a, sc), i = eval(n->b, sc), r = Vu();
+    if(o.t == T_DICT){ char *k = jstr(i); Val *p = dget(DP(o), k); if(p) r = vref(*p); free(k); }
+    else if(o.t == T_LIST || o.t == T_STR){
+      ll ix = toint(i); int len = o.t == T_LIST ? LP(o)->n : SP(o)->len;
+      if(ix >= 0 && ix < len) r = o.t == T_LIST ? vref(LP(o)->a[ix]) : Vsn(CSTR(o) + ix, 1);
+    }
+    vdrop(o); vdrop(i); return r;
+  }
+  case 'C': {
+    Val av[n->na ? n->na : 1];
+    for(int i = 0; i < n->na; i++) av[i] = Vu();
+    jmp_buf jb, *old = T->jb; T->jb = &jb; int ne = 0; Val r = Vu();
+    if(setjmp(jb)){ T->jb = old; for(int i = 0; i < n->na; i++) vdrop(av[i]); longjmp(*old, 1); }
+    for(int i = 0; i < n->na; i++){ av[i] = eval(n->args[i], sc); ne++; }
+    Node *f = n->a;
+    if(f->k == '.'){
+      Val o = eval(f->a, sc); Val *m = o.t == T_DICT ? dget(DP(o), f->s) : NULL;
+      if(m && m->t == T_FN) r = callfn((int)m->u.n, av, n->na);
+      else { Val *keep = NULL; (void)keep; r = methods(o, f->s, av, n->na); }
+      vdrop(o);
+    } else {
+      Val fv = eval(f, sc); if(fv.t != T_FN){ vdrop(fv); lerr("No es una funcion"); }
+      r = callfn((int)fv.u.n, av, n->na);
+    }
+    T->jb = old; for(int i = 0; i < n->na; i++) vdrop(av[i]); (void)ne; return r;
+  }
+  }
+  lerr("Expresion invalida");
+}
+
+/* ---------------------------------------------------------------- sentencias */
+#define KWLIST X(use) X(print) X(var) X(set) X(repeat) X(for) X(if) X(wait) X(screen) X(display) X(reg) X(pin) X(on) X(loop) X(setup) X(expect) X(sound) X(serial) X(else) X(while) X(break) X(continue) X(input) X(ui) X(store) X(g3d) X(push) X(pop) X(remove) X(insert) X(sort) X(shuffle) X(each) X(def) X(call) X(return) X(elseif) X(console) X(mem) X(disk) X(exec) X(panic) X(stop) X(task) X(spawn) X(kill) X(join) X(import) X(try) X(lock) X(unlock) X(send) X(recv) X(yield) X(assert) X(sys) X(proc) X(surface) X(host) X(port) X(catch)
+enum {
+#define X(n) K_##n,
+KWLIST
+#undef X
+K_COUNT };
+static const char *KWN[] = {
+#define X(n) #n,
+KWLIST
+#undef X
+};
+static int kwid(const char *l){ for(int i = 0; i < K_COUNT; i++) if(!strcmp(KWN[i], l)) return i; return -1; }
+
+typedef struct { Stmt **v; int n, cap; } SL;
+struct Stmt {
+  int n, lg, kw, bad, has_alt, elif, has_body;
+  const char *why;
+  SV h, a, q; SV *o; char **ov; int no;     /* o[i]: segmentos de q[i]; ov[i]: valor unido tras la clave */
+  char *els, *cv;
+  SL body, alt, cat;
+};
+static void slp(SL *l, Stmt *s){ if(l->n == l->cap){ l->cap = l->cap ? l->cap * 2 : 8; l->v = xr(l->v, l->cap * sizeof(Stmt *)); } l->v[l->n++] = s; }
+
+typedef struct { int n; char *m; } Diag;
+typedef struct { Diag *v; int n, cap; } DV;
+static void dpush(DV *d, int n, const char *m){ if(d->n == d->cap){ d->cap = d->cap ? d->cap * 2 : 8; d->v = xr(d->v, d->cap * sizeof(Diag)); } d->v[d->n].n = n; d->v[d->n].m = xs(m); d->n++; }
+static void dpushf(DV *d, int n, const char *f, ...){ char t[512]; va_list a; va_start(a, f); vsnprintf(t, sizeof t, f, a); va_end(a); dpush(d, n, t); }
+static int dcmp(const void *a, const void *b){ const Diag *x = a, *y = b; return x->n != y->n ? x->n - y->n : strcmp(x->m, y->m); }
+
+/* devuelve lista de grupos entre parentesis; 0 si esta mal formado */
+static int grp(const char *s, SV *g){
+  int d = 0, b = 0; size_t i = 0, len = strlen(s);
+  while(i < len){
+    char c = s[i];
+    if(c == '"'){
+      if(!d) return 0;
+      const char *j = strchr(s + i + 1, '"'); if(!j) return 0; i = j - s;
+    } else if(c == '('){ if(d == 0) b = (int)i + 1; d++; }
+    else if(c == ')'){ d--; if(d < 0) return 0; if(d == 0) svp(g, xsn(s + b, i - b)); }
+    else if(d == 0 && c != ' ') return 0;
+    i++;
+  }
+  return d == 0;
+}
+static void sp_split(const char *s, SV *a){
+  int d = 0, q = 0; size_t b = 0, len = strlen(s);
+  for(size_t i = 0; i <= len; i++){
+    int c = i < len ? s[i] : -1;
+    if(c == '"') q = !q;
+    if(!q && c != -1){ if(c == '(' || c == '[') d++; if(c == ')' || c == ']') d--; }
+    if(i == len || (c == ',' && d == 0 && !q)){ svp(a, strip_n(s + b, i - b)); b = i + 1; }
+  }
+}
+static Stmt *stm(const char *tin, int n, int lg){
+  Stmt *x = calloc(1, sizeof *x); x->n = n; x->lg = lg; x->kw = -1;
+  char *t = xs(tin); char *ei = strstr(t, " Else:");
+  if(ei && ei > t){ x->els = xs(ei + 6); *ei = 0; }
+  size_t hl = 0;
+  if(isalpha((unsigned char)t[0]) || t[0] == '_'){ hl = 1; while(isalnum((unsigned char)t[hl]) || t[hl] == '_' || t[hl] == ':' || (unsigned char)t[hl] >= 0x80) hl++; }
+  if(!hl){ x->bad = 1; x->why = "La linea debe empezar con el nombre de una instruccion"; svp(&x->h, xs("?")); return x; }
+  for(size_t i = 0, b = 0; i <= hl; i++) if(i == hl || t[i] == ':'){ svp(&x->h, xsn(t + b, i - b)); b = i + 1; }
+  char *rest = strip_dup(t + hl); SV g = {0};
+  if(!grp(rest, &g)){ x->bad = 1; x->why = "Parentesis o comillas sin cerrar"; return x; }
+  for(int i = 0; i < g.n; i++){
+    char *s = g.v[i];
+    if(strchr(s, '"')){
+      for(char *p = s; (p = strchr(p, '"')); ){ char *e = strchr(p + 1, '"'); if(!e) break; svp(&x->q, xsn(p + 1, e - p - 1)); p = e + 1; }
+    } else { x->a.n = 0; char *sc = strip_dup(s); if(*sc) sp_split(s, &x->a); free(sc); }
+  }
+  x->no = x->q.n; x->o = calloc(x->no ? x->no : 1, sizeof(SV)); x->ov = xm((x->no ? x->no : 1) * sizeof(char *));
+  for(int i = 0; i < x->no; i++){
+    const char *q = x->q.v[i]; size_t b = 0, L = strlen(q);
+    for(size_t j = 0; j <= L; j++) if(j == L || q[j] == ';'){ svp(&x->o[i], strip_n(q + b, j - b)); b = j + 1; }
+    Buf r = {0}; for(int j = 1; j < x->o[i].n; j++){ if(j > 1) bc(&r, ';'); bs(&r, x->o[i].v[j]); }
+    x->ov[i] = btake(&r);
+  }
+  char *lo = lowerdup(x->h.v[0]); x->kw = kwid(lo); free(lo);
+  return x;
+}
+/* opcion Key;valor -> valor (o NULL si no existe) */
+static const char *og(Stmt *x, const char *k){
+  for(int i = 0; i < x->no; i++) if(!strcasecmp(x->o[i].v[0], k)) return x->ov[i];
+  return NULL;
+}
+
+typedef struct { int n; char *t; int o; } Line;
+typedef struct { Line *L; int nL, pos, warned; const char *fl; DV *E, *W; } PC;
+static int lgcode(const char *fl){ return !strcmp(fl, "log-") ? 0 : !strcmp(fl, "log+") ? 1 : !strcmp(fl, "log++") ? 2 : -1; }
+
+static void blk(PC *c, int lg, int ol, SL *o){
+  while(c->pos < c->nL){
+    Line *x = &c->L[c->pos++];
+    if(!strcmp(x->t, "}")){
+      if(ol < 0){ dpush(c->E, x->n, "Llave } sin su { de apertura"); continue; }
+      return;
+    }
+    const char *t = x->t; int l = lg, tagged = 0;
+    if(t[0] == '#'){
+      int tg = -2; const char *r = NULL;
+      if(t[1] == '+' && t[2] == '+'){ tg = 2; r = t + 3; } else if(t[1] == '+'){ tg = 1; r = t + 2; } else if(t[1] == '-'){ tg = 0; r = t + 2; }
+      if(tg != -2){ l = tg; t = r; while(isspace((unsigned char)*t)) t++; tagged = 1; }
+    }
+    if(!tagged && l < 0){
+      l = 1;
+      if(!strcmp(c->fl, "logall") && !c->warned){ c->warned = 1; dpush(c->W, x->n, "Linea sin etiqueta #-, #+ o #++: se asume #+"); }
+    }
+    Stmt *s = stm(t, x->n, l);
+    if(x->o){ s->has_body = 1; blk(c, l, x->n, &s->body); }
+    char *hn = lowerdup(s->h.v[0]);
+    Stmt *q = o->n ? o->v[o->n - 1] : NULL;
+    if(!strcmp(hn, "catch")){
+      if(q && q->kw == K_try && !q->cv){
+        q->cat = s->body; q->cv = s->h.n > 1 ? xs(s->h.v[1]) : xs("");
+      } else dpush(c->E, x->n, "Catch sin un Try justo antes");
+      free(hn); continue;
+    }
+    if(!strcmp(hn, "else") || !strcmp(hn, "elseif")){
+      int isel = !strcmp(hn, "else");
+      while(q && q->has_alt && q->alt.n == 1 && q->alt.v[0]->elif) q = q->alt.v[0];
+      if(q && q->kw == K_if && !q->has_alt){
+        if(isel){ q->alt = s->body; q->has_alt = 1; }
+        else { s->h.v[0] = xs("If"); s->kw = K_if; s->elif = 1; slp(&q->alt, s); q->has_alt = 1; }
+      } else dpush(c->E, x->n, isel ? "Else sin un If justo antes" : "ElseIf sin un If justo antes");
+      free(hn); continue;
+    }
+    free(hn); slp(o, s);
+  }
+  if(ol >= 0) dpush(c->E, ol, "Esta llave { nunca se cierra");
+}
+
+/* parse: devuelve 1 si hay cabecera valida (nodes relleno) */
+static int parse(const char *src, const char *name, DV *E, DV *W, SL *nodes){
+  PC c = {0}; c.E = E; c.W = W;
+  int n = 0; const char *p = src; Line *L = NULL; int cap = 0;
+  /* ignora una primera linea tipo "#!/usr/bin/env logl" */
+  if(src[0] == '#' && src[1] == '!'){ const char *e0 = strchr(src, '\n'); n = 1; p = e0 ? e0 + 1 : src + strlen(src); }
+  for(;;){
+    const char *e = strchr(p, '\n'); size_t len = e ? (size_t)(e - p) : strlen(p);
+    n++;
+    char *raw = xsn(p, len); char *cm = strstr(raw, "//"); if(cm) *cm = 0;
+    char *t = strip_dup(raw); free(raw);
+    if(!*t) free(t);
+    else if(!strcmp(t, "{")){ if(c.nL) c.L[c.nL - 1].o = 1; free(t); }
+    else {
+      int o = 0, tl = (int)strlen(t);
+      if(tl > 1 && t[tl - 1] == '{'){ t[tl - 1] = 0; char *u = strip_dup(t); free(t); t = u; o = 1; }
+      if(c.nL == cap){ cap = cap ? cap * 2 : 64; c.L = xr(c.L, cap * sizeof(Line)); }
+      c.L[c.nL].n = n; c.L[c.nL].t = t; c.L[c.nL].o = o; c.nL++;
+    }
+    if(!e) break; p = e + 1;
+  }
+  (void)L;
+  if(!c.nL){ dpush(E, 1, "Falta la cabecera de lenguaje, por ejemplo <log+>"); return 0; }
+  Line h = c.L[0]; c.pos = 1;
+  char *ht = lowerdup(h.t); int ok = 0; char *fl = NULL;
+  if(ht[0] == '<'){
+    size_t l = strlen(ht);
+    if(ht[l - 1] == '>'){ char *in = strip_n(ht + 1, l - 2);
+      if(!strcmp(in, "log++") || !strcmp(in, "log+-") || !strcmp(in, "log+") || !strcmp(in, "log-") || !strcmp(in, "logall")){ ok = 1; fl = in; } else free(in); }
+  }
+  free(ht);
+  if(!ok){ dpush(E, h.n, "Falta la cabecera de lenguaje, por ejemplo <log+>"); return 0; }
+  c.fl = fl;
+  const char *dot = strrchr(name, '.'); char *ext = lowerdup(dot ? dot + 1 : name);
+  if(strcmp(ext, fl)) dpushf(W, h.n, "La cabecera <%s> no coincide con la extension .%s", fl, ext);
+  free(ext);
+  blk(&c, lgcode(fl), -1, nodes);
+  return 1;
+}
+
+static int has_wait(SL *ns){ for(int i = 0; i < ns->n; i++) if(ns->v[i]->kw == K_wait || has_wait(&ns->v[i]->body)) return 1; return 0; }
+
+static double lcs_ratio(const char *a, int la, const char *b, int lb){
+  /* Ratcliff/Obershelp como difflib */
+  if(!la || !lb) return 0;
+  int best = 0, ia = 0, ib = 0;
+  for(int i = 0; i < la; i++) for(int j = 0; j < lb; j++){ int k = 0; while(i + k < la && j + k < lb && a[i+k] == b[j+k]) k++; if(k > best){ best = k; ia = i; ib = j; } }
+  if(!best) return 0;
+  return best + lcs_ratio(a, ia, b, ib) + lcs_ratio(a + ia + best, la - ia - best, b + ib + best, lb - ib - best);
+}
+static const char *HWOPS[] = {"map", "unmap", "read", "write", "set", "clear", "toggle", NULL};
+static const char *SCROPS[] = {"resolution", "clear", "pixel", "rect", "circle", "line", "text", "get", "show", "blit", NULL};
+typedef struct { int res; } ChkSt;
+static int hasop(Stmt *x, const char **list){
+  for(int i = 0; i < x->h.n; i++) for(int j = 0; list[j]; j++) if(!strcasecmp(x->h.v[i], list[j])) return j + 1;
+  return 0;
+}
+static void chk(SL *ns, DV *E, DV *W, ChkSt *s){
+  for(int i = 0; i < ns->n; i++){
+    Stmt *x = ns->v[i]; int k = x->kw, l = x->lg, n = x->n;
+    if(x->bad){ dpushf(E, n, "Sintaxis incorrecta: %s", x->why); continue; }
+    if(k < 0){
+      char *lo = lowerdup(x->h.v[0]); int bi = -1; double br = 0.6;
+      for(int j = 0; j < K_COUNT; j++){ double r = 2.0 * lcs_ratio(lo, (int)strlen(lo), KWN[j], (int)strlen(KWN[j])) / (strlen(lo) + strlen(KWN[j])); if(r >= br){ br = r; bi = j; } }
+      if(bi >= 0) dpushf(E, n, "Instruccion desconocida: %s (quisiste decir %s?)", x->h.v[0], KWN[bi]);
+      else dpushf(E, n, "Instruccion desconocida: %s", x->h.v[0]);
+      free(lo); continue;
+    }
+    if(k == K_reg && l != 0) dpush(E, n, "Reg: es exclusivo de Log-");
+    if(k == K_port && l != 0) dpush(E, n, "Port: es exclusivo de Log-");
+    if(k == K_screen || k == K_display || k == K_reg){
+      if(k == K_reg && hasop(x, HWOPS)){ /* acceso a registros reales: sin chequeos de pantalla */ }
+      else {
+        int p = hasop(x, SCROPS);
+        if(!p) dpush(E, n, "Operacion de pantalla desconocida");
+        else if(l == 2) dpush(E, n, "Log++ no tiene pantalla: usa Log+ o Log-");
+        else if(p == 1) s->res = 1;
+        else if(l == 0 && !s->res) dpush(E, n, "Log- exige Resolution antes de dibujar");
+      }
+    }
+    if(k == K_var){
+      const char *t = x->h.n > 2 ? x->h.v[1] : NULL;
+      if(l == 0 && !t) dpush(E, n, "Log- exige tipo: Var:U8:nombre(\"Value;0\")");
+      if(t && typidx(t) < 0) dpushf(E, n, "Tipo desconocido: %s", x->h.v[1]);
+      if(t && l == 1) dpushf(W, n, "Log+ infiere el tipo: puedes quitar %s", x->h.v[1]);
+    }
+    if(k == K_expect && l != 0) dpush(E, n, "Expect es exclusivo de Log-");
+    if(k == K_loop && (x->h.n == 1 || !strcasecmp(x->h.v[1], "forever")) && !has_wait(&x->body))
+      dpush(W, n, "Loop sin Wait: la CPU quedara al 100%");
+    chk(&x->body, E, W, s); chk(&x->alt, E, W, s); chk(&x->cat, E, W, s);
+  }
+}
+
+/* ---------------------------------------------------------------- framebuffer */
+typedef struct { unsigned char r, g, b; } Col;
+typedef struct { int w, h; unsigned char *d; } FB;
+static const struct { char c; const char *g; } FONT3[] = {
+ {'A',".#. #.# ### #.# #.#"},{'B',"##. #.# ##. #.# ##."},{'C',".## #.. #.. #.. .##"},{'D',"##. #.# #.# #.# ##."},
+ {'E',"### #.. ##. #.. ###"},{'F',"### #.. ##. #.. #.."},{'G',".## #.. #.# #.# .##"},{'H',"#.# #.# ### #.# #.#"},
+ {'I',"### .#. .#. .#. ###"},{'J',"..# ..# ..# #.# .#."},{'K',"#.# #.# ##. #.# #.#"},{'L',"#.. #.. #.. #.. ###"},
+ {'M',"#.# ### ### #.# #.#"},{'N',"##. #.# #.# #.# #.#"},{'O',".#. #.# #.# #.# .#."},{'P',"##. #.# ##. #.. #.."},
+ {'Q',".#. #.# #.# ##. .##"},{'R',"##. #.# ##. #.# #.#"},{'S',".## #.. .#. ..# ##."},{'T',"### .#. .#. .#. .#."},
+ {'U',"#.# #.# #.# #.# ###"},{'V',"#.# #.# #.# #.# .#."},{'W',"#.# #.# ### ### #.#"},{'X',"#.# #.# .#. #.# #.#"},
+ {'Y',"#.# #.# .#. .#. .#."},{'Z',"### ..# .#. #.. ###"},
+ {'0',"### #.# #.# #.# ###"},{'1',".#. ##. .#. .#. ###"},{'2',"##. ..# .#. #.. ###"},{'3',"##. ..# .#. ..# ##."},
+ {'4',"#.# #.# ### ..# ..#"},{'5',"### #.. ##. ..# ##."},{'6',".## #.. ### #.# ###"},{'7',"### ..# .#. .#. .#."},
+ {'8',"### #.# ### #.# ###"},{'9',"### #.# ### ..# ##."},
+ {'.',"... ... ... ... .#."},{',',"... ... ... .#. #.."},{':',"... .#. ... .#. ..."},{';',"... .#. ... .#. #.."},
+ {'!',".#. .#. .#. ... .#."},{'?',"##. ..# .#. ... .#."},{'-',"... ... ### ... ..."},{'+',"... .#. ### .#. ..."},
+ {'=',"... ### ... ### ..."},{'*',"#.# .#. ### .#. #.#"},{'/',"..# ..# .#. #.. #.."},{'(',".## #.. #.. #.. .##"},
+ {')',"##. ..# ..# ..# ##."},{'<',"..# .#. #.. .#. ..#"},{'>',"#.. .#. ..# .#. #.."},{'_',"... ... ... ... ###"},
+ {'\'',".#. .#. ... ... ..."},{'"',"#.# #.# ... ... ..."},{'%',"#.# ..# .#. #.. #.#"},{'#',"#.# ### #.# ### #.#"},
+ {'[',"##. #.. #.. #.. ##."},{']',".## ..# ..# ..# .##"},{' ',"... ... ... ... ..."},{0,NULL}};
+
+static FB *fb_new(double w, double h){
+  FB *f = xm(sizeof *f); ll W = dint(w), H = dint(h);
+  f->w = W < 1 ? 1 : W > 1920 ? 1920 : (int)W; f->h = H < 1 ? 1 : H > 1080 ? 1080 : (int)H;
+  f->d = calloc((size_t)f->w * f->h * 3, 1); return f;
+}
+static void fb_put(FB *f, ll x, ll y, Col c){ if(x >= 0 && x < f->w && y >= 0 && y < f->h){ unsigned char *p = f->d + ((size_t)y * f->w + x) * 3; p[0] = c.r; p[1] = c.g; p[2] = c.b; } }
+static Col fb_get(FB *f, ll x, ll y){ Col c = {0, 0, 0}; if(x >= 0 && x < f->w && y >= 0 && y < f->h){ unsigned char *p = f->d + ((size_t)y * f->w + x) * 3; c.r = p[0]; c.g = p[1]; c.b = p[2]; } return c; }
+static void fb_rect(FB *f, ll x, ll y, ll w, ll h, Col c){
+  for(ll yy = y < 0 ? 0 : y; yy < y + h && yy < f->h; yy++) for(ll xx = x < 0 ? 0 : x; xx < x + w && xx < f->w; xx++) fb_put(f, xx, yy, c);
+}
+static void fb_line(FB *f, ll x0, ll y0, ll x1, ll y1, Col c){
+  ll dx = llabs(x1 - x0), dy = -llabs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1, e = dx + dy;
+  for(;;){
+    fb_put(f, x0, y0, c); if(x0 == x1 && y0 == y1) break;
+    ll e2 = 2 * e; if(e2 >= dy){ e += dy; x0 += sx; } if(e2 <= dx){ e += dx; y0 += sy; }
+  }
+}
+static void fb_circle(FB *f, ll cx, ll cy, ll r, Col c, int fill){
+  for(ll dy = -r; dy <= r; dy++) for(ll dx = -r; dx <= r; dx++){
+    ll d = dx * dx + dy * dy;
+    if(fill ? d <= r * r : (r * r - r <= d && d <= r * r + r)) fb_put(f, cx + dx, cy + dy, c);
+  }
+}
+static void fb_text(FB *f, ll x, ll y, const char *t, Col c, ll sc){
+  ll x0 = x; if(sc < 1) sc = 1;
+  for(const unsigned char *p = (const unsigned char *)t; *p; p++){
+    if((*p & 0xC0) == 0x80) continue;
+    if(*p == '\n'){ x = x0; y += 6 * sc; continue; }
+    int ch = toupper(*p);
+    for(int i = 0; FONT3[i].g; i++) if(FONT3[i].c == ch){
+      const char *g = FONT3[i].g;
+      for(int r = 0; r < 5; r++) for(int q = 0; q < 3; q++) if(g[r * 4 + q] == '#') fb_rect(f, x + q * sc, y + r * sc, sc, sc, c);
+      break;
+    }
+    x += 4 * sc;
+  }
+}
+static void fb_blit(FB *d, FB *src, ll x, ll y, ll w, ll h){
+  if(w < 0) w = src->w; if(h < 0) h = src->h;
+  unsigned char *sd = xm((size_t)src->w * src->h * 3); memcpy(sd, src->d, (size_t)src->w * src->h * 3);
+  for(ll yy = 0; yy < h; yy++) for(ll xx = 0; xx < w; xx++){
+    size_t i = (((size_t)(yy * src->h / (h ? h : 1))) * src->w + (size_t)(xx * src->w / (w ? w : 1))) * 3;
+    Col c = {sd[i], sd[i+1], sd[i+2]}; fb_put(d, x + xx, y + yy, c);
+  }
+  free(sd);
+}
+static int term_cols(void){
+#ifdef _WIN32
+  CONSOLE_SCREEN_BUFFER_INFO ci;
+  if(GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &ci)) return ci.srWindow.Right - ci.srWindow.Left + 1;
+  return 80;
+#else
+  struct winsize ws; if(ioctl(1, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0) return ws.ws_col; return 80;
+#endif
+}
+static char *fb_render(FB *f, int ansi){
+  int cols = term_cols() - 1; if(cols > f->w) cols = f->w; if(cols < 1) cols = 1;
+  int step = (f->w + cols - 1) / cols; if(step < 1) step = 1;
+  Buf b = {0};
+  for(int y = 0; y < f->h; y += step * 2){
+    for(int x = 0; x < f->w; x += step){
+      Col t = fb_get(f, x, y), u = {0, 0, 0}; if(y + step < f->h) u = fb_get(f, x, y + step);
+      if(ansi){ char s[96]; snprintf(s, sizeof s, "\x1b[38;2;%d;%d;%dm\x1b[48;2;%d;%d;%dm\xe2\x96\x80", t.r, t.g, t.b, u.r, u.g, u.b); bs(&b, s); }
+      else { int v = (int)((t.r + t.g + t.b + u.r + u.g + u.b) / 6.0 * 9 / 255); bc(&b, " .:-=+*#%@"[v > 9 ? 9 : v]); }
+    }
+    if(ansi) bs(&b, "\x1b[0m");
+    if(y + step * 2 < f->h) bc(&b, '\n');
+  }
+  return btake(&b);
+}
+/* PNG con bloques deflate "stored" (sin zlib) */
+static uint32_t crc_t[256]; static int crc_ok;
+static uint32_t crc32u(uint32_t c, const unsigned char *p, size_t n){
+  if(!crc_ok){ for(uint32_t i = 0; i < 256; i++){ uint32_t k = i; for(int j = 0; j < 8; j++) k = k & 1 ? 0xEDB88320u ^ (k >> 1) : k >> 1; crc_t[i] = k; } crc_ok = 1; }
+  c = ~c; for(size_t i = 0; i < n; i++) c = crc_t[(c ^ p[i]) & 255] ^ (c >> 8); return ~c;
+}
+static void be32(unsigned char *p, uint32_t v){ p[0] = v >> 24; p[1] = v >> 16; p[2] = v >> 8; p[3] = v; }
+static void pchunk(FILE *f, const char *t, const unsigned char *d, uint32_t n){
+  unsigned char h[8]; be32(h, n); memcpy(h + 4, t, 4); fwrite(h, 1, 8, f); if(n) fwrite(d, 1, n, f);
+  uint32_t c = crc32u(0, (const unsigned char *)t, 4); c = crc32u(c, d, n); unsigned char e[4]; be32(e, c); fwrite(e, 1, 4, f);
+}
+static int fb_png(FB *f, const char *path){
+  size_t rawn = (size_t)f->h * (f->w * 3 + 1); unsigned char *raw = xm(rawn);
+  for(int y = 0; y < f->h; y++){ raw[(size_t)y * (f->w * 3 + 1)] = 0; memcpy(raw + (size_t)y * (f->w * 3 + 1) + 1, f->d + (size_t)y * f->w * 3, f->w * 3); }
+  size_t nb = (rawn + 65534) / 65535, zn = 2 + rawn + nb * 5 + 4; unsigned char *z = xm(zn), *q = z;
+  *q++ = 0x78; *q++ = 1; uint32_t a = 1, b = 0;
+  for(size_t i = 0; i < rawn; i++){ a = (a + raw[i]) % 65521; b = (b + a) % 65521; }
+  for(size_t off = 0; off < rawn; ){ size_t n = rawn - off > 65535 ? 65535 : rawn - off; *q++ = off + n >= rawn; *q++ = n & 255; *q++ = n >> 8; *q++ = ~n & 255; *q++ = (~n >> 8) & 255; memcpy(q, raw + off, n); q += n; off += n; }
+  be32(q, (b << 16) | a); q += 4;
+  FILE *fp = fopen(path, "wb"); if(!fp){ free(raw); free(z); return -1; }
+  fwrite("\x89PNG\r\n\x1a\n", 1, 8, fp);
+  unsigned char ih[13]; be32(ih, f->w); be32(ih + 4, f->h); ih[8] = 8; ih[9] = 2; ih[10] = ih[11] = ih[12] = 0;
+  pchunk(fp, "IHDR", ih, 13); pchunk(fp, "IDAT", z, (uint32_t)(q - z)); pchunk(fp, "IEND", NULL, 0);
+  fclose(fp); free(raw); free(z); return 0;
+}
+
+/* ---------------------------------------------------------------- estado global */
+enum { ST_OK, ST_BRK, ST_CNT, ST_RET, ST_STOP };
+struct Task { char *name; volatile int on, stop; int proc, every; SL *body; Scope *sc; };
+typedef struct { char *file; Scope *sc; } Mod;
+typedef struct { unsigned char *base; size_t len, maplen; char *id; int fd; void *map; } RMap;
+static struct {
+  char *root_dir, *png, *path; int nowait, show_end, ansi, hw, showfirst, tid, pid;
+  volatile int stop; volatile sig_atomic_t gotint;
+  FB *fb; Scope *root; unsigned char MEM[65536]; int pins[64];
+  Val vd; char *vdpath, *stpath; double t0;
+  struct { char *id; FB *fb; } surf[64]; int nsurf;
+  Val queues, locks;
+  Task **tasks; int ntasks, ctasks;
+  struct { SL *body; Scope *sc; } keyh[32]; int nkeyh, keythread;
+  int hasfg, hasbg; Col fg, bg;
+  Mod mods[64]; int nmods; struct { char *alias; Mod *m; } al[64]; int nal;
+  RMap rm[16]; int nrm; volatile uint32_t *gpio; int ioperm_done;
+  ChkSt chkst;
+} S;
+
+static void out(const char *m){ fputs(m, stdout); fputc('\n', stdout); fflush(stdout); }
+static void outn(const char *m){ fputs(m, stdout); fflush(stdout); }
+static double now(void){
+#ifdef _WIN32
+  LARGE_INTEGER f, c; QueryPerformanceFrequency(&f); QueryPerformanceCounter(&c);
+  return (double)c.QuadPart / (double)f.QuadPart;
+#else
+  struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec + t.tv_nsec / 1e9;
+#endif
+}
+static const char *esc(const char *c){ return S.ansi ? c : ""; }
+static void gil_yield(void){ pthread_mutex_unlock(&GIL); sched_yield(); pthread_mutex_lock(&GIL); }
+static void nap(int us){ pthread_mutex_unlock(&GIL); usleep(us); pthread_mutex_lock(&GIL); }
+static int chk_stop(void){ return S.stop || (T->task && T->task->stop); }
+static int sleep_ms(double ms, int force){
+  if(S.nowait && !force) return chk_stop();
+  double end = now() + ms / 1000;
+  for(;;){
+    if(chk_stop()) return 1;
+    double r = end - now(); if(r <= 0) return 0;
+    nap(r > 0.02 ? 20000 : (int)(r * 1e6) + 1);
+  }
+}
+static char *readline_nogil(void){
+  pthread_mutex_unlock(&GIL);
+  char *line = NULL; size_t cap = 0; ssize_t n = getline(&line, &cap, stdin);
+  pthread_mutex_lock(&GIL);
+  if(n < 0){ free(line); return NULL; }
+  while(n > 0 && (line[n-1] == '\n' || line[n-1] == '\r')) line[--n] = 0;
+  return line;
+}
+
+static Val ev(const char *e){ return eval(compile(e), T->cur); }
+static double evd(const char *e){ Val v = ev(e); double d = tonum(v); vdrop(v); return d; }
+static ll evi(const char *e){ return dint(evd(e)); }
+static char *fm(const char *t){
+  Buf b = {0};
+  for(const char *p = t; *p; ){
+    if(*p == '{'){
+      const char *e = strchr(p + 1, '}');
+      if(e && e > p + 1){ char *in = xsn(p + 1, e - p - 1); Val v = ev(in); char *s = jstr(v); bs(&b, s); free(s); vdrop(v); free(in); p = e + 1; continue; }
+    }
+    bc(&b, *p++);
+  }
+  return btake(&b);
+}
+static const char *arg(Stmt *x, int i){ if(i >= x->a.n) lerr("Falta el argumento %d de %s", i + 1, x->h.v[0]); return x->a.v[i]; }
+static const char *hw_(Stmt *x, int i){ return i < x->h.n ? x->h.v[i] : ""; }
+static Val valof(Stmt *x){
+  const char *t = og(x, "text");
+  if(t){ char *s = fm(t); Val v = Vs(s); free(s); return v; }
+  t = og(x, "value"); if(t) return ev(t);
+  return x->a.n ? ev(x->a.v[0]) : Vu();
+}
+static void into(Stmt *x, Val v){
+  const char *to = og(x, "into");
+  if(!to){ vdrop(v); return; }
+  if(!shas(T->cur, to)){ vdrop(v); lerr("Variable no declarada: %s", to); }
+  ssetv(T->cur, to, v);
+}
+static void into_need(Stmt *x){ if(!og(x, "into")) lerr("Variable no declarada: (falta Into)"); }
+static char *jstrdup_nl(Val v){ /* jstr y \\n -> salto de linea */
+  char *s = jstr(v); Buf b = {0};
+  for(char *p = s; *p; p++){ if(p[0] == '\\' && p[1] == 'n'){ bc(&b, '\n'); p++; } else bc(&b, *p); }
+  free(s); return btake(&b);
+}
+static void mc(ll a){ if(a < 0 || a >= (ll)sizeof S.MEM) lerr("Direccion fuera de rango: %lld", a); }
+
+static int ex(SL *ns, Scope *sc);
+static int one(Stmt *x, Scope *sc);
+
+static SL *load(const char *f, const char *fr){
+  char *text = NULL;
+  if(!strcmp(fr, "disk")){ Val *p = dget(DP(S.vd), f); if(p && p->t == T_STR) text = xs(CSTR(*p)); }
+  else { char *pp = pjoin(S.root_dir, f); struct stat st; if(!stat(pp, &st) && S_ISREG(st.st_mode)) text = readfile(pp, NULL); free(pp); }
+  if(!text) lerr("no existe el archivo %s (en %s)", f, fr);
+  DV E = {0}, W = {0}; SL *nodes = calloc(1, sizeof(SL)); ChkSt cs = {0};
+  if(parse(text, f, &E, &W, nodes)) chk(nodes, &E, &W, &cs);
+  free(text);
+  if(E.n) lerr("%s l.%d: %s", f, E.v[0].n, E.v[0].m);
+  return nodes;
+}
+static void reg_defs(SL *nodes, Scope *top, Scope *root){
+  for(int i = 0; i < nodes->n; i++) if(nodes->v[i]->kw == K_def && nodes->v[i]->h.n > 1) fn_set(top, nodes->v[i]->h.v[1], nodes->v[i], root);
+}
+static void vdsave(void){
+  Buf b = {0}; jdump(&b, S.vd); char *s = btake(&b); writefile(S.vdpath, s, b.n, "wb"); free(s);
+}
+
+/* ---------------------------------------------------------------- tareas */
+static Task *task_find(const char *n){ for(int i = S.ntasks - 1; i >= 0; i--) if(!strcmp(S.tasks[i]->name, n)) return S.tasks[i]; return NULL; }
+static void *task_main(void *arg_){
+  Task *t = arg_; pthread_mutex_lock(&GIL);
+  Th th; memset(&th, 0, sizeof th); th.task = t; th.retv = Vu(); T = &th;
+  jmp_buf jb; th.jb = &jb;
+  if(!setjmp(jb)){
+    if(t->every < 0) ex(t->body, t->sc);
+    else for(;;){
+      if(sleep_ms(t->every, 1)) break;
+      Scope *ls = scope_new(t->sc); th.cur = ls; int st = ex(t->body, ls); scope_unref(ls);
+      if(st == ST_STOP || st == ST_RET) break;
+    }
+  } else { char m[1100]; snprintf(m, sizeof m, "[%s] ERROR %s", t->name, th.err); out(m); }
+  t->on = 0; nthreads--; pthread_mutex_unlock(&GIL); return NULL;
+}
+static void start_task(const char *name, SL *body, Scope *sc, int proc, int every){
+  Task *old = task_find(name); if(old && old->on) lerr("Ya existe una tarea activa: %s", name);
+  Task *t = calloc(1, sizeof *t); t->name = xs(name); t->on = 1; t->proc = proc; t->every = every; t->body = body; t->sc = sc;
+  if(S.ntasks == S.ctasks){ S.ctasks = S.ctasks ? S.ctasks * 2 : 16; S.tasks = xr(S.tasks, S.ctasks * sizeof(Task *)); }
+  S.tasks[S.ntasks++] = t; nthreads++;
+  pthread_t th; pthread_attr_t at; pthread_attr_init(&at); pthread_attr_setdetachstate(&at, PTHREAD_CREATE_DETACHED);
+  if(pthread_create(&th, &at, task_main, t)){ t->on = 0; nthreads--; lerr("No se pudo crear el hilo"); }
+}
+static void killproc(int pid){ for(int i = 0; i < S.ntasks; i++) if(S.tasks[i]->proc == pid) S.tasks[i]->stop = 1; }
+static void *key_main(void *a_){
+  (void)a_; pthread_mutex_lock(&GIL);
+  Th th; memset(&th, 0, sizeof th); th.retv = Vu(); T = &th; jmp_buf jb; th.jb = &jb; nthreads++;
+  while(!S.stop){
+    char *line = readline_nogil(); if(!line) break;
+    Val *keys = dget(S.root->v, "keys"); if(keys && keys->t == T_DICT) dset(DP(*keys), "last", Vs(line));
+    for(volatile int i = 0; i < S.nkeyh; i++){
+      Scope *loc = scope_new(S.keyh[i].sc); sdecl(loc, "key", Vs(line), -1);
+      if(!setjmp(jb)){ th.jb = &jb; th.cur = loc; ex(S.keyh[i].body, loc); }
+      else { char m[1100]; snprintf(m, sizeof m, "[On:Key] ERROR %s", th.err); out(m); }
+      scope_unref(loc);
+    }
+    free(line);
+  }
+  S.nkeyh = 0; nthreads--; pthread_mutex_unlock(&GIL); return NULL;
+}
+static void start_keys(void){
+  if(S.keythread) return; S.keythread = 1;
+  pthread_t th; pthread_attr_t at; pthread_attr_init(&at); pthread_attr_setdetachstate(&at, PTHREAD_CREATE_DETACHED);
+  pthread_create(&th, &at, key_main, NULL);
+}
+
+/* ---------------------------------------------------------------- acceso real al hardware */
+static void need_hw(const char *w){ if(!S.hw) lerr("%s: acceso real al hardware desactivado (ejecuta con --hw; normalmente requiere root)", w); }
+#ifdef _WIN32
+/* En Windows no hay /dev/mem, /dev/gpiomem ni iopl: se dejan stubs que avisan. */
+static void do_reg(Stmt *x, const char *w){ (void)x; (void)w; lerr("Reg: acceso a registros reales no disponible en Windows"); }
+static void pin_hw(int n, const char *c, const char *a1, int *res){ (void)n; (void)c; (void)a1; (void)res; lerr("Pin: GPIO real no disponible en Windows"); }
+static void do_port(Stmt *x, const char *w){ (void)x; (void)w; lerr("Port: puertos de E/S no disponibles en Windows"); }
+#else
+static RMap *rm_find(const char *id){ for(int i = 0; i < S.nrm; i++) if(S.rm[i].id && !strcmp(S.rm[i].id, id)) return &S.rm[i]; lerr("Reg: ventana no mapeada: %s", id); }
+static void do_reg(Stmt *x, const char *w){
+  need_hw("Reg");
+  const char *id = og(x, "id"); if(!id || !*id) lerr("Reg: falta Id");
+  if(!strcmp(w, "map")){
+    const char *a = og(x, "addr"), *l = og(x, "len"), *d = og(x, "dev");
+    ull addr = a ? (ull)evi(a) : 0; size_t len = l ? (size_t)evi(l) : 4096; if(!len || len > (1u << 28)) lerr("Reg: Len invalido");
+    if(S.nrm >= 16) lerr("Reg: demasiadas ventanas mapeadas");
+    const char *dev = d && *d ? d : "/dev/mem";
+    int fd = open(dev, O_RDWR | O_SYNC); if(fd < 0) lerr("Reg: no se pudo abrir %s: %s", dev, strerror(errno));
+    long pg = sysconf(_SC_PAGESIZE); ull off = addr & ~(ull)(pg - 1); size_t delta = addr - off, ml = len + delta;
+    void *m = mmap(NULL, ml, PROT_READ | PROT_WRITE, MAP_SHARED, fd, (off_t)off);
+    if(m == MAP_FAILED){ int e = errno; close(fd); lerr("Reg: mmap fallo en 0x%llx: %s", addr, strerror(e)); }
+    for(int i = 0; i < S.nrm; i++) if(S.rm[i].id && !strcmp(S.rm[i].id, id)) lerr("Reg: la ventana %s ya existe", id);
+    RMap *r = &S.rm[S.nrm++]; r->id = xs(id); r->fd = fd; r->map = m; r->maplen = ml; r->base = (unsigned char *)m + delta; r->len = len;
+    return;
+  }
+  RMap *r = rm_find(id);
+  if(!strcmp(w, "unmap")){ munmap(r->map, r->maplen); close(r->fd); free(r->id); r->id = NULL; return; }
+  const char *o = og(x, "off"), *sz = og(x, "size");
+  ull off = o ? (ull)evi(o) : 0; int bits = sz ? (int)evi(sz) : 32;
+  if(bits != 8 && bits != 16 && bits != 32 && bits != 64) lerr("Reg: Size debe ser 8, 16, 32 o 64");
+  int by = bits / 8; if(off + by > r->len) lerr("Reg: offset fuera de la ventana (0x%llx)", off); if(off % by) lerr("Reg: offset desalineado");
+  volatile unsigned char *p = r->base + off; ull cur = 0;
+  switch(bits){ case 8: cur = *(volatile uint8_t *)p; break; case 16: cur = *(volatile uint16_t *)p; break; case 32: cur = *(volatile uint32_t *)p; break; default: cur = *(volatile uint64_t *)p; }
+  if(!strcmp(w, "read")){ into(x, Vn((double)cur)); return; }
+  const char *vs_ = og(x, "value"); if(!vs_) lerr("Reg: falta Value");
+  ull v = (ull)dint(evd(vs_)), nv;
+  if(!strcmp(w, "write")) nv = v; else if(!strcmp(w, "set")) nv = cur | v; else if(!strcmp(w, "clear")) nv = cur & ~v; else if(!strcmp(w, "toggle")) nv = cur ^ v;
+  else lerr("Reg: usa Map, Read, Write, Set, Clear, Toggle o Unmap");
+  switch(bits){ case 8: *(volatile uint8_t *)p = (uint8_t)nv; break; case 16: *(volatile uint16_t *)p = (uint16_t)nv; break; case 32: *(volatile uint32_t *)p = (uint32_t)nv; break; default: *(volatile uint64_t *)p = nv; }
+}
+static void do_port(Stmt *x, const char *w){
+  need_hw("Port");
+#if defined(__x86_64__) || defined(__i386__)
+  const char *pt = og(x, "port"), *sz = og(x, "size"); if(!pt) lerr("Port: falta Port");
+  ll port = evi(pt); int bits = sz ? (int)evi(sz) : 8;
+  if(port < 0 || port > 0xFFFF) lerr("Port: puerto fuera de rango");
+  if(bits != 8 && bits != 16 && bits != 32) lerr("Port: Size debe ser 8, 16 o 32");
+#ifdef SYS_iopl
+  if(!S.ioperm_done){ if(syscall(SYS_iopl, 3) != 0) lerr("Port: iopl fallo: %s (necesitas root)", strerror(errno)); S.ioperm_done = 1; }
+#else
+  lerr("Port: iopl no disponible en este sistema");
+#endif
+  unsigned short p = (unsigned short)port;
+  if(!strcmp(w, "in")){
+    uint32_t v = 0;
+    if(bits == 8){ unsigned char b; __asm__ volatile("inb %1,%0" : "=a"(b) : "Nd"(p)); v = b; }
+    else if(bits == 16){ unsigned short b; __asm__ volatile("inw %1,%0" : "=a"(b) : "Nd"(p)); v = b; }
+    else { uint32_t b; __asm__ volatile("inl %1,%0" : "=a"(b) : "Nd"(p)); v = b; }
+    into(x, Vn(v));
+  } else if(!strcmp(w, "out")){
+    const char *vs_ = og(x, "value"); if(!vs_) lerr("Port: falta Value"); uint32_t v = (uint32_t)evi(vs_);
+    if(bits == 8) __asm__ volatile("outb %0,%1" : : "a"((unsigned char)v), "Nd"(p));
+    else if(bits == 16) __asm__ volatile("outw %0,%1" : : "a"((unsigned short)v), "Nd"(p));
+    else __asm__ volatile("outl %0,%1" : : "a"(v), "Nd"(p));
+  } else lerr("Port: usa In u Out");
+#else
+  (void)x; (void)w; lerr("Port: solo disponible en x86");
+#endif
+}
+/* GPIO real de Raspberry Pi 0-4 (BCM283x) via /dev/gpiomem */
+static volatile uint32_t *gpio_map(void){
+  if(S.gpio) return S.gpio;
+  int fd = open("/dev/gpiomem", O_RDWR | O_SYNC); if(fd < 0) lerr("Pin: no se pudo abrir /dev/gpiomem: %s", strerror(errno));
+  void *m = mmap(NULL, 4096, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0); close(fd);
+  if(m == MAP_FAILED) lerr("Pin: mmap fallo: %s", strerror(errno));
+  return S.gpio = (volatile uint32_t *)m;
+}
+static void pin_hw(int n, const char *c, const char *a1, int *res){
+  if(n > 53) lerr("Pin: el GPIO real admite 0-53");
+  volatile uint32_t *g = gpio_map(); int sh = (n % 10) * 3, bank = n / 32, bit = n % 32;
+  if(!strcmp(c, "mode")){ uint32_t f = g[n / 10] & ~(7u << sh); if(a1 && !strcasecmp(a1, "out")) f |= 1u << sh; g[n / 10] = f; }
+  else if(!strcmp(c, "set")){ int hi = a1 && (!strcasecmp(a1, "high") || !strcmp(a1, "1")); g[(hi ? 0x1C : 0x28) / 4 + bank] = 1u << bit; }
+  else if(!strcmp(c, "toggle")){ int lv = (g[0x34 / 4 + bank] >> bit) & 1; g[(lv ? 0x28 : 0x1C) / 4 + bank] = 1u << bit; }
+  else if(!strcmp(c, "read")) *res = (g[0x34 / 4 + bank] >> bit) & 1;
+}
+#endif
+
+/* informacion del sistema real (para Sys) */
+static void sys_host(Dict *D){
+#ifdef _WIN32
+  SYSTEM_INFO si; GetSystemInfo(&si);
+  MEMORYSTATUSEX ms; memset(&ms, 0, sizeof ms); ms.dwLength = sizeof ms; GlobalMemoryStatusEx(&ms);
+  char host[256] = "windows"; DWORD hl = sizeof host; GetComputerNameA(host, &hl);
+  dset(D, "real_cpus", Vn((double)si.dwNumberOfProcessors));
+  dset(D, "real_ram_mb", Vn((double)(ms.ullTotalPhys / 1048576)));
+  dset(D, "hostname", Vs(host)); dset(D, "os", Vs("Windows"));
+  dset(D, "arch", Vs(si.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_AMD64 ? "x86_64" : si.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_ARM64 ? "arm64" : "x86"));
+#else
+  struct utsname u; uname(&u);
+  dset(D, "real_cpus", Vn((double)sysconf(_SC_NPROCESSORS_ONLN)));
+#ifdef __APPLE__
+  { uint64_t mem = 0; size_t ml = sizeof mem; if(sysctlbyname("hw.memsize", &mem, &ml, NULL, 0) != 0) mem = 0; dset(D, "real_ram_mb", Vn((double)(mem / 1048576))); }
+#else
+  dset(D, "real_ram_mb", Vn((double)((double)sysconf(_SC_PHYS_PAGES) * sysconf(_SC_PAGESIZE) / 1048576)));
+#endif
+  dset(D, "hostname", Vs(u.nodename)); dset(D, "os", Vs(u.sysname)); dset(D, "arch", Vs(u.machine));
+#endif
+}
+
+/* ---------------------------------------------------------------- variables y listas */
+typedef struct { Val v; int i; } SI;
+static int sicmp(const void *a, const void *b){
+  const SI *x = a, *y = b; int xn = isnumv(x->v), yn = isnumv(y->v), r;
+  if(xn && yn) r = x->v.u.n < y->v.u.n ? -1 : x->v.u.n > y->v.u.n;
+  else if(xn != yn) r = xn ? -1 : 1;
+  else { char *p = jstr(x->v), *q = jstr(y->v); r = strcmp(p, q); free(p); free(q); }
+  return r ? r : x->i - y->i;
+}
+static void do_vs(Stmt *x, int k, Scope *sc){
+  SV *h = &x->h; const char *n = h->v[h->n - 1];
+  if(k == K_set && !shas(sc, n)) lerr("Variable no declarada: %s", n);
+  int ty = (k == K_var && h->n > 2) ? typidx(h->v[1]) : (k == K_set ? sty(sc, n) : -1);
+  const char *ix = og(x, "index"), *lst = og(x, "list"), *sz = og(x, "size"), *dc = og(x, "dict"), *ky = og(x, "key");
+  Val v;
+  if(k == K_var && dc){
+    v = Vd(); SV p = {0}; char *t = strip_dup(dc); if(*t) sp_split(dc, &p); free(t);
+    for(int i = 0; i < p.n; i++){ char *eq = strchr(p.v[i], '='); if(!eq) lerr("Dict: falta '=' en %s", p.v[i]); char *key = strip_n(p.v[i], eq - p.v[i]); dset(DP(v), key, ev(eq + 1)); free(key); }
+  } else if(k == K_var && (lst || sz)){
+    v = Vl();
+    if(lst){ char *t = strip_dup(lst); if(*t){ SV p = {0}; sp_split(lst, &p); for(int i = 0; i < p.n; i++) lpush(LP(v), ev(p.v[i])); } free(t); }
+    else { ll cnt = evi(sz); const char *fl = og(x, "fill"); for(ll i = 0; i < cnt; i++) lpush(LP(v), ev(fl && *fl ? fl : "0")); }
+  } else v = valof(x);
+  if(ky){
+    Val o = sget(sc, n); if(o.t != T_DICT){ vdrop(o); vdrop(v); lerr("%s no es un diccionario", n); }
+    char *key = fm(ky); dset(DP(o), key, v); free(key); vdrop(o); return;
+  }
+  if(ix){
+    Val a = sget(sc, n); if(a.t != T_LIST){ vdrop(a); vdrop(v); lerr("%s no es una lista", n); }
+    SV p = {0}; sp_split(ix, &p); Val cur = a;
+    for(int i = 0; i < p.n - 1; i++){ ll j = evi(p.v[i]); if(cur.t != T_LIST || j < 0 || j >= LP(cur)->n) lerr("Indice fuera de rango"); cur = LP(cur)->a[j]; }
+    double li = evd(p.v[p.n - 1]);
+    if(cur.t != T_LIST || li != floor(li) || li < 0 || li >= LP(cur)->n) lerr("Indice fuera de rango: %s", ix);
+    Val nv = cv(ty, v); vdrop(LP(cur)->a[(int)li]); LP(cur)->a[(int)li] = nv; vdrop(a); return;
+  }
+  if(k == K_var) sdecl(sc, n, cv(ty, v), ty); else ssetv(sc, n, v);
+}
+static void do_lst(Stmt *x, int k, Scope *sc){
+  const char *n = hw_(x, 1); int has = shas(sc, n); Val a = has ? sget(sc, n) : Vu();
+  if(k == K_remove && a.t == T_DICT){ char *key = fm(og(x, "key") ? og(x, "key") : ""); dremove(DP(a), key); free(key); vdrop(a); return; }
+  if(a.t != T_LIST){ vdrop(a); lerr("%s no es una lista (declarala con Var:lista(\"List;1,2,3\"))", n); }
+  List *l = LP(a); int t = sty(sc, n);
+  if(k == K_push) lpush(l, cv(t, valof(x)));
+  else if(k == K_insert || k == K_remove){
+    const char *ixs = og(x, "index"); if(!ixs) lerr("Falta Index"); ll i = evi(ixs);
+    if(k == K_insert){
+      if(i < 0 || i > l->n) lerr("Indice fuera de rango: %lld", i);
+      Val v = cv(t, valof(x)); lpush(l, Vu()); memmove(&l->a[i + 1], &l->a[i], (l->n - 1 - i) * sizeof(Val)); l->a[i] = v;
+    } else {
+      if(i < 0 || i >= l->n) lerr("Indice fuera de rango: %lld", i);
+      vdrop(l->a[i]); memmove(&l->a[i], &l->a[i + 1], (l->n - 1 - i) * sizeof(Val)); l->n--;
+    }
+  } else if(k == K_pop){ if(!l->n) lerr("La lista esta vacia"); Val v = l->a[--l->n]; into(x, v); }
+  else if(k == K_sort){
+    SI *t2 = xm(l->n * sizeof(SI) + 1); for(int i = 0; i < l->n; i++){ t2[i].v = l->a[i]; t2[i].i = i; }
+    qsort(t2, l->n, sizeof(SI), sicmp); for(int i = 0; i < l->n; i++) l->a[i] = t2[i].v; free(t2);
+    const char *o = og(x, "order");
+    if(o && !strncasecmp(o, "desc", 4)) for(int i = 0, j = l->n - 1; i < j; i++, j--){ Val tmp = l->a[i]; l->a[i] = l->a[j]; l->a[j] = tmp; }
+  } else for(int i = l->n - 1; i > 0; i--){ int j = (int)(rnd() * (i + 1)); Val tmp = l->a[i]; l->a[i] = l->a[j]; l->a[j] = tmp; }
+  vdrop(a);
+}
+
+/* ---------------------------------------------------------------- funciones y modulos */
+static Mod *mod_alias(const char *al){ for(int i = 0; i < S.nal; i++) if(!strcmp(S.al[i].alias, al)) return S.al[i].m; return NULL; }
+static int docall(Stmt *x, Scope *sc){
+  SV *h = &x->h; Fn *f; const char *nm = hw_(x, 1); char full[256];
+  if(h->n > 2){
+    Mod *m = mod_alias(h->v[1]); if(!m) lerr("Modulo no importado: %s", h->v[1]);
+    f = fn_get(stop_(m->sc), h->v[2]); snprintf(full, sizeof full, "%s:%s", h->v[1], h->v[2]); nm = full;
+    if(!f) lerr("Funcion no definida en el modulo %s: %s", h->v[1], h->v[2]);
+  } else { f = fn_get(stop_(sc), h->v[1]); if(!f) lerr("Funcion no definida: %s", h->v[1]); }
+  Stmt *fx = f->x; Scope *par = f->sc;
+  if(x->a.n != fx->a.n) lerr("%s espera %d argumento(s) y recibio %d", nm, fx->a.n, x->a.n);
+  Scope *loc = scope_new(par);
+  Val av[x->a.n ? x->a.n : 1]; for(int i = 0; i < x->a.n; i++) av[i] = ev(x->a.v[i]);
+  for(int i = 0; i < x->a.n; i++) sdecl(loc, fx->a.v[i], av[i], -1);
+  if(++T->depth > 200){ T->depth = 0; lerr("Demasiada recursion (limite 200)"); }
+  Val rv = Vu(); int st = ex(&fx->body, loc);
+  if(st == ST_RET){ rv = T->retv; T->retv = Vu(); st = ST_OK; }
+  T->depth = T->depth > 0 ? T->depth - 1 : 0; scope_unref(loc);
+  if(st == ST_STOP || st == ST_BRK || st == ST_CNT){ vdrop(rv); return st; }
+  T->cur = sc; into(x, rv); return ST_OK;
+}
+static void do_import(Stmt *x, Scope *sc){
+  if(!x->q.n) lerr("Import necesita el archivo: Import(\"lib/util.log+\",\"As;u\")");
+  char *j = pjoin(S.path, x->q.v[0]); char *f = normpath(j); free(j);
+  const char *frs = og(x, "from"); char *fr = lowerdup(frs && *frs ? frs : "host");
+  const char *als = og(x, "as"); char alb[128];
+  if(als && *als) snprintf(alb, sizeof alb, "%s", als);
+  else { const char *b = strrchr(f, '/'); b = b ? b + 1 : f; snprintf(alb, sizeof alb, "%s", b); char *d = strrchr(alb, '.'); if(d) *d = 0; for(char *c = alb; *c; c++) if(!isalnum((unsigned char)*c) && *c != '_') *c = '_'; }
+  if(!(isalpha((unsigned char)alb[0]) || alb[0] == '_')) lerr("Import: alias invalido: %s", alb);
+  for(char *c = alb; *c; c++) if(!isalnum((unsigned char)*c) && *c != '_') lerr("Import: alias invalido: %s", alb);
+  Mod *m = NULL; for(int i = 0; i < S.nmods; i++) if(!strcmp(S.mods[i].file, f)) m = &S.mods[i];
+  if(!m){
+    SL *nodes = load(f, fr); if(S.nmods >= 64) lerr("Demasiados modulos");
+    m = &S.mods[S.nmods++]; m->file = f; m->sc = scope_new(NULL);
+    reg_defs(nodes, m->sc, m->sc);
+    char *p0 = S.path; S.path = pdirname(f); ex(nodes, m->sc); S.path = p0;
+  }
+  if(S.nal < 64){ S.al[S.nal].alias = xs(alb); S.al[S.nal].m = m; S.nal++; }
+  T->cur = sc; Val d; d.t = T_DICT; d.u.p = m->sc->v; dset(sc->v, alb, vref(d));
+}
+
+/* ---------------------------------------------------------------- consola, memoria, disco, host, pantalla */
+static const struct { const char *n; Col c; } NAMED[] = {{"white",{255,255,255}},{"black",{0,0,0}},{"red",{255,0,0}},{"green",{0,255,0}},{"blue",{0,0,255}},{"yellow",{255,255,0}},{"cyan",{0,255,255}},{"magenta",{255,0,255}},{"gray",{128,128,128}},{"orange",{255,165,0}},{NULL,{0,0,0}}};
+static double hue_v(double m1, double m2, double h){
+  h = h - floor(h);
+  if(h < 1.0 / 6) return m1 + (m2 - m1) * h * 6; if(h < 0.5) return m2;
+  if(h < 2.0 / 3) return m1 + (m2 - m1) * (2.0 / 3 - h) * 6; return m1;
+}
+static Col cs_(SV *p, int from){
+  Col c = {255, 255, 255}; int n = p->n - from; char **v = p->v + from;
+  if(n > 0 && !strcasecmp(v[0], "hsl")){
+    ll hh = n > 1 ? evi(v[1]) : 0; hh = ((hh % 360) + 360) % 360; double H = hh / 360.0, L = (n > 2 ? evi(v[2]) : 55) / 100.0, Sa = 0.9;
+    double m2 = L <= 0.5 ? L * (1 + Sa) : L + Sa - L * Sa, m1 = 2 * L - m2;
+    c.r = (unsigned char)(hue_v(m1, m2, H + 1.0 / 3) * 255); c.g = (unsigned char)(hue_v(m1, m2, H) * 255); c.b = (unsigned char)(hue_v(m1, m2, H - 1.0 / 3) * 255); return c;
+  }
+  if(n > 0 && !strcasecmp(v[0], "rgb")){ v++; n--; }
+  if(n >= 3){ c.r = evi(v[0]) & 255; c.g = evi(v[1]) & 255; c.b = evi(v[2]) & 255; return c; }
+  if(n > 0 && v[0][0] == '#' && strlen(v[0]) == 7){ unsigned r, g, b; if(sscanf(v[0] + 1, "%2x%2x%2x", &r, &g, &b) == 3){ c.r = r; c.g = g; c.b = b; } return c; }
+  if(n > 0) for(int i = 0; NAMED[i].n; i++) if(!strcasecmp(NAMED[i].n, v[0])) return NAMED[i].c;
+  return c;
+}
+static Col col_(Stmt *x){
+  Col c = {255, 255, 255};
+  for(int i = 0; i < x->no; i++) if(!strcasecmp(x->o[i].v[0], "color")) return cs_(&x->o[i], 1);
+  for(int i = 0; i < x->no; i++) if(!strcasecmp(x->o[i].v[0], "write")){
+    c.r = c.g = c.b = 0;
+    for(int j = 1; j < x->o[i].n; j++){ char *eq = strchr(x->o[i].v[j], '='); if(!eq) continue; char k = toupper((unsigned char)x->o[i].v[j][0]); int v = (int)(evi(eq + 1) & 255); if(k == 'R') c.r = v; else if(k == 'G') c.g = v; else if(k == 'B') c.b = v; }
+    return c;
+  }
+  return c;
+}
+static const char *cstr(const char *tx, Col *rgb, Buf *b){
+  int hf = rgb ? 1 : S.hasfg, hb = S.hasbg; Col f = rgb ? *rgb : S.fg;
+  if(!S.ansi || (!hf && !hb)){ bs(b, tx); return b->s; }
+  char t[64]; if(hf){ snprintf(t, sizeof t, "\x1b[38;2;%d;%d;%dm", f.r, f.g, f.b); bs(b, t); }
+  if(hb){ snprintf(t, sizeof t, "\x1b[48;2;%d;%d;%dm", S.bg.r, S.bg.g, S.bg.b); bs(b, t); }
+  bs(b, tx); bs(b, "\x1b[0m"); return b->s;
+}
+static void do_console(Stmt *x, Scope *sc){
+  const char *w = hw_(x, 1); Col rgb; int hr = 0;
+  for(int i = 0; i < x->no; i++) if(!strcasecmp(x->o[i].v[0], "color")){ rgb = cs_(&x->o[i], 1); hr = 1; break; }
+  const char *tq = NULL; for(int i = 0; i < x->q.n; i++) if(!strncasecmp(x->q.v[i], "text;", 5)){ tq = x->q.v[i]; break; }
+  char *tx = tq ? fm(tq + 5) : xs(""); Buf b = {0};
+  if(!strcasecmp(w, "init")){
+    if(hr){ S.fg = rgb; S.hasfg = 1; }
+    for(int i = 0; i < x->no; i++) if(!strcasecmp(x->o[i].v[0], "bg")){ S.bg = cs_(&x->o[i], 1); S.hasbg = 1; break; }
+    outn(esc("\x1b[2J\x1b[H"));
+  } else if(!strcasecmp(w, "clear")) outn(esc("\x1b[2J\x1b[H"));
+  else if(!strcasecmp(w, "refresh")){}
+  else if(!strcasecmp(w, "at")){ const char *r = og(x, "row"), *c = og(x, "col"); char t[64]; snprintf(t, sizeof t, "\x1b[%lld;%lldH", (r ? evi(r) : 0) + 1, (c ? evi(c) : 0) + 1); outn(esc(t)); }
+  else if(!strcasecmp(w, "print")){ cstr(tx, hr ? &rgb : NULL, &b); out(b.s ? b.s : ""); }
+  else if(!strcasecmp(w, "put")){ cstr(tx, hr ? &rgb : NULL, &b); outn(b.s ? b.s : ""); }
+  else if(!strcasecmp(w, "beep")) outn("\a");
+  else if(!strcasecmp(w, "read")){
+    const char *n = og(x, "into"); if(!n || !shas(sc, n)) lerr("Variable no declarada: %s", n ? n : "(null)");
+    const char *pm = og(x, "prompt"); if(pm && *pm){ char *p = fm(pm); Buf pb = {0}; bs(&pb, p); bc(&pb, ' '); Buf o2 = {0}; cstr(pb.s, hr ? &rgb : NULL, &o2); outn(o2.s); free(p); }
+    char *r = readline_nogil(); if(!r) lerr("Fin de entrada (EOF)");
+    Val cur = sget(sc, n); int numeric = (sty(sc, n) >= 0 && sty(sc, n) != 6) || isnumv(cur); vdrop(cur);
+    double nv = 0; if(numeric){ char *e; nv = strpbrk(r, ".eE") ? strtod(r, &e) : (double)strtoll(r, &e, 10); if(*e) nv = 0; }
+    ssetv(sc, n, numeric ? Vn(nv) : Vs(r)); free(r);
+  } else lerr("Console: operacion desconocida: %s", w);
+  free(tx);
+}
+static void do_mem(Stmt *x){
+  const char *w = hw_(x, 1); const char *as = og(x, "addr"); ll a = as ? evi(as) : 0;
+  const char *ts = og(x, "type"); char *ty = lowerdup(ts ? ts : ""); const char *vs_ = og(x, "value");
+  const char *szs = og(x, "size");
+  if(!strcasecmp(w, "write") && *ty){
+    int f32 = !strcmp(ty, "f32"), f64 = !strcmp(ty, "f64"); if(!f32 && !f64) lerr("Mem: Type debe ser f32 o f64");
+    double v = vs_ ? evd(vs_) : 0; int n = f32 ? 4 : 8; mc(a); mc(a + n - 1);
+    if(f32){ float f = (float)v; memcpy(S.MEM + a, &f, 4); } else memcpy(S.MEM + a, &v, 8);
+  } else if(!strcasecmp(w, "read") && *ty){
+    int f32 = !strcmp(ty, "f32"), f64 = !strcmp(ty, "f64"); if(!f32 && !f64) lerr("Mem: Type debe ser f32 o f64");
+    int n = f32 ? 4 : 8; mc(a); mc(a + n - 1); double v; if(f32){ float f; memcpy(&f, S.MEM + a, 4); v = f; } else memcpy(&v, S.MEM + a, 8);
+    into(x, Vn(v));
+  } else if(!strcasecmp(w, "write")){
+    ll v = vs_ ? dint(evd(vs_)) : 0, sz = szs ? evi(szs) : 1;
+    for(ll i = 0; i < sz; i++){ mc(a + i); S.MEM[a + i] = i < 8 ? (v >> (8 * i)) & 255 : (v < 0 ? 255 : 0); }
+  } else if(!strcasecmp(w, "read")){
+    ll sz = szs ? evi(szs) : 1; ull v = 0;
+    for(ll i = sz - 1; i >= 0; i--){ mc(a + i); v = v * 256 + S.MEM[a + i]; }
+    into(x, Vn((double)v));
+  } else if(!strcasecmp(w, "fill")){
+    const char *ls = og(x, "len"); ll n = ls ? evi(ls) : 0, v = vs_ ? dint(evd(vs_)) : 0; mc(a); mc(a + n - 1);
+    for(ll i = 0; i < n; i++) S.MEM[a + i] = v & 255;
+  } else if(!strcasecmp(w, "copy")){
+    const char *fs = og(x, "from"), *tos = og(x, "to"), *ls = og(x, "len"); ll f = fs ? evi(fs) : 0, t = tos ? evi(tos) : 0, n = ls ? evi(ls) : 0;
+    mc(f); mc(f + n - 1); mc(t); mc(t + n - 1); memmove(S.MEM + t, S.MEM + f, n);
+  } else if(!strcasecmp(w, "writetext")){
+    Val v = valof(x); char *tx = jstr(v); vdrop(v); size_t n = strlen(tx);
+    for(size_t i = 0; i <= n; i++){ mc(a + (ll)i); S.MEM[a + i] = i < n ? (unsigned char)tx[i] : 0; } free(tx);
+  } else if(!strcasecmp(w, "load")){      /* archivo real -> RAM emulada */
+    const char *f = og(x, "file"); if(!f) lerr("Mem:Load necesita File"); char *fe = fm(f), *p = pjoin(S.root_dir, fe);
+    size_t n; char *d = readfile(p, &n); if(!d) lerr("Mem:Load: no se pudo leer %s", fe);
+    const char *ls = og(x, "len"); if(ls) { ll m = evi(ls); if((ll)n > m) n = m; }
+    if(n){ mc(a); mc(a + (ll)n - 1); memcpy(S.MEM + a, d, n); } free(d); free(p); free(fe);
+  } else if(!strcasecmp(w, "dump")){      /* RAM emulada -> archivo real */
+    const char *f = og(x, "file"), *ls = og(x, "len"); if(!f) lerr("Mem:Dump necesita File"); ll n = ls ? evi(ls) : 0; mc(a); if(n > 0) mc(a + n - 1);
+    char *fe = fm(f), *p = pjoin(S.root_dir, fe); if(writefile(p, (char *)S.MEM + a, n > 0 ? n : 0, "wb")) lerr("Mem:Dump: no se pudo escribir %s", fe); free(p); free(fe);
+  } else lerr("Mem: usa Write, Read, Fill, Copy, WriteText, Load o Dump");
+  free(ty);
+}
+static void do_disk(Stmt *x){
+  const char *w = hw_(x, 1); const char *fo = og(x, "file"); char *f = fm(fo ? fo : ""); Dict *VD = DP(S.vd);
+  if(!strcasecmp(w, "list")){
+    const char *po = og(x, "prefix"); char *pre = fm(po ? po : ""); Val l = Vl();
+    for(int i = 0; i < VD->n; i++) if(!strncmp(VD->k[i], pre, strlen(pre))) lpush(LP(l), Vs(VD->k[i]));
+    SI *t2 = xm(LP(l)->n * sizeof(SI) + 1); for(int i = 0; i < LP(l)->n; i++){ t2[i].v = LP(l)->a[i]; t2[i].i = i; } qsort(t2, LP(l)->n, sizeof(SI), sicmp);
+    for(int i = 0; i < LP(l)->n; i++) LP(l)->a[i] = t2[i].v; free(t2); free(pre); into(x, l);
+  } else if(!strcasecmp(w, "read")){ Val *p = dget(VD, f); if(!p) lerr("Disk: no existe %s", f); into(x, vref(*p)); }
+  else if(!strcasecmp(w, "exists")) into(x, Vn(dget(VD, f) ? 1 : 0));
+  else if(!strcasecmp(w, "size")){ Val *p = dget(VD, f); into(x, Vn(p ? SP(*p)->len : -1)); }
+  else if(!strcasecmp(w, "usage")){ double s = 0; for(int i = 0; i < VD->n; i++) s += SP(VD->v[i])->len; into(x, Vn(s)); }
+  else if(!strcasecmp(w, "write") || !strcasecmp(w, "append")){
+    if(!*f) lerr("Disk: falta File"); Val v = valof(x); char *t = jstrdup_nl(v); vdrop(v);
+    Val *p = dget(VD, f); Buf b = {0}; if(p && !strcasecmp(w, "append")) bs(&b, CSTR(*p)); bs(&b, t);
+    char *r = btake(&b); dset(VD, f, Vs(r)); free(r); free(t); vdsave();
+  } else if(!strcasecmp(w, "delete")){ dremove(VD, f); vdsave(); }
+  else if(!strcasecmp(w, "rename") || !strcasecmp(w, "copy")){
+    const char *to = og(x, "to"); char *t = fm(to ? to : ""); if(!*t) lerr("Disk: falta To");
+    Val *p = dget(VD, f); if(!p) lerr("Disk: no existe %s", f); dset(VD, t, vref(*p)); if(!strcasecmp(w, "rename")) dremove(VD, f); free(t); vdsave();
+  } else if(!strcasecmp(w, "format")){ while(VD->n) dremove(VD, VD->k[0]); vdsave(); }
+  else lerr("Disk: usa List, Read, Exists, Size, Usage, Write, Append, Delete, Rename, Copy o Format");
+  free(f);
+}
+static void do_host(Stmt *x){
+  const char *w = hw_(x, 1); const char *fo = og(x, "file"); char *f = fm(fo ? fo : ""); char *p = pjoin(S.root_dir, f);
+  struct stat st; int ex_ = stat(p, &st) == 0;
+  if(!strcasecmp(w, "list")){
+    DIR *d = opendir(S.root_dir); Val l = Vl(); struct dirent *e;
+    if(d){ while((e = readdir(d))) if(strcmp(e->d_name, ".") && strcmp(e->d_name, "..")) lpush(LP(l), Vs(e->d_name)); closedir(d); }
+    SI *t2 = xm(LP(l)->n * sizeof(SI) + 1); for(int i = 0; i < LP(l)->n; i++){ t2[i].v = LP(l)->a[i]; t2[i].i = i; } qsort(t2, LP(l)->n, sizeof(SI), sicmp);
+    for(int i = 0; i < LP(l)->n; i++) LP(l)->a[i] = t2[i].v; free(t2); into(x, l);
+  } else if(!strcasecmp(w, "read")){
+    if(!ex_ || !S_ISREG(st.st_mode)) lerr("Host: no existe %s", f);
+    size_t n; char *d = readfile(p, &n); if(!d) lerr("Host: no se pudo leer %s", f); Val v = Vsn(d, (int)n); free(d); into(x, v);
+  } else if(!strcasecmp(w, "exists")) into(x, Vn(ex_));
+  else if(!strcasecmp(w, "size")) into(x, Vn(ex_ ? (double)st.st_size : -1));
+  else if(!strcasecmp(w, "write") || !strcasecmp(w, "append")){
+    if(!*f) lerr("Host: falta File"); Val v = valof(x); char *t = jstrdup_nl(v); vdrop(v);
+    int r = writefile(p, t, strlen(t), !strcasecmp(w, "append") ? "ab" : "wb"); free(t); if(r) lerr("Host: no se pudo escribir %s: %s", f, strerror(errno));
+  } else if(!strcasecmp(w, "delete")){ if(ex_ && S_ISREG(st.st_mode)) remove(p); }
+  else if(!strcasecmp(w, "mkdir")){ if(mkdir(p, 0777) && errno != EEXIST) lerr("Host: mkdir fallo: %s", strerror(errno)); }
+  else lerr("Host: usa List, Read, Exists, Size, Write, Append, Delete o Mkdir");
+  free(f); free(p);
+}
+static FB *surf_get(const char *id){ for(int i = 0; i < S.nsurf; i++) if(S.surf[i].id && !strcmp(S.surf[i].id, id)) return S.surf[i].fb; return NULL; }
+static void do_scr(Stmt *x){
+  const char *p = NULL; static const char *OPS[] = {"pixel","rect","line","circle","clear","resolution","text","blit","get","show",NULL};
+  for(int i = 0; i < x->h.n && !p; i++) for(int j = 0; OPS[j]; j++) if(!strcasecmp(x->h.v[i], OPS[j])){ p = OPS[j]; break; }
+  if(!p) lerr("Operacion de pantalla desconocida");
+  Val a[8]; int na = x->a.n < 8 ? x->a.n : 8; for(int i = 0; i < na; i++) a[i] = ev(x->a.v[i]);
+#define A(i) ((i) < na ? dint(tonum(a[i])) : (lerr("Faltan argumentos en %s", p), 0))
+  if(!strcmp(p, "resolution")){
+    double w = 320, hh = 180;
+    if(x->no && !strcasecmp(x->o[0].v[0], "set")){ w = x->o[0].n > 1 ? evd(x->o[0].v[1]) : 320; hh = x->o[0].n > 2 ? evd(x->o[0].v[2]) : 180; }
+    else for(int i = 0; i < x->no; i++){ if(!strcasecmp(x->o[i].v[0], "w") && x->o[i].n > 1) w = evd(x->o[i].v[1]); if(!strcasecmp(x->o[i].v[0], "h") && x->o[i].n > 1) hh = evd(x->o[i].v[1]); }
+    S.fb = fb_new(w, hh); return;
+  }
+  const char *tg = og(x, "target"); if(tg && !surf_get(tg)) lerr("Surface: no existe %s", tg);
+  if(!S.fb) S.fb = fb_new(320, 180);
+  if(!strcmp(p, "show")){
+    const char *m = og(x, "mode"); int ansi = m && *m ? !strcasecmp(m, "ansi") : S.ansi;
+    char *r = fb_render(S.fb, ansi); Buf b = {0}; if(S.ansi) bs(&b, S.showfirst ? "\x1b[2J\x1b[H" : "\x1b[H"); bs(&b, r);
+    S.showfirst = 0; out(btake(&b)); free(r); return;
+  }
+  FB *fb = tg ? surf_get(tg) : S.fb; Col c = col_(x); const char *st = og(x, "style"); int line = st && !strcasecmp(st, "line");
+  if(!strcmp(p, "clear")) fb_rect(fb, 0, 0, fb->w, fb->h, c);
+  else if(!strcmp(p, "pixel")) fb_put(fb, A(0), A(1), c);
+  else if(!strcmp(p, "rect")){
+    ll X = A(0), Y = A(1), W = A(2), H = A(3);
+    if(line){ fb_line(fb, X, Y, X + W - 1, Y, c); fb_line(fb, X, Y + H - 1, X + W - 1, Y + H - 1, c); fb_line(fb, X, Y, X, Y + H - 1, c); fb_line(fb, X + W - 1, Y, X + W - 1, Y + H - 1, c); }
+    else fb_rect(fb, X, Y, W, H, c);
+  } else if(!strcmp(p, "circle")) fb_circle(fb, A(0), A(1), A(2), c, !line);
+  else if(!strcmp(p, "line")) fb_line(fb, A(0), A(1), A(2), A(3), c);
+  else if(!strcmp(p, "get")){
+    Col g = fb_get(fb, A(0), A(1)); const char *to = og(x, "into"); if(!to || !shas(T->cur, to)) lerr("Variable no declarada: %s", to ? to : "(null)");
+    Val l = Vl(); lpush(LP(l), Vn(g.r)); lpush(LP(l), Vn(g.g)); lpush(LP(l), Vn(g.b)); ssetv(T->cur, to, l);
+  } else if(!strcmp(p, "text")){
+    const char *tq = NULL; for(int i = 0; i < x->q.n; i++) if(!strncasecmp(x->q.v[i], "text;", 5)){ tq = x->q.v[i]; break; }
+    const char *sz = og(x, "size"); ll sc = 1; if(sz && *sz){ sc = (ll)nearbyint(evd(sz) / 8); if(sc < 1) sc = 1; }
+    char *tx = tq ? fm(tq + 5) : xs(""); fb_text(fb, A(0), A(1), tx, c, sc); free(tx);
+  } else if(!strcmp(p, "blit")){
+    const char *sn = og(x, "src"); if(!sn) lerr("Screen:Blit necesita Src");
+    FB *sr = !strcmp(sn, "screen") ? S.fb : surf_get(sn); if(!sr) lerr("Surface: no existe %s", sn);
+    const char *bw = og(x, "w"), *bh = og(x, "h"); fb_blit(fb, sr, A(0), A(1), bw ? evi(bw) : -1, bh ? evi(bh) : -1);
+  }
+  for(int i = 0; i < na; i++) vdrop(a[i]);
+#undef A
+}
+
+/* ---------------------------------------------------------------- ejecucion */
+static int lp(SL *b, Scope *sc){ /* 0 sigue, -1 break consumido, >0 propagar */
+  int st = ex(b, sc);
+  if(st == ST_BRK) return -1; if(st == ST_CNT || st == ST_OK) return 0; return st;
+}
+static int ex(SL *ns, Scope *sc){
+  for(int i = 0; i < ns->n; i++){
+    Stmt *x = ns->v[i];
+    if(chk_stop()) return ST_STOP;
+    if(nthreads && ((++T->tick) & 127) == 0) gil_yield();
+    T->cur = sc;
+    jmp_buf jb, *old = T->jb; T->jb = &jb; int st;
+    if(!setjmp(jb)){ st = one(x, sc); T->jb = old; }
+    else {
+      T->jb = old; const char *e = T->err; int pref = 0;
+      if(e[0] == 'l' && e[1] == '.'){ const char *q = e + 2; while(isdigit((unsigned char)*q)) q++; pref = q > e + 2 && *q == ':'; }
+      if(!pref){ char t[1024]; snprintf(t, sizeof t, "l.%d: %s", x->n, e); strncpy(T->err, t, sizeof T->err - 1); T->err[sizeof T->err - 1] = 0; }
+      longjmp(*old, 1);
+    }
+    if(st) return st;
+  }
+  return ST_OK;
+}
+static int sleep_stmt(double ms){ return sleep_ms(ms, 0); }
+
+static int one(Stmt *x, Scope *sc){
+  int k = x->kw; SV *h = &x->h; T->cur = sc;
+  if(k == K_ui || k == K_g3d) lerr("%s todavia no esta soportado", h->v[0]);
+  switch(k){
+  case K_use:
+    if(x->q.n){
+      char *j = pjoin(S.path, x->q.v[0]), *f = normpath(j); free(j);
+      const char *fr0 = "host"; if(x->q.n > 1){ char *sc2 = strchr(x->q.v[1], ';'); if(sc2 && sc2[1]) fr0 = sc2 + 1; }
+      char *fr = lowerdup(fr0); SL *nodes = load(f, fr); Scope *top = stop_(sc);
+      reg_defs(nodes, top, top); char *p0 = S.path; S.path = pdirname(f);
+      int st = ex(nodes, sc); S.path = p0; return st;
+    } else { char m[256]; snprintf(m, sizeof m, "[lib] %s cargada", h->n > 1 ? h->v[1] : ""); out(m); }
+    break;
+  case K_print: { char *s = fm(x->q.n ? x->q.v[0] : ""); out(s); free(s); break; }
+  case K_serial: { const char *q = x->q.n ? x->q.v[0] : ""; if(!strncasecmp(q, "write;", 6)) q += 6; char *s = fm(q); out(s); free(s); break; }
+  case K_sound: {
+    const char *fq = NULL, *ms = NULL;
+    for(int i = 0; i < x->no; i++){ if(!strcasecmp(x->o[i].v[0], "freq") && x->o[i].n > 1) fq = x->o[i].v[1]; if(!strcasecmp(x->o[i].v[0], "ms") && x->o[i].n > 1) ms = x->o[i].v[1]; }
+    Val f = ev(fq ? fq : "440"), m = ev(ms ? ms : "200"); char *a = jstr(f), *b = jstr(m); char t[256]; snprintf(t, sizeof t, "\a[sonido %s Hz, %s ms]", a, b); out(t);
+    double d = tonum(m); free(a); free(b); vdrop(f); vdrop(m); if(sleep_stmt(d)) return ST_STOP; break;
+  }
+  case K_var: case K_set: do_vs(x, k, sc); break;
+  case K_push: case K_pop: case K_remove: case K_insert: case K_sort: case K_shuffle: do_lst(x, k, sc); break;
+  case K_each: {
+    Val a = ev(arg(x, 0)); if(a.t != T_LIST){ vdrop(a); lerr("Each necesita una lista"); }
+    List *l = LP(a); int n = l->n; Val *cp = xm((n + 1) * sizeof(Val)); for(int i = 0; i < n; i++) cp[i] = vref(l->a[i]);
+    int r = 0;
+    for(int i = 0; i < n && !r; i++){ dset(sc->v, hw_(x, 1), vref(cp[i])); r = lp(&x->body, sc); }
+    for(int i = 0; i < n; i++) vdrop(cp[i]); free(cp); vdrop(a); if(r > 0) return r; break;
+  }
+  case K_def: fn_set(stop_(sc), h->v[1], x, stop_(sc)); break;
+  case K_call: return docall(x, sc);
+  case K_return: vdrop(T->retv); T->retv = x->q.n ? valof(x) : Vu(); return ST_RET;
+  case K_if: {
+    Val c = ev(arg(x, 0)); int t = truthy(c); vdrop(c); T->cur = sc;
+    if(t) return ex(&x->body, sc); else if(x->alt.n) return ex(&x->alt, sc); break;
+  }
+  case K_while:
+    for(;;){ T->cur = sc; Val c = ev(arg(x, 0)); int t = truthy(c); vdrop(c); if(!t) break; int r = lp(&x->body, sc); if(r < 0) break; if(r > 0) return r; }
+    break;
+  case K_repeat: { ll n = evi(arg(x, 0)); for(ll i = 0; i < n; i++){ int r = lp(&x->body, sc); if(r < 0) break; if(r > 0) return r; } break; }
+  case K_for: {
+    double a = evd(arg(x, 0)), b = evd(arg(x, 1)), st = x->a.n > 2 ? evd(x->a.v[2]) : 1;
+    if(st == 0) lerr("El paso de For no puede ser 0");
+    for(double i = a; st > 0 ? i < b : i > b; i += st){ dset(sc->v, hw_(x, 1), Vn(i)); int r = lp(&x->body, sc); if(r < 0) break; if(r > 0) return r; }
+    break;
+  }
+  case K_break: return ST_BRK;
+  case K_continue: return ST_CNT;
+  case K_setup: return ex(&x->body, sc);
+  case K_loop:
+    while(!S.stop){ int r = lp(&x->body, sc); if(r < 0) break; if(r > 0) return r; if(sleep_stmt(1)) return ST_STOP; }
+    break;
+  case K_wait: {
+    if(!x->no || x->o[0].n < 1) lerr("Wait: falta la opcion");
+    SV *o0 = &x->o[0]; const char *m = o0->v[0];
+    if(!strcasecmp(m, "press")){ outn("[Enter para continuar] "); char *l = readline_nogil(); if(!l) lerr("Fin de entrada (EOF)"); free(l); }
+    else if(!strcasecmp(m, "until")){
+      Buf c = {0}; for(int i = 1; i < o0->n; i++){ if(i > 1) bc(&c, ';'); bs(&c, o0->v[i]); }
+      char *cs = btake(&c);
+      for(;;){ T->cur = sc; Val v = ev(cs); int t = truthy(v); vdrop(v); if(t) break; if(sleep_stmt(10)){ free(cs); return ST_STOP; } }
+      free(cs);
+    } else {
+      if(o0->n < 2) lerr("Wait: falta el valor");
+      double v = evd(o0->v[1]); if(!strcasecmp(m, "s") || !strcasecmp(m, "sec")) v *= 1000;
+      if(sleep_stmt(v)) return ST_STOP;
+    }
+    break;
+  }
+  case K_try: {
+    jmp_buf jb, *old = T->jb; volatile int depth = T->depth; char *volatile p0 = S.path; Scope *volatile vsc = sc; T->jb = &jb;
+    if(!setjmp(jb)){ int st = ex(&x->body, sc); T->jb = old; return st; }
+    sc = vsc; T->jb = old; T->depth = depth; S.path = p0; T->cur = sc;
+    if(x->cv && *x->cv){
+      const char *e = T->err; if(e[0] == 'l' && e[1] == '.'){ const char *q = e + 2; while(isdigit((unsigned char)*q)) q++; if(q > e + 2 && q[0] == ':' && q[1] == ' ') e = q + 2; }
+      dset(sc->v, x->cv, Vs(e));
+    }
+    return ex(&x->cat, sc);
+  }
+  case K_assert: {
+    const char *c = og(x, "cond"); if(!c) lerr("Assert necesita Cond");
+    Val v = ev(c); int t = truthy(v); vdrop(v);
+    if(!t){ const char *tx = og(x, "text"); char *m = fm(tx && *tx ? tx : c); char buf[600]; snprintf(buf, sizeof buf, "%s", m); free(m); lerr("Assert fallo: %s", buf); }
+    break;
+  }
+  case K_yield: gil_yield(); break;
+  case K_stop: if(stop_(sc)->xd) return ST_RET; S.stop = 1; return ST_STOP;
+  case K_panic: {
+    const char *q = x->q.n ? x->q.v[0] : "sin mensaje"; if(!strncasecmp(q, "text;", 5)) q += 5;
+    char *m = fm(q); fprintf(stderr, "*** KERNEL PANIC: %s ***\n", m); char b[600]; snprintf(b, sizeof b, "%s", m); free(m); lerr("KERNEL PANIC: %s", b);
+  }
+  case K_input: {
+    const char *n = hw_(x, 1); if(!shas(sc, n)) lerr("Variable no declarada: %s (declarala antes con Var)", n);
+    const char *pq0 = x->q.n ? x->q.v[0] : ""; if(!strncasecmp(pq0, "prompt;", 7)) pq0 += 7; char *pq = fm(pq0);
+    const char *dflt = og(x, "default"), *lo = og(x, "min"), *hi = og(x, "max");
+    for(;;){
+      if(*pq){ outn(pq); outn(" "); } else outn("> ");
+      char *r = readline_nogil(); if(!r){ free(pq); lerr("Fin de entrada (EOF)"); }
+      char *t = strip_dup(r); if(!*t && dflt){ Val d = ev(dflt); free(r); r = jstr(d); vdrop(d); } free(t);
+      Val cur = sget(sc, n); int isstr = sty(sc, n) == 6 || cur.t == T_STR; vdrop(cur);
+      if(isstr){ ssetv(sc, n, Vs(r)); free(r); break; }
+      char *e; double v = strtod(r, &e); int ok = *r && !*e; free(r);
+      if(!ok){ out("Escribe un numero"); continue; }
+      if(lo && v < evd(lo)){ Val m = ev(lo); char *ms = jstr(m); char t[128]; snprintf(t, sizeof t, "El minimo es %s", ms); out(t); free(ms); vdrop(m); continue; }
+      if(hi && v > evd(hi)){ Val m = ev(hi); char *ms = jstr(m); char t[128]; snprintf(t, sizeof t, "El maximo es %s", ms); out(t); free(ms); vdrop(m); continue; }
+      ssetv(sc, n, Vn(v)); break;
+    }
+    free(pq); break;
+  }
+  case K_console: do_console(x, sc); break;
+  case K_sys: {
+    into_need(x); Val d = Vd(); Dict *D = DP(d);
+    dset(D, "ghz", Vn(3)); dset(D, "cpu", Vs("Log-SoC 3.0 GHz")); dset(D, "ram_mb", Vn(4096)); dset(D, "mem_bytes", Vn(sizeof S.MEM));
+    dset(D, "width", Vn(S.fb ? S.fb->w : 0)); dset(D, "height", Vn(S.fb ? S.fb->h : 0)); dset(D, "kernel", Vn(0));
+    dset(D, "uptime_ms", Vn((double)(long)((now() - S.t0) * 1000)));
+    int nt = 0; for(int i = 0; i < S.ntasks; i++) nt += S.tasks[i]->on; dset(D, "tasks", Vn(nt)); dset(D, "version", Vs("1.0-c"));
+    sys_host(D);
+    dset(D, "pid", Vn(getpid())); dset(D, "hw", Vb(S.hw));
+    into(x, d); break;
+  }
+  case K_mem: do_mem(x); break;
+  case K_disk: do_disk(x); break;
+  case K_host: do_host(x); break;
+  case K_store: {
+    const char *w = hw_(x, 1); const char *ko = og(x, "key"); Buf kb = {0}; bs(&kb, "logdata:"); bs(&kb, ko ? ko : ""); char *key = btake(&kb);
+    int err; size_t n; char *tx = readfile(S.stpath, &n); Val d = tx ? jparse(tx, &err) : Vu(); if(!tx || err || d.t != T_DICT){ vdrop(d); d = Vd(); } free(tx);
+    if(!strcasecmp(w, "save")){
+      const char *vs_ = og(x, "value"); dset(DP(d), key, ev(vs_ ? vs_ : "undefined"));
+      Buf b = {0}; jdump(&b, d); char *s = btake(&b); writefile(S.stpath, s, b.n, "wb"); free(s);
+    } else if(!strcasecmp(w, "load")){
+      const char *to = og(x, "into"), *df = og(x, "default"); if(!to || !shas(sc, to)) lerr("Variable no declarada: %s", to ? to : "(null)");
+      Val *p = dget(DP(d), key); Val v = p ? vref(*p) : (df ? ev(df) : sget(sc, to)); ssetv(sc, to, v);
+    } else lerr("Store: usa Save o Load");
+    vdrop(d); free(key); break;
+  }
+  case K_import: do_import(x, sc); break;
+  case K_screen: case K_display: do_scr(x); break;
+  case K_reg: {
+    const char *w = NULL; static const char *HW[] = {"map","unmap","read","write","set","clear","toggle",NULL};
+    for(int i = 1; i < h->n && !w; i++) for(int j = 0; HW[j]; j++) if(!strcasecmp(h->v[i], HW[j])){ w = HW[j]; break; }
+    if(w) do_reg(x, w); else do_scr(x); break;
+  }
+  case K_port: do_port(x, hw_(x, 1)[0] ? (!strcasecmp(hw_(x, 1), "in") ? "in" : !strcasecmp(hw_(x, 1), "out") ? "out" : "?") : "?"); break;
+  case K_expect: {
+    if(!S.fb) lerr("Pantalla sin inicializar");
+    ll ax = evi(arg(x, 0)), ay = evi(arg(x, 1)); Col d = fb_get(S.fb, ax, ay); ll R = -1, G = -1, B = -1;
+    if(x->no) for(int i = 0; i < x->o[0].n; i++){ char *eq = strchr(x->o[0].v[i], '='); if(!eq) continue; char kk = toupper((unsigned char)x->o[0].v[i][0]); ll v = evi(eq + 1); if(kk == 'R') R = v; else if(kk == 'G') G = v; else if(kk == 'B') B = v; }
+    if(d.r != R || d.g != G || d.b != B){
+      const char *m = "EXPECT"; char mm[256] = ""; if(x->els){ const char *a = strchr(x->els, '"'); if(a){ const char *b = strchr(a + 1, '"'); if(b){ snprintf(mm, sizeof mm, "%.*s", (int)(b - a - 1), a + 1); m = mm; } } }
+      lerr("HALT %s: pixel (%lld,%lld) esperaba (%lld, %lld, %lld) y leyo (%d, %d, %d)", m, ax, ay, R, G, B, d.r, d.g, d.b);
+    }
+    char t[128]; snprintf(t, sizeof t, "Expect OK: pixel (%lld,%lld) verificado", ax, ay); out(t); break;
+  }
+  case K_task:
+    if(h->n < 2) lerr("Task necesita un nombre: Task:enemigo{ ... }");
+    if(!x->has_body) lerr("Task necesita un bloque { }");
+    start_task(h->v[1], &x->body, scope_new(sc), 0, -1); break;
+  case K_spawn: {
+    Fn *f; const char *nm = hw_(x, 1); char full[256];
+    if(h->n > 2){ Mod *m = mod_alias(h->v[1]); if(!m) lerr("Modulo no importado: %s", h->v[1]); f = fn_get(stop_(m->sc), h->v[2]); snprintf(full, sizeof full, "%s:%s", h->v[1], h->v[2]); nm = full; if(!f) lerr("Funcion no definida en el modulo %s: %s", h->v[1], h->v[2]); }
+    else { f = fn_get(stop_(sc), h->v[1]); if(!f) lerr("Funcion no definida: %s", h->v[1]); }
+    if(x->a.n != f->x->a.n) lerr("%s espera %d argumento(s) y recibio %d", nm, f->x->a.n, x->a.n);
+    Scope *loc = scope_new(f->sc); for(int i = 0; i < x->a.n; i++) sdecl(loc, f->x->a.v[i], ev(x->a.v[i]), -1);
+    S.tid++; const char *io = og(x, "id"); char *id = io ? fm(io) : xs("");
+    char dn[300]; if(!*id) snprintf(dn, sizeof dn, "%s#%d", h->v[1], S.tid); start_task(*id ? id : dn, &f->x->body, loc, 0, -1); free(id); break;
+  }
+  case K_kill: {
+    char *nm = h->n > 1 ? xs(h->v[1]) : fm(og(x, "id") ? og(x, "id") : "");
+    if(!strcasecmp(nm, "all")){ for(int i = 0; i < S.ntasks; i++) S.tasks[i]->stop = 1; }
+    else { Task *t = task_find(nm); if(!t) lerr("Tarea desconocida: %s", nm); t->stop = 1; if(t->proc) killproc(t->proc); }
+    free(nm); break;
+  }
+  case K_join: {
+    char *nm = h->n > 1 ? xs(h->v[1]) : fm(og(x, "id") ? og(x, "id") : ""); Task *t = task_find(nm); if(!t) lerr("Tarea desconocida: %s", nm); free(nm);
+    while(t->on){ if(chk_stop()) return ST_STOP; nap(10000); } break;
+  }
+  case K_lock: {
+    const char *n = hw_(x, 1);
+    for(;;){ Val *p = dget(DP(S.locks), n); if(!p || !p->u.n){ dset(DP(S.locks), n, Vn(1)); break; } if(chk_stop()) return ST_STOP; nap(1000); }
+    break;
+  }
+  case K_unlock: dset(DP(S.locks), hw_(x, 1), Vn(0)); break;
+  case K_send: { Val *q = dget(DP(S.queues), hw_(x, 1)); if(!q){ dset(DP(S.queues), hw_(x, 1), Vl()); q = dget(DP(S.queues), hw_(x, 1)); } lpush(LP(*q), valof(x)); break; }
+  case K_recv: {
+    const char *n = hw_(x, 1), *to = og(x, "into"), *okv = og(x, "ok"), *tm = og(x, "timeout");
+    double dl = tm ? now() + evd(tm) / 1000 : INFINITY; int got = 0; Val v = Vu();
+    for(;;){
+      Val *q = dget(DP(S.queues), n);
+      if(q && LP(*q)->n){ List *l = LP(*q); v = l->a[0]; memmove(&l->a[0], &l->a[1], (l->n - 1) * sizeof(Val)); l->n--; got = 1; break; }
+      if(now() >= dl) break; if(chk_stop()) return ST_STOP; nap(5000);
+    }
+    T->cur = sc;
+    if(got && to){ if(!shas(sc, to)) lerr("Variable no declarada: %s", to); ssetv(sc, to, v); } else vdrop(v);
+    if(okv){ if(!shas(sc, okv)) lerr("Variable no declarada: %s", okv); ssetv(sc, okv, Vn(got)); }
+    break;
+  }
+  case K_on: {
+    const char *nm = hw_(x, 1);
+    if(!strcasecmp(nm, "timer")){ const char *ev_ = og(x, "every"); ll ms = evi(ev_ && *ev_ ? ev_ : "1000"); if(ms < 10) ms = 10; S.tid++; char id[64]; snprintf(id, sizeof id, "timer#%d", S.tid); scope_ref(sc); start_task(id, &x->body, sc, 0, (int)ms); }
+    else if(!strcasecmp(nm, "key")){ if(S.nkeyh >= 32) lerr("Demasiados On:Key"); scope_ref(sc); S.keyh[S.nkeyh].body = &x->body; S.keyh[S.nkeyh].sc = sc; S.nkeyh++; start_keys(); }
+    else lerr("On: evento no soportado en consola: %s (usa Timer o Key)", nm);
+    break;
+  }
+  case K_proc: {
+    const char *w = hw_(x, 1); into_need(x);
+    if(!strcasecmp(w, "list")){ Val l = Vl(); for(int i = 0; i < S.ntasks; i++) if(S.tasks[i]->on) lpush(LP(l), Vs(S.tasks[i]->name)); into(x, l); }
+    else if(!strcasecmp(w, "alive")){ const char *io = og(x, "id"); char *id = fm(io ? io : ""); Task *t = task_find(id); free(id); into(x, Vn(t && t->on)); }
+    else lerr("Proc: usa List o Alive");
+    break;
+  }
+  case K_pin: {
+    ll n = h->n > 1 ? atoll(h->v[1]) : -1; if(n < 0 || n >= 64) lerr("Pin fuera de rango (0-63)");
+    if(!x->no) lerr("Pin: usa Mode, Set, Toggle o Read");
+    SV *a = &x->o[0]; const char *c = a->v[0], *a1 = a->n > 1 ? a->v[1] : ""; char t[64]; int res = -1;
+    if(!strcasecmp(c, "set")){ int hi = !strcasecmp(a1, "high") || !strcmp(a1, "1"); S.pins[n] = hi; if(S.hw) pin_hw((int)n, "set", a1, &res); snprintf(t, sizeof t, "[pin %lld] = %d", n, S.pins[n]); out(t); }
+    else if(!strcasecmp(c, "toggle")){ S.pins[n] ^= 1; if(S.hw) pin_hw((int)n, "toggle", a1, &res); snprintf(t, sizeof t, "[pin %lld] = %d", n, S.pins[n]); out(t); }
+    else if(!strcasecmp(c, "read")){ if(S.hw){ pin_hw((int)n, "read", a1, &res); S.pins[n] = res; } into(x, Vn(S.pins[n])); }
+    else if(!strcasecmp(c, "mode")){ if(S.hw) pin_hw((int)n, "mode", a1, &res); }
+    else lerr("Pin: usa Mode, Set, Toggle o Read");
+    break;
+  }
+  case K_surface: {
+    const char *w = hw_(x, 1), *sid = og(x, "id"); if(!sid || !*sid) lerr("Surface: falta Id");
+    if(!strcasecmp(w, "new")){ const char *ws = og(x, "w"), *hs = og(x, "h"); FB *f = fb_new(evd(ws ? ws : "64"), evd(hs ? hs : "64"));
+      for(int i = 0; i < S.nsurf; i++) if(S.surf[i].id && !strcmp(S.surf[i].id, sid)){ S.surf[i].fb = f; goto surf_done; }
+      if(S.nsurf >= 64) lerr("Demasiadas surfaces"); S.surf[S.nsurf].id = xs(sid); S.surf[S.nsurf].fb = f; S.nsurf++; }
+    else if(!strcasecmp(w, "free")){ for(int i = 0; i < S.nsurf; i++) if(S.surf[i].id && !strcmp(S.surf[i].id, sid)){ free(S.surf[i].id); S.surf[i].id = NULL; } }
+    else lerr("Surface: usa New o Free");
+    surf_done: break;
+  }
+  case K_exec: {
+    const char *fo = og(x, "file"); char *fe = fm(fo ? fo : ""), *j = pjoin(S.path, fe), *f = normpath(j); free(j); free(fe);
+    const char *fro = og(x, "from"); char *fr = lowerdup(fro && *fro ? fro : "host"); volatile int code = 0; SL *volatile nodes = NULL;
+    { jmp_buf jb, *old = T->jb; T->jb = &jb; if(!setjmp(jb)){ nodes = load(f, fr); T->jb = old; } else { T->jb = old; code = 1; char m[1200]; snprintf(m, sizeof m, "[%s] ERROR %s", f, T->err); out(m); } }
+    if(nodes){
+      int pid = ++S.pid; Scope *cs = scope_new(NULL); cs->xd = 1; const char *ao = og(x, "args"); char *ar = fm(ao ? ao : ""); sdecl(cs, "args", Vs(ar), -1); free(ar);
+      reg_defs(nodes, cs, cs);
+      if(og(x, "bg")){ S.tid++; const char *io = og(x, "id"); char *id = io ? fm(io) : xs(""); char dn[300]; snprintf(dn, sizeof dn, "%s#%d", f, S.tid); start_task(*id ? id : dn, nodes, cs, pid, -1); free(id); }
+      else {
+        char *p0 = S.path; S.path = pdirname(f); jmp_buf jb, *old = T->jb; T->jb = &jb; volatile int st = 0;
+        if(!setjmp(jb)){ st = ex(nodes, cs); T->jb = old; } else { T->jb = old; code = 1; char m[1200]; snprintf(m, sizeof m, "[%s] ERROR %s", f, T->err); out(m); }
+        S.path = p0; killproc(pid); if(st == ST_STOP) return ST_STOP;
+      }
+    }
+    T->cur = sc; into(x, Vn(code)); break;
+  }
+  default: lerr("Instruccion no implementada: %s", h->v[0]);
+  }
+  return ST_OK;
+}
+
+/* ---------------------------------------------------------------- arranque */
+static int alive_events(void){ if(S.nkeyh) return 1; for(int i = 0; i < S.ntasks; i++) if(S.tasks[i]->on) return 1; return 0; }
+static void halt_all(void){ S.stop = 1; for(int i = 0; i < S.ntasks; i++) S.tasks[i]->stop = 1; }
+static void wait_events(void){
+  if(alive_events() && !S.stop){ out("Esperando eventos (Ctrl+C para salir)"); while(alive_events() && !S.stop) nap(50000); }
+}
+static void finish_run(void){
+  halt_all(); nap(50000);
+  if(S.show_end && S.fb){ char *r = fb_render(S.fb, S.ansi); out(r); free(r); }
+  if(S.png && S.fb){ fb_png(S.fb, S.png); char m[600]; snprintf(m, sizeof m, "[pantalla guardada en %s]", S.png); out(m); }
+}
+/* devuelve 0 ok, 1 stop, 2 error */
+static int run_nodes(SL *nodes){
+  jmp_buf jb; T->jb = &jb; int r = 0;
+  reg_defs(nodes, S.root, S.root);
+  if(!setjmp(jb)){ int st = ex(nodes, S.root); if(st == ST_STOP) r = 1; else wait_events(); }
+  else r = 2;
+  return r;
+}
+static void sigint(int s){ (void)s; S.gotint = 1; S.stop = 1; }
+static int dprint(DV *d, const char *pre, int off){ qsort(d->v, d->n, sizeof(Diag), dcmp); for(int i = 0; i < d->n; i++) printf("%s l.%d: %s\n", pre, d->v[i].n - off, d->v[i].m); return d->n; }
+static void exec_src(const char *text, const char *name){
+  DV E = {0}, W = {0}; SL *nodes = calloc(1, sizeof(SL));
+  if(parse(text, name, &E, &W, nodes)) chk(nodes, &E, &W, &S.chkst);
+  dprint(&W, "ADVERTENCIA", 1); dprint(&E, "ERROR", 1);
+  if(E.n) return;
+  jmp_buf jb; T->jb = &jb; reg_defs(nodes, S.root, S.root);
+  if(!setjmp(jb)){ int st = ex(nodes, S.root); if(st == ST_STOP){ S.stop = 0; puts("(stop)"); } }
+  else { printf("ERROR %s\n", T->err); T->depth = 0; free(S.path); S.path = xs(""); }
+  fflush(stdout);
+}
+static void repl(const char *lang){
+  printf("Logl %s - REPL <%s>. Linea vacia ejecuta el bloque; :salir termina.\n", LOGL_VERSION, lang);
+  Buf buf = {0}; int depth = 0, nb = 0; char *last = NULL;
+  for(;;){
+    printf(nb ? "... " : "%s> ", lang); fflush(stdout);
+    char *line = readline_nogil(); if(!line){ puts(""); break; }
+    char *t = strip_dup(line);
+    if(!strcmp(t, ":salir") || !strcmp(t, ":q") || !strcmp(t, "exit") || !strcmp(t, "quit")){ free(t); free(line); break; }
+    int flushn = 0;
+    if(nb && depth <= 0 && last && !strcmp(last, "}") && strncasecmp(t, "else", 4) && strncasecmp(t, "elseif", 6) && strncasecmp(t, "catch", 5)) flushn = 1;
+    if(flushn || !*t){
+      if(nb){ Buf s = {0}; char hd[64]; snprintf(hd, sizeof hd, "<%s>\n", lang); bs(&s, hd); bs(&s, buf.s); char nm[64]; snprintf(nm, sizeof nm, "repl.%s", lang); exec_src(s.s, nm); free(s.s); free(buf.s); buf.s = NULL; buf.n = buf.cap = 0; nb = 0; depth = 0; free(last); last = NULL; }
+      if(!*t){ free(t); free(line); continue; }
+    }
+    bs(&buf, line); bc(&buf, '\n'); nb++; free(last); last = xs(t);
+    int tl = (int)strlen(t); if(!strcmp(t, "}")) depth--; else if(tl && t[tl - 1] == '{') depth++;
+    if(depth <= 0 && strcmp(t, "}")){
+      Buf s = {0}; char hd[64]; snprintf(hd, sizeof hd, "<%s>\n", lang); bs(&s, hd); bs(&s, buf.s); char nm[64]; snprintf(nm, sizeof nm, "repl.%s", lang); exec_src(s.s, nm); free(s.s);
+      free(buf.s); buf.s = NULL; buf.n = buf.cap = 0; nb = 0; depth = 0; free(last); last = NULL;
+    }
+    free(t); free(line);
+  }
+  if(nb){ Buf s = {0}; char hd[64]; snprintf(hd, sizeof hd, "<%s>\n", lang); bs(&s, hd); bs(&s, buf.s); char nm[64]; snprintf(nm, sizeof nm, "repl.%s", lang); exec_src(s.s, nm); }
+  halt_all();
+}
+
+static void usage(void){
+  puts("Logl " LOGL_VERSION " - interprete Log+/Log-/Log++/LogAll\n"
+       "uso: logl [archivo] [--png X] [--no-wait] [--check] [--root DIR] [--show] [--ansi] [--plain]\n"
+       "             [--strict] [--repl] [--lang log+|log-|log++|logall] [--hw] [--version]\n"
+       "  sin archivo abre el REPL interactivo.\n"
+       "  --hw  activa el acceso REAL al hardware (Reg, Port, Pin). Solo Linux; puede requerir root.");
+}
+int main(int argc, char **argv){
+  const char *file = NULL, *root = NULL, *lang = "log+"; int check = 0, strict = 0, repl_ = 0, ansi = -1;
+#ifdef _WIN32
+  SetConsoleOutputCP(CP_UTF8);
+  { HANDLE ho = GetStdHandle(STD_OUTPUT_HANDLE); DWORD md;
+    if(GetConsoleMode(ho, &md)) SetConsoleMode(ho, md | 0x0004); }   /* colores ANSI */
+#endif
+  for(int i = 1; i < argc; i++){
+    const char *a = argv[i];
+    if(!strcmp(a, "--png") && i + 1 < argc) S.png = argv[++i];
+    else if(!strcmp(a, "--no-wait")) S.nowait = 1;
+    else if(!strcmp(a, "--check")) check = 1;
+    else if(!strcmp(a, "--root") && i + 1 < argc) root = argv[++i];
+    else if(!strcmp(a, "--show")) S.show_end = 1;
+    else if(!strcmp(a, "--ansi")) ansi = 1; else if(!strcmp(a, "--plain")) ansi = 0;
+    else if(!strcmp(a, "--strict")) strict = 1; else if(!strcmp(a, "--repl")) repl_ = 1;
+    else if(!strcmp(a, "--lang") && i + 1 < argc) lang = argv[++i];
+    else if(!strcmp(a, "--hw")) S.hw = 1;
+    else if(!strcmp(a, "-v") || !strcmp(a, "--version")){ puts("logl " LOGL_VERSION); return 0; }
+    else if(!strcmp(a, "-h") || !strcmp(a, "--help")){ usage(); return 0; }
+    else if(a[0] == '-'){ fprintf(stderr, "opcion desconocida: %s\n", a); return 2; }
+    else file = a;
+  }
+#ifdef _WIN32
+  if(file) fixslash((char *)file);
+  if(root) fixslash((char *)root);
+  if(S.png) fixslash(S.png);
+#endif
+  Th th0; memset(&th0, 0, sizeof th0); th0.retv = Vu(); T = &th0; jmp_buf jb0; th0.jb = &jb0;
+  pthread_mutex_lock(&GIL); signal(SIGINT, sigint);
+#ifdef SIGPIPE
+  signal(SIGPIPE, SIG_IGN);
+#endif
+  char cwd[4096]; if(!getcwd(cwd, sizeof cwd)) strcpy(cwd, ".");
+#ifdef _WIN32
+  fixslash(cwd);
+#endif
+  if(root) S.root_dir = xs(root);
+  else if(file){ char *d = pdirname(file); if(!*d){ free(d); d = xs("."); } S.root_dir = d; } else S.root_dir = xs(cwd);
+  S.path = xs(""); S.ansi = ansi >= 0 ? ansi : (isatty(1) && !getenv("NO_COLOR")); S.showfirst = 1; S.t0 = now();
+  rngs ^= (ull)(now() * 1e9) * 2654435761ULL + (ull)time(NULL) + (ull)getpid(); if(!rngs) rngs = 1;
+  math_init(); S.queues = Vd(); S.locks = Vd(); S.root = scope_new(NULL); dset(S.root->v, "keys", Vd());
+  S.vdpath = pjoin(S.root_dir, "logdisk.json"); S.stpath = pjoin(S.root_dir, "logdata.json"); S.vd = Vd();
+  { char *tx = readfile(S.vdpath, NULL); if(tx){ int err; Val v = jparse(tx, &err); if(!err && v.t == T_DICT){ vdrop(S.vd); S.vd = v; } free(tx); } }
+  if(repl_ || !file){ repl(lang); return 0; }
+  size_t n; char *src = readfile(file, &n); if(!src){ fprintf(stderr, "no se pudo abrir %s\n", file); return 2; }
+  DV E = {0}, W = {0}; SL *nodes = calloc(1, sizeof(SL)); const char *bn = strrchr(file, '/'); bn = bn ? bn + 1 : file;
+  ChkSt cs = {0};
+  if(parse(src, bn, &E, &W, nodes)) chk(nodes, &E, &W, &cs);
+  if(strict){ for(int i = 0; i < W.n; i++) dpush(&E, W.v[i].n, W.v[i].m); W.n = 0; }
+  dprint(&W, "ADVERTENCIA", 0); dprint(&E, "ERROR", 0);
+  if(E.n){ printf("Compilacion abortada: %d error(es)\n", E.n); return 1; }
+  printf("Compilado sin errores (%d advertencia(s)).\n", W.n); fflush(stdout);
+  if(check) return 0;
+  int r = run_nodes(nodes);
+  finish_run();
+  if(r == 1 || S.gotint){ puts(S.gotint ? "\nDETENIDO" : "DETENIDO"); return 0; }
+  if(r == 2){
+    const char *e = T->err; if(e[0] == 'l' && e[1] == '.'){ const char *q = e + 2; while(isdigit((unsigned char)*q)) q++; if(q > e + 2 && q[0] == ':'){ printf("ERROR %s\n", e); return 2; } }
+    printf("ERROR %s\n", e); return 2;
+  }
+  puts("TERMINADO"); return 0;
+}
