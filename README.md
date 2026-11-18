@@ -1,3 +1,5 @@
+Log: Make your computer yours as you want
+
 More info and introduction in official Log guide PDF!!
 
 Download instructions below!!
