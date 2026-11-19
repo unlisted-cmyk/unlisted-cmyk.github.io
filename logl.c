@@ -90,7 +90,7 @@
   #define sclose close
 #endif
 
-#define LOGL_VERSION "1.3"
+#define LOGL_VERSION "1.5"
 
 typedef long long ll;
 typedef unsigned long long ull;
