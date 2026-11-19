@@ -2771,7 +2771,8 @@ static int one(Stmt *x, Scope *sc){
 static int alive_events(void){ if(S.win.on && !S.win.closed) return 1; if(S.nstdin) return 1; for(int i = 0; i < S.ntasks; i++) if(S.tasks[i]->on) return 1; return 0; }
 static void halt_all(void){ S.stop = 1; for(int i = 0; i < S.ntasks; i++) S.tasks[i]->stop = 1; }
 static void wait_events(void){
-  if(alive_events() && !S.stop){ out(S.win.on ? "Window open: close the browser tab or press Ctrl+C to exit" : "Waiting for events (Ctrl+C to exit)"); while(alive_events() && !S.stop) nap(50000); }
+  present();
+  if(alive_events() && !S.stop){ out(S.win.on ? "Window open: close the browser tab or press Ctrl+C to exit" : "Waiting for events (Ctrl+C to exit)"); while(alive_events() && !S.stop){ present_maybe(); nap(50000); } }
 }
 static void finish_run(void){
   present(); halt_all(); nap(50000);
