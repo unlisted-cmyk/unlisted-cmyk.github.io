@@ -47,6 +47,8 @@
   #define getcwd _getcwd
   #define getpid _getpid
   #define mkdir(p, m) _mkdir(p)
+  #define popen _popen
+  #define pclose _pclose
   #ifndef S_ISREG
   #define S_ISREG(m) (((m) & S_IFMT) == S_IFREG)
   #endif
@@ -71,6 +73,8 @@
   #include <sys/ioctl.h>
   #include <sys/syscall.h>
   #include <sys/utsname.h>
+  #include <sys/resource.h>
+  #include <sys/wait.h>
   #include <sys/socket.h>
   #include <netinet/in.h>
   #include <arpa/inet.h>
@@ -90,7 +94,12 @@
   #define sclose close
 #endif
 
-#define LOGL_VERSION "1.5"
+#if defined(__x86_64__) || defined(__i386__)
+  #include <cpuid.h>
+  #include <x86intrin.h>
+#endif
+
+#define LOGL_VERSION "1.7"
 
 typedef long long ll;
 typedef unsigned long long ull;
@@ -529,8 +538,8 @@ static Node *compile(const char *e){
 }
 
 /* ---------------------------------------------------------------- Math */
-enum { F_abs, F_floor, F_ceil, F_round, F_trunc, F_sqrt, F_pow, F_min, F_max, F_sin, F_cos, F_tan, F_asin, F_acos, F_atan, F_atan2, F_exp, F_log, F_log2, F_log10, F_hypot, F_random, F_fround, F_sign, F_cbrt, F_rnd, F_fix, F_COUNT };
-static const char *FNN[] = {"abs","floor","ceil","round","trunc","sqrt","pow","min","max","sin","cos","tan","asin","acos","atan","atan2","exp","log","log2","log10","hypot","random","fround","sign","cbrt","rnd","fix"};
+enum { F_abs, F_floor, F_ceil, F_round, F_trunc, F_sqrt, F_pow, F_min, F_max, F_sin, F_cos, F_tan, F_asin, F_acos, F_atan, F_atan2, F_exp, F_log, F_log2, F_log10, F_hypot, F_random, F_fround, F_sign, F_cbrt, F_rnd, F_fix, F_hex, F_bit, F_lo32, F_hi32, F_rol, F_ror, F_bswap, F_COUNT };
+static const char *FNN[] = {"abs","floor","ceil","round","trunc","sqrt","pow","min","max","sin","cos","tan","asin","acos","atan","atan2","exp","log","log2","log10","hypot","random","fround","sign","cbrt","rnd","fix","hex","bit","lo32","hi32","rol","ror","bswap"};
 static Val MATHV;
 static double elapsed_ms(void);
 static ull rngs = 88172645463325252ULL;
@@ -538,6 +547,17 @@ static double rnd(void){ rngs ^= rngs << 13; rngs ^= rngs >> 7; rngs ^= rngs << 
 static double numarg(Val v){ if(v.t == T_NUM || v.t == T_BOOL) return v.u.n; lerr("Math: expected a number"); }
 static Val callfn(int f, Val *a, int na){
   if(f == F_random) return Vn(rnd());
+  if(f >= F_hex && f <= F_bswap){   /* bit tools for low-level code */
+    if(!na) lerr("Math: not enough arguments");
+    double d0 = numarg(a[0]); ull v = (ull)(ll)dint(d0); uint32_t v32 = (uint32_t)v; int n = na > 1 ? (int)numarg(a[1]) : 0;
+    if(f == F_hex){ int w = na > 1 ? n : 1; if(w < 1) w = 1; if(w > 16) w = 16; char t[40]; snprintf(t, sizeof t, "0x%0*llX", w, v); return Vs(t); }
+    if(f == F_bit){ if(na < 2) lerr("Math: not enough arguments"); return Vn((double)((v >> (n & 63)) & 1)); }
+    if(f == F_lo32) return Vn((double)v32);
+    if(f == F_hi32) return Vn((double)(uint32_t)(v >> 32));
+    if(f == F_rol){ if(na < 2) lerr("Math: not enough arguments"); n &= 31; return Vn((double)(uint32_t)((v32 << n) | (v32 >> ((32 - n) & 31)))); }
+    if(f == F_ror){ if(na < 2) lerr("Math: not enough arguments"); n &= 31; return Vn((double)(uint32_t)((v32 >> n) | (v32 << ((32 - n) & 31)))); }
+    return Vn((double)__builtin_bswap32(v32));
+  }
   if(f == F_fix){   /* fix(v,n): text with n decimals (default 2) */
     if(!na) lerr("Math: not enough arguments");
     int nd = na > 1 ? (int)numarg(a[1]) : 2; if(nd < 0) nd = 0; if(nd > 20) nd = 20;
@@ -710,7 +730,7 @@ static Val eval(Node *n, Scope *sc){
 }
 
 /* ---------------------------------------------------------------- sentencias */
-#define KWLIST X(use) X(print) X(var) X(set) X(repeat) X(for) X(if) X(wait) X(screen) X(display) X(reg) X(pin) X(on) X(loop) X(setup) X(expect) X(sound) X(serial) X(else) X(while) X(break) X(continue) X(input) X(ui) X(store) X(g3d) X(push) X(pop) X(remove) X(insert) X(sort) X(shuffle) X(each) X(def) X(call) X(return) X(elseif) X(console) X(mem) X(disk) X(exec) X(panic) X(stop) X(task) X(spawn) X(kill) X(join) X(import) X(try) X(lock) X(unlock) X(send) X(recv) X(yield) X(assert) X(sys) X(proc) X(surface) X(host) X(port) X(graphics3d) X(dyn2d) X(catch)
+#define KWLIST X(use) X(print) X(var) X(set) X(repeat) X(for) X(if) X(wait) X(screen) X(display) X(reg) X(pin) X(on) X(loop) X(setup) X(expect) X(sound) X(serial) X(else) X(while) X(break) X(continue) X(input) X(ui) X(store) X(g3d) X(push) X(pop) X(remove) X(insert) X(sort) X(shuffle) X(each) X(def) X(call) X(return) X(elseif) X(console) X(mem) X(disk) X(exec) X(panic) X(stop) X(task) X(spawn) X(kill) X(join) X(import) X(try) X(lock) X(unlock) X(send) X(recv) X(yield) X(assert) X(sys) X(proc) X(surface) X(host) X(port) X(graphics3d) X(dyn2d) X(ram) X(cpu) X(irq) X(pci) X(dev) X(admin) X(catch)
 enum {
 #define X(n) K_##n,
 KWLIST
@@ -931,6 +951,7 @@ static void chk(SL *ns, DV *E, DV *W, ChkSt *s){
     }
     if(k == K_reg && l != 0) dpush(E, n, "Reg: is exclusive to Log-");
     if(k == K_port && l != 0) dpush(E, n, "Port: is exclusive to Log-");
+    if((k == K_ram || k == K_cpu || k == K_irq || k == K_pci || k == K_dev || k == K_admin) && l != 0) dpushf(E, n, "%s: is exclusive to Log-", x->h.v[0]);
     if(k == K_screen || k == K_display || k == K_reg){
       if(k == K_reg && hasop(x, HWOPS)){ /* acceso a registros reales: sin chequeos de pantalla */ }
       else {
@@ -1102,7 +1123,7 @@ typedef struct { int kind; char sub[16]; char id[64]; char key[64]; char val[256
 static struct {
   char *root_dir, *png, *path; char *argv0; int nowin, nobrowser, forcewin, port, nstdin; int nowait, show_end, autowin, ansi, hw, showfirst, tid, pid;
   volatile int stop; volatile sig_atomic_t gotint;
-  FB *fb; Scope *root; unsigned char MEM[65536]; int pins[64];
+  FB *fb; Scope *root; unsigned char *MEM; size_t memsz; int allowraw; int pins[64];
   Val vd; char *vdpath, *stpath; double t0;
   struct { char *id; FB *fb; } surf[64]; int nsurf;
   Val queues, locks;
@@ -1126,6 +1147,7 @@ static double now(void){
 #endif
 }
 static double elapsed_ms(void);
+static void irq_poll(void);
 static void present(void);
 static void present_maybe(void);
 static int win_ensure(void);
@@ -1141,8 +1163,9 @@ static int sleep_ms(double ms, int force){
   double end = now() + ms / 1000;
   for(;;){
     if(chk_stop()) return 1;
+    irq_poll();
     double r = end - now(); if(r <= 0) return 0;
-    nap(r > 0.02 ? 20000 : (int)(r * 1e6) + 1);
+    nap(r > 0.005 ? 5000 : (int)(r * 1e6) + 1);
   }
 }
 static char *readline_nogil(void){
@@ -1188,7 +1211,7 @@ static char *jstrdup_nl(Val v){ /* jstr y \\n -> salto de linea */
   for(char *p = s; *p; p++){ if(p[0] == '\\' && p[1] == 'n'){ bc(&b, '\n'); p++; } else bc(&b, *p); }
   free(s); return btake(&b);
 }
-static void mc(ll a){ if(a < 0 || a >= (ll)sizeof S.MEM) lerr("Address out of range: %lld", a); }
+static void mc(ll a){ if(a < 0 || a >= (ll)S.memsz) lerr("Address out of range: %lld", a); }
 
 static int ex(SL *ns, Scope *sc);
 static int one(Stmt *x, Scope *sc);
@@ -1326,6 +1349,7 @@ static void pin_hw(int n, const char *c, const char *a1, int *res){
 /* informacion del sistema real (para Sys) */
 static void sys_host(Dict *D){
 #ifdef _WIN32
+  dset(D, "uid", Vn(0)); dset(D, "is_root", Vb(0));
   SYSTEM_INFO si; GetSystemInfo(&si);
   MEMORYSTATUSEX ms; memset(&ms, 0, sizeof ms); ms.dwLength = sizeof ms; GlobalMemoryStatusEx(&ms);
   char host[256] = "windows"; DWORD hl = sizeof host; GetComputerNameA(host, &hl);
@@ -1335,6 +1359,7 @@ static void sys_host(Dict *D){
   dset(D, "arch", Vs(si.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_AMD64 ? "x86_64" : si.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_ARM64 ? "arm64" : "x86"));
 #else
   struct utsname u; uname(&u);
+  dset(D, "uid", Vn(getuid())); dset(D, "is_root", Vb(geteuid() == 0));
   dset(D, "real_cpus", Vn((double)sysconf(_SC_NPROCESSORS_ONLN)));
 #ifdef __APPLE__
   { uint64_t mem = 0; size_t ml = sizeof mem; if(sysctlbyname("hw.memsize", &mem, &ml, NULL, 0) != 0) mem = 0; dset(D, "real_ram_mb", Vn((double)(mem / 1048576))); }
@@ -1343,6 +1368,340 @@ static void sys_host(Dict *D){
 #endif
   dset(D, "hostname", Vs(u.nodename)); dset(D, "os", Vs(u.sysname)); dset(D, "arch", Vs(u.machine));
 #endif
+}
+
+
+/* ================================================================ Log- bare-metal toolkit: Ram, Cpu, Irq, Pci, Dev, Admin (all need --hw except Cpu:Id/Tick and Irq) */
+static double od(Stmt *x, const char *k, double d);
+static char *os_(Stmt *x, const char *k);
+static void setvar(const char *name, Val v){
+  if(!name || !*name){ vdrop(v); return; }
+  if(!shas(T->cur, name)){ vdrop(v); lerr("Undeclared variable: %s", name); }
+  ssetv(T->cur, name, v);
+}
+/* 64-bit helpers: Into gets a number (exact up to 2^53); Lo / Hi variables receive the exact 32-bit halves */
+static void u64out(Stmt *x, ull v){
+  into(x, Vn((double)v));
+  const char *lo = og(x, "lo"), *hi = og(x, "hi");
+  if(lo && *lo) setvar(lo, Vn((double)(uint32_t)v));
+  if(hi && *hi) setvar(hi, Vn((double)(uint32_t)(v >> 32)));
+}
+static ull u64in(Stmt *x){
+  const char *lo = og(x, "lo"), *hi = og(x, "hi"), *v = og(x, "value");
+  if((lo && *lo) || (hi && *hi)) return ((ull)(uint32_t)(hi && *hi ? evi(hi) : 0) << 32) | (uint32_t)(lo && *lo ? evi(lo) : 0);
+  if(!v) lerr("missing Value (or Lo and Hi)");
+  double d = evd(v); return d < 0 ? (ull)(ll)d : (ull)d;
+}
+static void lowop(Stmt *x, char *op, size_t n){ snprintf(op, n, "%s", hw_(x, 1)); for(char *c = op; *c; c++) *c = (char)tolower((unsigned char)*c); }
+
+/* ---- guarded access to real memory: a bad address becomes a Log error instead of a crash ---- */
+#ifndef _WIN32
+static sigjmp_buf SEGV_JB; static volatile int SEGV_ON; static int guard_done;
+static void guard_h(int s){ if(SEGV_ON) siglongjmp(SEGV_JB, 1); signal(s, SIG_DFL); raise(s); }
+static void guard_install(void){
+  if(guard_done) return; guard_done = 1;
+  struct sigaction sa; memset(&sa, 0, sizeof sa); sa.sa_handler = guard_h; sigemptyset(&sa.sa_mask); sa.sa_flags = SA_NODEFER;
+  sigaction(SIGSEGV, &sa, NULL); sigaction(SIGILL, &sa, NULL); sigaction(SIGFPE, &sa, NULL);
+#ifdef SIGBUS
+  sigaction(SIGBUS, &sa, NULL);
+#endif
+}
+static int real_copy(void *dst, const void *src, size_t n){
+  SEGV_ON = 1; if(sigsetjmp(SEGV_JB, 1)){ SEGV_ON = 0; return -1; }
+  volatile unsigned char *d = (volatile unsigned char *)dst; const volatile unsigned char *s = (const volatile unsigned char *)src;
+  if(d <= s) for(size_t i = 0; i < n; i++) d[i] = s[i]; else for(size_t i = n; i > 0; i--) d[i - 1] = s[i - 1];
+  SEGV_ON = 0; return 0;
+}
+#else
+static void guard_install(void){}
+static int real_copy(void *dst, const void *src, size_t n){ if(IsBadReadPtr(src, n) || IsBadWritePtr(dst, n)) return -1; memmove(dst, src, n); return 0; }
+#endif
+#define UA(v) ((uintptr_t)(ull)(v))
+static struct { void *p; size_t n; } RAL[256]; static int nral;
+
+static void do_ram(Stmt *x){
+  need_hw("Ram"); guard_install();
+  char op[16]; lowop(x, op, sizeof op);
+  const char *as = og(x, "addr"); uintptr_t addr = as ? UA(evi(as)) : 0;
+  if(!strcmp(op, "alloc")){
+    ll n = evi(og(x, "size") ? og(x, "size") : "4096"); if(n <= 0 || n > (1LL << 32)) lerr("Ram:Alloc: invalid Size");
+    if(nral >= 256) lerr("Ram:Alloc: too many blocks (max 256)");
+#ifdef _WIN32
+    void *p = VirtualAlloc(NULL, (SIZE_T)n, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE); if(!p) lerr("Ram:Alloc: the system refused the memory");
+#else
+#ifndef MAP_ANON
+#define MAP_ANON MAP_ANONYMOUS
+#endif
+    void *p = mmap(NULL, (size_t)n, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0); if(p == MAP_FAILED) lerr("Ram:Alloc: %s", strerror(errno));
+#endif
+    RAL[nral].p = p; RAL[nral].n = (size_t)n; nral++; into(x, Vn((double)(uintptr_t)p));
+  } else if(!strcmp(op, "free")){
+    int k = -1; for(int i = 0; i < nral; i++) if((uintptr_t)RAL[i].p == addr) k = i;
+    if(k < 0) lerr("Ram:Free: 0x%llx is not a block returned by Ram:Alloc", (ull)addr);
+#ifdef _WIN32
+    VirtualFree(RAL[k].p, 0, MEM_RELEASE);
+#else
+    munmap(RAL[k].p, RAL[k].n);
+#endif
+    RAL[k] = RAL[--nral];
+  } else if(!strcmp(op, "read") || !strcmp(op, "write")){
+    const char *sz = og(x, "size"); int n = sz ? (int)evi(sz) : 4; if(n != 1 && n != 2 && n != 4 && n != 8) lerr("Ram: Size must be 1, 2, 4 or 8");
+    unsigned char buf[8] = {0};
+    if(!strcmp(op, "read")){
+      if(real_copy(buf, (void *)addr, (size_t)n)) lerr("Ram:Read: invalid address 0x%llx", (ull)addr);
+      ull v = 0; for(int i = n - 1; i >= 0; i--) v = (v << 8) | buf[i]; u64out(x, v);
+    } else {
+      ull v = u64in(x); for(int i = 0; i < n; i++) buf[i] = (unsigned char)(v >> (8 * i));
+      if(real_copy((void *)addr, buf, (size_t)n)) lerr("Ram:Write: invalid address 0x%llx (or read-only memory)", (ull)addr);
+    }
+  } else if(!strcmp(op, "copy")){
+    const char *f = og(x, "from"), *t = og(x, "to"), *l = og(x, "len"); if(!f || !t || !l) lerr("Ram:Copy needs From, To and Len");
+    ll n = evi(l); uintptr_t src = UA(evi(f)), dst = UA(evi(t)); if(n < 0) lerr("Ram:Copy: invalid Len");
+    if(real_copy((void *)dst, (void *)src, (size_t)n)) lerr("Ram:Copy: invalid address");
+  } else if(!strcmp(op, "load") || !strcmp(op, "store")){
+    const char *l = og(x, "len"); if(!as || !l) lerr("Ram:%s needs Addr and Len", hw_(x, 1));
+    ll n = evi(l); int ld = !strcmp(op, "load"); const char *em = og(x, ld ? "from" : "to"); ll e = em ? evi(em) : 0;
+    if(n < 0) lerr("Ram:%s: invalid Len", hw_(x, 1)); if(n){ mc(e); mc(e + n - 1); }
+    int bad = ld ? real_copy((void *)addr, S.MEM + e, (size_t)n) : real_copy(S.MEM + e, (void *)addr, (size_t)n);
+    if(bad) lerr("Ram:%s: invalid address 0x%llx", hw_(x, 1), (ull)addr);
+  } else if(!strcmp(op, "protect")){
+    const char *l = og(x, "len"), *m = og(x, "mode"); if(!as || !l || !m) lerr("Ram:Protect needs Addr, Len and Mode (r, w, x)");
+    int r = strchr(m, 'r') != NULL, w = strchr(m, 'w') != NULL, xx = strchr(m, 'x') != NULL; ll n = evi(l);
+#ifdef _WIN32
+    DWORD np = xx ? (w ? PAGE_EXECUTE_READWRITE : r ? PAGE_EXECUTE_READ : PAGE_EXECUTE) : (w ? PAGE_READWRITE : r ? PAGE_READONLY : PAGE_NOACCESS), old;
+    if(!VirtualProtect((void *)addr, (SIZE_T)n, np, &old)) lerr("Ram:Protect failed");
+#else
+    long pg = sysconf(_SC_PAGESIZE); uintptr_t a0 = addr & ~(uintptr_t)(pg - 1);
+    if(mprotect((void *)a0, (size_t)n + (addr - a0), (r ? PROT_READ : 0) | (w ? PROT_WRITE : 0) | (xx ? PROT_EXEC : 0))) lerr("Ram:Protect: %s", strerror(errno));
+#endif
+    if(xx) __builtin___clear_cache((char *)addr, (char *)addr + n);
+  } else lerr("Ram: use Alloc, Free, Read, Write, Copy, Load, Store or Protect");
+}
+
+/* ---- Cpu ---- */
+static void do_cpu(Stmt *x){
+  char op[16]; lowop(x, op, sizeof op);
+  if(!strcmp(op, "id")){
+#if defined(__x86_64__) || defined(__i386__)
+    unsigned leaf = (unsigned)evi(og(x, "leaf") ? og(x, "leaf") : "0"), sub = (unsigned)evi(og(x, "sub") ? og(x, "sub") : "0"), a, b, c, d;
+    __cpuid_count(leaf, sub, a, b, c, d);
+    char tx[17], vn[13]; unsigned w[4] = {a, b, c, d};
+    for(int i = 0; i < 16; i++){ unsigned char ch = (unsigned char)(w[i / 4] >> (8 * (i % 4))); tx[i] = (ch >= 32 && ch < 127) ? (char)ch : '.'; } tx[16] = 0;
+    unsigned vw[3] = {b, d, c}; for(int i = 0; i < 12; i++) vn[i] = (char)(vw[i / 4] >> (8 * (i % 4))); vn[12] = 0;
+    static const char *RN[] = {"eax", "ebx", "ecx", "edx"};                 /* Eax;a  Ebx;b  Ecx;c  Edx;d  -> variable names */
+    for(int i = 0; i < 4; i++){ const char *nm = og(x, RN[i]); if(nm && *nm) setvar(nm, Vn(w[i])); }
+    const char *nm = og(x, "vendor"); if(nm && *nm) setvar(nm, Vs(vn));       /* leaf 0: "GenuineIntel", "AuthenticAMD"... */
+    nm = og(x, "text"); if(nm && *nm) setvar(nm, Vs(tx));                      /* the 16 bytes as text (leaves 0x80000002-4: brand name) */
+#else
+    (void)x; lerr("Cpu:Id: only available on x86 processors");
+#endif
+  } else if(!strcmp(op, "tick")){
+    ull t;
+#if defined(__x86_64__) || defined(__i386__)
+    t = (ull)__rdtsc();
+#elif defined(__aarch64__)
+    { ull v; __asm__ volatile("mrs %0, cntvct_el0" : "=r"(v)); t = v; }
+#else
+    t = (ull)(now() * 1e9);
+#endif
+    u64out(x, t);
+  } else if(!strcmp(op, "call")){
+    need_hw("Cpu:Call"); guard_install();
+    const char *as = og(x, "addr"); if(!as) lerr("Cpu:Call needs Addr"); uintptr_t addr = UA(evi(as)); ll arg = evi(og(x, "arg") ? og(x, "arg") : "0");
+    typedef long long (*Fn1)(long long); Fn1 fn = (Fn1)addr; volatile long long r = 0;
+#ifndef _WIN32
+    SEGV_ON = 1; if(sigsetjmp(SEGV_JB, 1)){ SEGV_ON = 0; lerr("Cpu:Call: the code at 0x%llx crashed (invalid instruction or memory access)", (ull)addr); }
+    r = fn(arg); SEGV_ON = 0;
+#else
+    if(IsBadCodePtr((FARPROC)addr)) lerr("Cpu:Call: invalid address 0x%llx", (ull)addr);
+    r = fn(arg);
+#endif
+    into(x, Vn((double)r));
+  } else if(!strcmp(op, "msr")){
+    need_hw("Cpu:Msr");
+#if defined(__linux__)
+    int core = (int)evi(og(x, "core") ? og(x, "core") : "0"); const char *rg = og(x, "reg"); if(!rg) lerr("Cpu:Msr needs Reg");
+    char path[64]; snprintf(path, sizeof path, "/dev/cpu/%d/msr", core); int wr = og(x, "value") || og(x, "lo") || og(x, "hi");
+    int fd = open(path, wr ? O_RDWR : O_RDONLY); if(fd < 0) lerr("Cpu:Msr: could not open %s: %s (needs root and: modprobe msr)", path, strerror(errno));
+    off_t off = (off_t)evi(rg); ull v = 0; int bad;
+    if(wr){ v = u64in(x); bad = pwrite(fd, &v, 8, off) != 8; } else { bad = pread(fd, &v, 8, off) != 8; }
+    int e = errno; close(fd); if(bad) lerr("Cpu:Msr: access to that register failed: %s", strerror(e));
+    if(!wr) u64out(x, v);
+#else
+    (void)x; lerr("Cpu:Msr: only available on Linux");
+#endif
+  } else lerr("Cpu: use Id, Tick, Call or Msr");
+}
+
+/* ---- Irq: interrupt vector table (emulated), real signals and timers can raise vectors ---- */
+static struct { char *fn[256]; volatile unsigned char pend[256]; volatile int any, on, in; volatile int tmr[256]; } IRQ = {{0}, {0}, 0, 1, 0, {0}};
+static void irq_call(const char *name, int n){
+  Fn *f = fn_get(stop_(S.root), name);
+  if(!f){ char m[300]; snprintf(m, sizeof m, "[irq %d] ERROR function not defined: %s", n, name); out(m); return; }
+  Scope *volatile loc = scope_new(f->sc); Scope *volatile cur = T->cur;
+  if(f->x->a.n >= 1) sdecl(loc, f->x->a.v[0], Vn(n), -1);
+  jmp_buf jb, *old = T->jb; T->jb = &jb;
+  if(!setjmp(jb)){ ex(&f->x->body, loc); vdrop(T->retv); T->retv = Vu(); }
+  else { char m[1100]; snprintf(m, sizeof m, "[irq %d] ERROR %s", n, T->err); out(m); T->depth = 0; }
+  T->jb = old; T->cur = cur; scope_unref(loc);
+}
+static void irq_deliver(void);
+static void irq_poll(void){ if(IRQ.any && IRQ.on) irq_deliver(); }
+static void irq_deliver(void){
+  if(IRQ.in) return; IRQ.in = 1; IRQ.any = 0;
+  for(int n = 0; n < 256; n++) if(IRQ.pend[n]){ IRQ.pend[n] = 0; if(IRQ.fn[n]) irq_call(IRQ.fn[n], n); }
+  IRQ.in = 0;
+}
+#ifndef _WIN32
+static volatile int SIGVEC[65];
+static void irq_sig(int s){ int v = (s >= 0 && s < 65) ? SIGVEC[s] : -1; if(v >= 0){ IRQ.pend[v] = 1; IRQ.any = 1; } }
+#endif
+static void *irq_tmr(void *a){
+  int v = (int)(intptr_t)a;
+  while(IRQ.tmr[v] > 0 && !S.stop){ usleep((unsigned)IRQ.tmr[v] * 1000u); if(IRQ.tmr[v] > 0){ IRQ.pend[v] = 1; IRQ.any = 1; } }
+  return NULL;
+}
+static void do_irq(Stmt *x){
+  char op[16]; lowop(x, op, sizeof op);
+  if(!strcmp(op, "enable")){ IRQ.on = 1; if(IRQ.any) irq_deliver(); return; }
+  if(!strcmp(op, "disable")){ IRQ.on = 0; return; }
+  const char *ns = og(x, "n"); if(!ns) lerr("Irq:%s needs N (vector 0-255)", hw_(x, 1));
+  ll n = evi(ns); if(n < 0 || n > 255) lerr("Irq: N must be between 0 and 255");
+  if(!strcmp(op, "set")){
+    char *f = os_(x, "call"); if(!f || !*f) lerr("Irq:Set needs Call (the name of a Def function)");
+    free(IRQ.fn[n]); IRQ.fn[n] = f;
+  } else if(!strcmp(op, "off")){
+    free(IRQ.fn[n]); IRQ.fn[n] = NULL; IRQ.pend[n] = 0; IRQ.tmr[n] = 0;
+  } else if(!strcmp(op, "raise")){
+    IRQ.pend[n] = 1; IRQ.any = 1; if(IRQ.on) irq_deliver();
+  } else if(!strcmp(op, "timer")){
+    int ms = (int)od(x, "ms", 0);
+    if(ms <= 0){ IRQ.tmr[n] = 0; return; }
+    int was = IRQ.tmr[n]; IRQ.tmr[n] = ms;
+    if(!was){ pthread_t th; pthread_attr_t at; pthread_attr_init(&at); pthread_attr_setdetachstate(&at, PTHREAD_CREATE_DETACHED); pthread_create(&th, &at, irq_tmr, (void *)(intptr_t)n); }
+  } else if(!strcmp(op, "signal")){
+#ifndef _WIN32
+    const char *sg = og(x, "sig"); if(!sg) lerr("Irq:Signal needs Sig (USR1, USR2, HUP or ALRM)");
+    int s = !strcasecmp(sg, "usr1") ? SIGUSR1 : !strcasecmp(sg, "usr2") ? SIGUSR2 : !strcasecmp(sg, "hup") ? SIGHUP : !strcasecmp(sg, "alrm") ? SIGALRM : -1;
+    if(s < 0) lerr("Irq:Signal: Sig must be USR1, USR2, HUP or ALRM");
+    SIGVEC[s] = (int)n; signal(s, irq_sig);
+#else
+    lerr("Irq:Signal: not available on Windows");
+#endif
+  } else lerr("Irq: use Set, Off, Raise, Enable, Disable, Timer or Signal");
+}
+
+/* ---- Pci (Linux sysfs) ---- */
+static void do_pci(Stmt *x){
+  need_hw("Pci"); char op[16]; lowop(x, op, sizeof op);
+#ifdef __linux__
+  if(!strcmp(op, "list")){
+    DIR *d = opendir("/sys/bus/pci/devices"); if(!d) lerr("Pci:List: this system has no /sys/bus/pci");
+    Val l = Vl(); struct dirent *e;
+    while((e = readdir(d))){
+      if(e->d_name[0] == '.') continue;
+      static const char *F[] = {"vendor", "device", "class", NULL}; Buf ln = {0}; bs(&ln, e->d_name);
+      for(int i = 0; F[i]; i++){ char p[300]; snprintf(p, sizeof p, "/sys/bus/pci/devices/%s/%s", e->d_name, F[i]); size_t n; char *t = readfile(p, &n); char *s2 = t ? strip_dup(t) : xs("?"); bc(&ln, ' '); bs(&ln, s2); free(s2); free(t); }
+      char *lt = btake(&ln); lpush(LP(l), Vs(lt)); free(lt);          /* "0000:00:1f.3 0x8086 0x7a04 0x060100" */
+    }
+    closedir(d); into(x, l); return;
+  }
+  int seg = (int)od(x, "seg", 0), bus = (int)od(x, "bus", 0), dev = (int)od(x, "dev", 0), fn = (int)od(x, "fn", 0), off = (int)od(x, "off", 0), sz = (int)od(x, "size", 4);
+  if(sz != 1 && sz != 2 && sz != 4) lerr("Pci: Size must be 1, 2 or 4");
+  char path[128]; snprintf(path, sizeof path, "/sys/bus/pci/devices/%04x:%02x:%02x.%d/config", seg, bus, dev, fn);
+  int wr = !strcmp(op, "write"); if(!wr && strcmp(op, "read")) lerr("Pci: use List, Read or Write");
+  int fd = open(path, wr ? O_RDWR : O_RDONLY); if(fd < 0) lerr("Pci: could not open %s: %s", path, strerror(errno));
+  uint32_t v = 0; int bad;
+  if(wr){ v = (uint32_t)u64in(x); bad = pwrite(fd, &v, (size_t)sz, off) != sz; } else bad = pread(fd, &v, (size_t)sz, off) != sz;
+  int e2 = errno; close(fd); if(bad) lerr("Pci: access failed: %s", strerror(e2));
+  if(!wr) into(x, Vn((double)v));
+#else
+  (void)x; (void)op; lerr("Pci: only available on Linux");
+#endif
+}
+
+/* ---- Dev: real devices and disk images (raw sectors) ---- */
+#ifndef _WIN32
+static struct { char *id; int fd; } DEVT[16];
+static int dev_find(const char *id){ for(int i = 0; i < 16; i++) if(DEVT[i].id && !strcmp(DEVT[i].id, id)) return i; lerr("Dev: not open: %s", id); }
+static void do_dev(Stmt *x){
+  need_hw("Dev"); char op[16]; lowop(x, op, sizeof op);
+  const char *id = og(x, "id"); if(!id || !*id) lerr("Dev: missing Id");
+  if(!strcmp(op, "open")){
+    char *path = os_(x, "path"); if(!path || !*path) lerr("Dev:Open needs Path");
+    const char *m = og(x, "mode"); if(!m || !*m) m = "r"; int w = strchr(m, 'w') != NULL, c = strchr(m, 'c') != NULL;
+    struct stat st; int ex_ = stat(path, &st) == 0;
+    if(w && ex_ && (S_ISBLK(st.st_mode) || S_ISCHR(st.st_mode)) && !S.allowraw){ free(path); lerr("Dev:Open: writing to a device (disk, port...) is dangerous: run logl with --allow-raw to allow it"); }
+    int slot = -1; for(int i = 0; i < 16; i++){ if(DEVT[i].id && !strcmp(DEVT[i].id, id)){ free(path); lerr("Dev: %s is already open", id); } if(!DEVT[i].id && slot < 0) slot = i; }
+    if(slot < 0){ free(path); lerr("Dev: too many open devices (max 16)"); }
+    int fd = open(path, (w ? (strchr(m, 'r') ? O_RDWR : O_WRONLY) : O_RDONLY) | (c ? O_CREAT : 0), 0644);
+    if(fd < 0){ int e = errno; char *p2 = path; lerr("Dev:Open: could not open %s: %s", p2, strerror(e)); }
+    free(path); DEVT[slot].id = xs(id); DEVT[slot].fd = fd; return;
+  }
+  int k = dev_find(id); int fd = DEVT[k].fd;
+  if(!strcmp(op, "close")){ close(fd); free(DEVT[k].id); DEVT[k].id = NULL; return; }
+  if(!strcmp(op, "size")){ off_t cur = lseek(fd, 0, SEEK_CUR), e = lseek(fd, 0, SEEK_END); lseek(fd, cur < 0 ? 0 : cur, SEEK_SET); if(e < 0) lerr("Dev:Size: %s", strerror(errno)); into(x, Vn((double)e)); return; }
+  if(!strcmp(op, "ioctl")){
+    const char *rq = og(x, "req"); if(!rq) lerr("Dev:Ioctl needs Req");
+    int r = ioctl(fd, (unsigned long)evi(rq), (long)evi(og(x, "arg") ? og(x, "arg") : "0")); if(r < 0) lerr("Dev:Ioctl: %s", strerror(errno)); into(x, Vn(r)); return;
+  }
+  if(!strcmp(op, "read") || !strcmp(op, "write")){
+    ll len = evi(og(x, "len") ? og(x, "len") : "0"), am = evi(og(x, "addr") ? og(x, "addr") : "0"); const char *of = og(x, "off");
+    if(len < 0) lerr("Dev: invalid Len"); if(len){ mc(am); mc(am + len - 1); }
+    ssize_t r;
+    if(!strcmp(op, "read")) r = of ? pread(fd, S.MEM + am, (size_t)len, (off_t)evi(of)) : read(fd, S.MEM + am, (size_t)len);
+    else r = of ? pwrite(fd, S.MEM + am, (size_t)len, (off_t)evi(of)) : write(fd, S.MEM + am, (size_t)len);
+    if(r < 0) lerr("Dev:%s: %s", hw_(x, 1), strerror(errno));
+    into(x, Vn((double)r)); return;
+  }
+  lerr("Dev: use Open, Read, Write, Size, Ioctl or Close");
+}
+#else
+static void do_dev(Stmt *x){ (void)x; lerr("Dev: not available on Windows (use Host: for files)"); }
+#endif
+
+/* ---- Admin ---- */
+static void do_admin(Stmt *x){
+  need_hw("Admin"); char op[16]; lowop(x, op, sizeof op);
+  if(!strcmp(op, "id")){
+    double v[6];
+#ifndef _WIN32
+    v[0] = getuid(); v[1] = geteuid(); v[2] = getgid(); v[3] = getegid(); v[4] = geteuid() == 0;
+#else
+    v[0] = v[1] = v[2] = v[3] = v[4] = 0;
+#endif
+    v[5] = getpid(); static const char *AN[] = {"uid", "euid", "gid", "egid", "root", "pid"};   /* Uid;u  Root;r ... -> variable names */
+    for(int i = 0; i < 6; i++){ const char *nm = og(x, AN[i]); if(nm && *nm) setvar(nm, Vn(v[i])); }
+  } else if(!strcmp(op, "run")){
+    char *cmd = os_(x, "cmd"); if(!cmd || !*cmd) lerr("Admin:Run needs Cmd");
+    FILE *p = popen(cmd, "r"); free(cmd); if(!p) lerr("Admin:Run: could not start the command");
+    Buf b = {0}; char t[4096]; size_t n; while((n = fread(t, 1, sizeof t, p)) > 0 && b.n < (1 << 20)) bcat(&b, t, (int)n);
+    int st = pclose(p);
+#ifndef _WIN32
+    int code = WIFEXITED(st) ? WEXITSTATUS(st) : -1;
+#else
+    int code = st;
+#endif
+    char *o = btake(&b); Val ov = Vs(o); free(o); into(x, ov);
+    const char *cv = og(x, "code"); if(cv && *cv) setvar(cv, Vn(code));
+  } else if(!strcmp(op, "kill")){
+#ifndef _WIN32
+    const char *pd = og(x, "pid"); if(!pd) lerr("Admin:Kill needs Pid");
+    if(kill((pid_t)evi(pd), (int)od(x, "sig", 15))) lerr("Admin:Kill: %s", strerror(errno));
+#else
+    lerr("Admin:Kill: not available on Windows");
+#endif
+  } else if(!strcmp(op, "nice")){
+#ifndef _WIN32
+    if(setpriority(PRIO_PROCESS, (id_t)od(x, "pid", 0), (int)od(x, "level", 0))) lerr("Admin:Nice: %s", strerror(errno));
+#else
+    lerr("Admin:Nice: not available on Windows");
+#endif
+  } else if(!strcmp(op, "chmod")){
+    char *f = os_(x, "file"); const char *m = og(x, "mode"); if(!f || !m) lerr("Admin:Chmod needs File and Mode (octal, for example 0644)");
+    char *p = pjoin(S.root_dir, f); int r = chmod(p, (mode_t)strtol(m, NULL, 8)); int e = errno; free(p); free(f);
+    if(r) lerr("Admin:Chmod: %s", strerror(e));
+  } else lerr("Admin: use Id, Run, Kill, Nice or Chmod");
 }
 
 /* ---------------------------------------------------------------- variables y listas */
@@ -2485,6 +2844,7 @@ static int lp(SL *b, Scope *sc){ /* 0 sigue, -1 break consumido, >0 propagar */
 static int ex(SL *ns, Scope *sc){
   for(int i = 0; i < ns->n; i++){
     Stmt *x = ns->v[i];
+    if(IRQ.any && IRQ.on) irq_deliver();
     if(chk_stop()) return ST_STOP;
     if(nthreads && ((++T->tick) & 127) == 0){ if(S.win.on) present_maybe(); gil_yield(); }
     T->cur = sc;
@@ -2566,7 +2926,7 @@ static int one(Stmt *x, Scope *sc){
       free(cs);
     } else {
       if(o0->n < 2) lerr("Wait: missing value");
-      double v = evd(o0->v[1]); if(!strcasecmp(m, "s") || !strcasecmp(m, "sec")) v *= 1000;
+      double v = evd(o0->v[1]); if(!strcasecmp(m, "s") || !strcasecmp(m, "sec")) v *= 1000; else if(!strcasecmp(m, "us")) v /= 1000;
       if(sleep_stmt(v)) return ST_STOP;
     }
     break;
@@ -2614,10 +2974,16 @@ static int one(Stmt *x, Scope *sc){
   case K_g3d: case K_graphics3d: do_g3d(x); break;
   case K_ui: do_ui(x, sc); break;
   case K_dyn2d: do_dyn(x); break;
+  case K_ram: do_ram(x); break;
+  case K_cpu: do_cpu(x); break;
+  case K_irq: do_irq(x); break;
+  case K_pci: do_pci(x); break;
+  case K_dev: do_dev(x); break;
+  case K_admin: do_admin(x); break;
   case K_console: do_console(x, sc); break;
   case K_sys: {
     into_need(x); Val d = Vd(); Dict *D = DP(d);
-    dset(D, "ghz", Vn(3)); dset(D, "cpu", Vs("Log-SoC 3.0 GHz")); dset(D, "ram_mb", Vn(4096)); dset(D, "mem_bytes", Vn(sizeof S.MEM));
+    dset(D, "ghz", Vn(3)); dset(D, "cpu", Vs("Log-SoC 3.0 GHz")); dset(D, "ram_mb", Vn(4096)); dset(D, "mem_bytes", Vn((double)S.memsz));
     dset(D, "width", Vn(S.fb ? S.fb->w : 0)); dset(D, "height", Vn(S.fb ? S.fb->h : 0)); dset(D, "kernel", Vn(0));
     dset(D, "uptime_ms", Vn((double)(long)((now() - S.t0) * 1000)));
     int nt = 0; for(int i = 0; i < S.ntasks; i++) nt += S.tasks[i]->on; dset(D, "tasks", Vn(nt)); dset(D, "version", Vs("1.0-c"));
@@ -2830,6 +3196,7 @@ static void usage(void){
        "usage: logl [file] [--png X] [--no-wait] [--check] [--root DIR] [--show] [--ansi] [--plain]\n"
        "             [--strict] [--repl] [--lang log+|log-|log++|logall] [--hw] [--version]\n"
        "             [--window] [--no-window] [--no-browser] [--port N]\n"
+       "             [--ram KB] [--allow-raw]\n"
        "       logl pkg list | logl pkg install NAME\n"
        "  Graphics, events and UI programs open a window in your web browser (local only).\n"
        "  --no-window  never open a window (G3D/Screen still render, e.g. with --png)\n"
@@ -2857,6 +3224,8 @@ int main(int argc, char **argv){
     else if(!strcmp(a, "--strict")) strict = 1; else if(!strcmp(a, "--repl")) repl_ = 1;
     else if(!strcmp(a, "--lang") && i + 1 < argc) lang = argv[++i];
     else if(!strcmp(a, "--hw")) S.hw = 1;
+    else if(!strcmp(a, "--allow-raw")) S.allowraw = 1;
+    else if(!strcmp(a, "--ram") && i + 1 < argc){ long kb = atol(argv[++i]); if(kb < 1) kb = 1; if(kb > 1048576) kb = 1048576; S.memsz = (size_t)kb * 1024; }
     else if(!strcmp(a, "--window")) S.forcewin = 1;
     else if(!strcmp(a, "--no-window")) S.nowin = 1;
     else if(!strcmp(a, "--no-browser")) S.nobrowser = 1;
@@ -2884,6 +3253,8 @@ int main(int argc, char **argv){
   else if(file){ char *d = pdirname(file); if(!*d){ free(d); d = xs("."); } S.root_dir = d; } else S.root_dir = xs(cwd);
   S.path = xs(""); S.ansi = ansi >= 0 ? ansi : (isatty(1) && !getenv("NO_COLOR")); S.showfirst = 1; S.t0 = now();
   rngs ^= (ull)(now() * 1e9) * 2654435761ULL + (ull)time(NULL) + (ull)getpid(); if(!rngs) rngs = 1;
+  if(!S.memsz) S.memsz = 65536;
+  S.MEM = calloc(S.memsz, 1); if(!S.MEM){ fputs("out of memory\n", stderr); return 3; }
   math_init(); S.queues = Vd(); S.locks = Vd(); S.root = scope_new(NULL); dset(S.root->v, "keys", Vd());
   sdecl(S.root, "mb", Vn(0), -1); sdecl(S.root, "mx", Vn(0), -1); sdecl(S.root, "my", Vn(0), -1); sdecl(S.root, "key", Vs(""), -1);
   S.vdpath = pjoin(S.root_dir, "logdisk.json"); S.stpath = pjoin(S.root_dir, "logdata.json"); S.vd = Vd();
