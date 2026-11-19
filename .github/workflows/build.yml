@@ -30,7 +30,7 @@ jobs:
         with:
           msystem: UCRT64
           install: mingw-w64-ucrt-x86_64-gcc
-      - run: gcc -O2 -static -o logl-windows.exe logl.c -lm -lpthread
+      - run: gcc -O2 -static -o logl-windows.exe logl.c -lm -lpthread -lws2_32
       - run: ./logl-windows.exe --version
       - uses: actions/upload-artifact@v4
         with:
