@@ -7,7 +7,7 @@
  *   Mem:Load / Mem:Dump                        load/dump real files to the emulated RAM
  *   Host:Read/Write/Append/Size/Delete/List/Exists/Mkdir  real files
  * Build Linux:    gcc -O2 -static -o logl logl.c -lm -lpthread
- * Build Windows:  gcc -O2 -static -o logl.exe logl.c -lm -lpthread     (MinGW-w64 / MSYS2)
+ * Build Windows:  gcc -O2 -static -o logl.exe logl.c -lm -lpthread -lws2_32   (MinGW-w64 / MSYS2)
  * Usage:     logl program.log+ [--check] [--hw] [--root DIR] [--png out.png] [--repl]
  *            logl            (no arguments opens the REPL)
  */
@@ -36,6 +36,8 @@
 #include <sys/stat.h>
 #ifdef _WIN32
   #define WIN32_LEAN_AND_MEAN
+  #include <winsock2.h>
+  #include <ws2tcpip.h>
   #include <windows.h>
   #include <io.h>
   #include <direct.h>
@@ -69,12 +71,26 @@
   #include <sys/ioctl.h>
   #include <sys/syscall.h>
   #include <sys/utsname.h>
+  #include <sys/socket.h>
+  #include <netinet/in.h>
+  #include <arpa/inet.h>
   #ifdef __APPLE__
     #include <sys/sysctl.h>
+    #include <mach-o/dyld.h>
   #endif
 #endif
 
-#define LOGL_VERSION "1.0"
+#ifdef _WIN32
+  typedef SOCKET sock_t;
+  #define SOCK_BAD INVALID_SOCKET
+  #define sclose closesocket
+#else
+  typedef int sock_t;
+  #define SOCK_BAD (-1)
+  #define sclose close
+#endif
+
+#define LOGL_VERSION "1.3"
 
 typedef long long ll;
 typedef unsigned long long ull;
@@ -513,14 +529,26 @@ static Node *compile(const char *e){
 }
 
 /* ---------------------------------------------------------------- Math */
-enum { F_abs, F_floor, F_ceil, F_round, F_trunc, F_sqrt, F_pow, F_min, F_max, F_sin, F_cos, F_tan, F_asin, F_acos, F_atan, F_atan2, F_exp, F_log, F_log2, F_log10, F_hypot, F_random, F_fround, F_sign, F_cbrt, F_COUNT };
-static const char *FNN[] = {"abs","floor","ceil","round","trunc","sqrt","pow","min","max","sin","cos","tan","asin","acos","atan","atan2","exp","log","log2","log10","hypot","random","fround","sign","cbrt"};
+enum { F_abs, F_floor, F_ceil, F_round, F_trunc, F_sqrt, F_pow, F_min, F_max, F_sin, F_cos, F_tan, F_asin, F_acos, F_atan, F_atan2, F_exp, F_log, F_log2, F_log10, F_hypot, F_random, F_fround, F_sign, F_cbrt, F_rnd, F_fix, F_COUNT };
+static const char *FNN[] = {"abs","floor","ceil","round","trunc","sqrt","pow","min","max","sin","cos","tan","asin","acos","atan","atan2","exp","log","log2","log10","hypot","random","fround","sign","cbrt","rnd","fix"};
 static Val MATHV;
+static double elapsed_ms(void);
 static ull rngs = 88172645463325252ULL;
 static double rnd(void){ rngs ^= rngs << 13; rngs ^= rngs >> 7; rngs ^= rngs << 17; return (double)(rngs >> 11) / 9007199254740992.0; }
 static double numarg(Val v){ if(v.t == T_NUM || v.t == T_BOOL) return v.u.n; lerr("Math: expected a number"); }
 static Val callfn(int f, Val *a, int na){
   if(f == F_random) return Vn(rnd());
+  if(f == F_fix){   /* fix(v,n): text with n decimals (default 2) */
+    if(!na) lerr("Math: not enough arguments");
+    int nd = na > 1 ? (int)numarg(a[1]) : 2; if(nd < 0) nd = 0; if(nd > 20) nd = 20;
+    char tb[400]; snprintf(tb, sizeof tb, "%.*f", nd, numarg(a[0])); return Vs(tb);
+  }
+  if(f == F_rnd){   /* rnd(a,b): whole number from a to b, both included; rnd(n): 0..n; rnd(): 0..1 */
+    if(!na) return Vn(rnd());
+    double lo = 0, hi = numarg(a[0]); if(na > 1){ lo = hi; hi = numarg(a[1]); }
+    if(hi < lo){ double tmp = lo; lo = hi; hi = tmp; }
+    return Vn(floor(lo + rnd() * (hi - lo + 1)));
+  }
   if(f == F_min || f == F_max){
     if(!na) lerr("Math: missing arguments");
     double r = numarg(a[0]);
@@ -620,6 +648,7 @@ static Val eval(Node *n, Scope *sc){
     if(!strcmp(n->s, "null") || !strcmp(n->s, "undefined")) return Vu();
     if(!strcmp(n->s, "Infinity")) return Vn(INFINITY); if(!strcmp(n->s, "NaN")) return Vn(NAN);
     if(!strcmp(n->s, "Math")) return vref(MATHV);
+    if(!strcmp(n->s, "t")) return Vn(elapsed_ms());
     Val *m = dget(DP(MATHV), n->s); if(m) return vref(*m);
     lerr("Undeclared variable: %s", n->s);
   }
@@ -681,7 +710,7 @@ static Val eval(Node *n, Scope *sc){
 }
 
 /* ---------------------------------------------------------------- sentencias */
-#define KWLIST X(use) X(print) X(var) X(set) X(repeat) X(for) X(if) X(wait) X(screen) X(display) X(reg) X(pin) X(on) X(loop) X(setup) X(expect) X(sound) X(serial) X(else) X(while) X(break) X(continue) X(input) X(ui) X(store) X(g3d) X(push) X(pop) X(remove) X(insert) X(sort) X(shuffle) X(each) X(def) X(call) X(return) X(elseif) X(console) X(mem) X(disk) X(exec) X(panic) X(stop) X(task) X(spawn) X(kill) X(join) X(import) X(try) X(lock) X(unlock) X(send) X(recv) X(yield) X(assert) X(sys) X(proc) X(surface) X(host) X(port) X(catch)
+#define KWLIST X(use) X(print) X(var) X(set) X(repeat) X(for) X(if) X(wait) X(screen) X(display) X(reg) X(pin) X(on) X(loop) X(setup) X(expect) X(sound) X(serial) X(else) X(while) X(break) X(continue) X(input) X(ui) X(store) X(g3d) X(push) X(pop) X(remove) X(insert) X(sort) X(shuffle) X(each) X(def) X(call) X(return) X(elseif) X(console) X(mem) X(disk) X(exec) X(panic) X(stop) X(task) X(spawn) X(kill) X(join) X(import) X(try) X(lock) X(unlock) X(send) X(recv) X(yield) X(assert) X(sys) X(proc) X(surface) X(host) X(port) X(graphics3d) X(dyn2d) X(catch)
 enum {
 #define X(n) K_##n,
 KWLIST
@@ -856,6 +885,8 @@ static int parse(const char *src, const char *name, DV *E, DV *W, SL *nodes){
   return 1;
 }
 
+static int hasop(Stmt *x, const char **list);
+static int has_show(SL *ns){ for(int i = 0; i < ns->n; i++){ Stmt *x = ns->v[i]; if((x->kw == K_screen || x->kw == K_display || x->kw == K_reg) && hasop(x, (const char *[]){"show", NULL})) return 1; if(has_show(&x->body) || has_show(&x->alt) || has_show(&x->cat)) return 1; } return 0; }
 static int has_wait(SL *ns){ for(int i = 0; i < ns->n; i++) if(ns->v[i]->kw == K_wait || has_wait(&ns->v[i]->body)) return 1; return 0; }
 
 static double lcs_ratio(const char *a, int la, const char *b, int lb){
@@ -868,12 +899,26 @@ static double lcs_ratio(const char *a, int la, const char *b, int lb){
 }
 static const char *HWOPS[] = {"map", "unmap", "read", "write", "set", "clear", "toggle", NULL};
 static const char *SCROPS[] = {"resolution", "clear", "pixel", "rect", "circle", "line", "text", "get", "show", "blit", NULL};
-typedef struct { int res; } ChkSt;
+typedef struct { int res, ids_done; SV ids; } ChkSt;
 static int hasop(Stmt *x, const char **list){
   for(int i = 0; i < x->h.n; i++) for(int j = 0; list[j]; j++) if(!strcasecmp(x->h.v[i], list[j])) return j + 1;
   return 0;
 }
+static void collect_ids(SL *ns, SV *ids){
+  for(int i = 0; i < ns->n; i++){
+    Stmt *x = ns->v[i];
+    if(x->kw == K_ui && !x->bad){ const char *id = og(x, "id"); if(id && *id) svp(ids, xs(id)); }
+    collect_ids(&x->body, ids); collect_ids(&x->alt, ids); collect_ids(&x->cat, ids);
+  }
+}
+static void chk_opts(Stmt *x, DV *W, const char *name, const char **valid){
+  for(int i = 0; i < x->no; i++){
+    const char *a = x->o[i].v[0]; int ok = 0; for(int j = 0; valid[j]; j++) if(!strcasecmp(a, valid[j])) ok = 1;
+    if(!ok){ Buf b = {0}; for(int j = 0; valid[j]; j++){ if(j) bs(&b, ", "); bs(&b, valid[j]); } dpushf(W, x->n, "Unknown command \"%s\" in %s\n  -> Valid: %s", a, name, btake(&b)); }
+  }
+}
 static void chk(SL *ns, DV *E, DV *W, ChkSt *s){
+  if(!s->ids_done){ s->ids_done = 1; collect_ids(ns, &s->ids); }
   for(int i = 0; i < ns->n; i++){
     Stmt *x = ns->v[i]; int k = x->kw, l = x->lg, n = x->n;
     if(x->bad){ dpushf(E, n, "Syntax error: %s", x->why); continue; }
@@ -901,6 +946,26 @@ static void chk(SL *ns, DV *E, DV *W, ChkSt *s){
       if(l == 0 && !t) dpush(E, n, "Log- requires a type: Var:U8:name(\"Value;0\")");
       if(t && typidx(t) < 0) dpushf(E, n, "Unknown type: %s", x->h.v[1]);
       if(t && l == 1) dpushf(W, n, "Log+ infers the type: you can remove %s", x->h.v[1]);
+    }
+    if(k == K_g3d || k == K_graphics3d){
+      static const char *G3OPS[] = {"cube", "sphere", "torus", "pyramid", "set", "render", "clear", "scene", "camera", "light", NULL};
+      static const char *G3OPT[] = {"id", "x", "y", "z", "size", "color", "rx", "ry", "rz", "s", "tx", "ty", "tz", "fov", "mode", "bg", NULL};
+      const char *op = x->h.n > 1 ? x->h.v[1] : ""; int okop = 0; for(int j = 0; G3OPS[j]; j++) if(!strcasecmp(op, G3OPS[j])) okop = 1;
+      if(l == 2) dpush(E, n, "Log++ has no screen: G3D cannot be used here\n  -> Use Log+ or Log-");
+      else if(l == 0 && !s->res) dpush(E, n, "Log- requires Resolution before using G3D\n  -> Add Screen:Resolution(...) above");
+      if(!okop) dpushf(E, n, "Unknown G3D operation: %s\n  -> Valid: cube, sphere, torus, pyramid, set, render, clear, scene, camera, light", op);
+      chk_opts(x, W, x->h.v[0], G3OPT);
+    }
+    if(k == K_ui){
+      static const char *UIOPT[] = {"id", "label", "text", "min", "max", "value", NULL};
+      if(l != 1) dpush(E, n, "UIVisuals only works in Log+ and in #+ lines of mixed files\n  -> Change the header to <log+> or tag the line with #+");
+      chk_opts(x, W, "UI", UIOPT);
+    }
+    if(k == K_dyn2d && l == 2) dpush(E, n, "Log++ has no screen: Dyn2D cannot be used here\n  -> Use Log+ or Log-");
+    if(k == K_on){
+      const char *m = x->h.n > 1 ? x->h.v[1] : ""; int ok = !strcasecmp(m, "start_button") || !strcasecmp(m, "key") || !strcasecmp(m, "canvas") || !strcasecmp(m, "timer") || !strcasecmp(m, "mouse");
+      for(int j = 0; j < s->ids.n && !ok; j++) if(!strcasecmp(s->ids.v[j], m)) ok = 1;
+      if(!ok) dpushf(W, n, "On:%s: that event does not exist, nor a widget with that Id\n  -> Events: START_BUTTON or the Id of a UI widget", m);
     }
     if(k == K_expect && l != 0) dpush(E, n, "Expect is exclusive to Log-");
     if(k == K_loop && (x->h.n == 1 || !strcasecmp(x->h.v[1], "forever")) && !has_wait(&x->body))
@@ -1031,15 +1096,19 @@ enum { ST_OK, ST_BRK, ST_CNT, ST_RET, ST_STOP };
 struct Task { char *name; volatile int on, stop; int proc, every; SL *body; Scope *sc; };
 typedef struct { char *file; Scope *sc; } Mod;
 typedef struct { unsigned char *base; size_t len, maplen; char *id; int fd; void *map; } RMap;
+enum { EV_KEY, EV_MOUSE, EV_CANVAS, EV_START, EV_UI };
+typedef struct { int kind; char sub[16]; char id[64]; SL *body; Scope *sc; } EvH;
+typedef struct { int kind; char sub[16]; char id[64]; char key[64]; char val[256]; double mx, my; int btn, isnum; } Ev;
 static struct {
-  char *root_dir, *png, *path; int nowait, show_end, ansi, hw, showfirst, tid, pid;
+  char *root_dir, *png, *path; char *argv0; int nowin, nobrowser, forcewin, port, nstdin; int nowait, show_end, autowin, ansi, hw, showfirst, tid, pid;
   volatile int stop; volatile sig_atomic_t gotint;
   FB *fb; Scope *root; unsigned char MEM[65536]; int pins[64];
   Val vd; char *vdpath, *stpath; double t0;
   struct { char *id; FB *fb; } surf[64]; int nsurf;
   Val queues, locks;
   Task **tasks; int ntasks, ctasks;
-  struct { SL *body; Scope *sc; } keyh[32]; int nkeyh, keythread;
+  EvH evh[64]; int nevh, keythread;
+  struct { int on, closed, seen, port, fw, fh; double last, bye, lastp; char token[40]; unsigned char *fd; unsigned fver, uver; char snd[256]; } win;
   int hasfg, hasbg; Col fg, bg;
   Mod mods[64]; int nmods; struct { char *alias; Mod *m; } al[64]; int nal;
   RMap rm[16]; int nrm; volatile uint32_t *gpio; int ioperm_done;
@@ -1056,11 +1125,18 @@ static double now(void){
   struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec + t.tv_nsec / 1e9;
 #endif
 }
+static double elapsed_ms(void);
+static void present(void);
+static void present_maybe(void);
+static int win_ensure(void);
+static void win_sound(double f, double ms);
 static const char *esc(const char *c){ return S.ansi ? c : ""; }
 static void gil_yield(void){ pthread_mutex_unlock(&GIL); sched_yield(); pthread_mutex_lock(&GIL); }
 static void nap(int us){ pthread_mutex_unlock(&GIL); usleep(us); pthread_mutex_lock(&GIL); }
 static int chk_stop(void){ return S.stop || (T->task && T->task->stop); }
+static double elapsed_ms(void){ return floor((now() - S.t0) * 1000); }
 static int sleep_ms(double ms, int force){
+  if(S.win.on){ if(ms > 2) present(); else present_maybe(); }
   if(S.nowait && !force) return chk_stop();
   double end = now() + ms / 1000;
   for(;;){
@@ -1160,28 +1236,6 @@ static void start_task(const char *name, SL *body, Scope *sc, int proc, int ever
   if(pthread_create(&th, &at, task_main, t)){ t->on = 0; nthreads--; lerr("Could not create thread"); }
 }
 static void killproc(int pid){ for(int i = 0; i < S.ntasks; i++) if(S.tasks[i]->proc == pid) S.tasks[i]->stop = 1; }
-static void *key_main(void *a_){
-  (void)a_; pthread_mutex_lock(&GIL);
-  Th th; memset(&th, 0, sizeof th); th.retv = Vu(); T = &th; jmp_buf jb; th.jb = &jb; nthreads++;
-  while(!S.stop){
-    char *line = readline_nogil(); if(!line) break;
-    Val *keys = dget(S.root->v, "keys"); if(keys && keys->t == T_DICT) dset(DP(*keys), "last", Vs(line));
-    for(volatile int i = 0; i < S.nkeyh; i++){
-      Scope *loc = scope_new(S.keyh[i].sc); sdecl(loc, "key", Vs(line), -1);
-      if(!setjmp(jb)){ th.jb = &jb; th.cur = loc; ex(S.keyh[i].body, loc); }
-      else { char m[1100]; snprintf(m, sizeof m, "[On:Key] ERROR %s", th.err); out(m); }
-      scope_unref(loc);
-    }
-    free(line);
-  }
-  S.nkeyh = 0; nthreads--; pthread_mutex_unlock(&GIL); return NULL;
-}
-static void start_keys(void){
-  if(S.keythread) return; S.keythread = 1;
-  pthread_t th; pthread_attr_t at; pthread_attr_init(&at); pthread_attr_setdetachstate(&at, PTHREAD_CREATE_DETACHED);
-  pthread_create(&th, &at, key_main, NULL);
-}
-
 /* ---------------------------------------------------------------- acceso real al hardware */
 static void need_hw(const char *w){ if(!S.hw) lerr("%s: real hardware access is disabled (run with --hw; usually needs root)", w); }
 #ifdef _WIN32
@@ -1544,6 +1598,7 @@ static void do_scr(Stmt *x){
   const char *p = NULL; static const char *OPS[] = {"pixel","rect","line","circle","clear","resolution","text","blit","get","show",NULL};
   for(int i = 0; i < x->h.n && !p; i++) for(int j = 0; OPS[j]; j++) if(!strcasecmp(x->h.v[i], OPS[j])){ p = OPS[j]; break; }
   if(!p) lerr("Unknown screen operation");
+  if(S.autowin && strcmp(p, "show")) win_ensure();
   Val a[8]; int na = x->a.n < 8 ? x->a.n : 8; for(int i = 0; i < na; i++) a[i] = ev(x->a.v[i]);
 #define A(i) ((i) < na ? dint(tonum(a[i])) : (lerr("Missing arguments in %s", p), 0))
   if(!strcmp(p, "resolution")){
@@ -1555,6 +1610,7 @@ static void do_scr(Stmt *x){
   const char *tg = og(x, "target"); if(tg && !surf_get(tg)) lerr("Surface: not found: %s", tg);
   if(!S.fb) S.fb = fb_new(320, 180);
   if(!strcmp(p, "show")){
+    if(S.win.on){ present(); return; }
     const char *m = og(x, "mode"); int ansi = m && *m ? !strcasecmp(m, "ansi") : S.ansi;
     char *r = fb_render(S.fb, ansi); Buf b = {0}; if(S.ansi) bs(&b, S.showfirst ? "\x1b[2J\x1b[H" : "\x1b[H"); bs(&b, r);
     S.showfirst = 0; out(btake(&b)); free(r); return;
@@ -1584,6 +1640,843 @@ static void do_scr(Stmt *x){
 #undef A
 }
 
+
+/* ================================================================ window (browser view): HTTP server + events */
+static pthread_mutex_t WM = PTHREAD_MUTEX_INITIALIZER;   /* protects front buffer, UI state and the event queue */
+static struct { Ev q[256]; int h, t; } EQ;
+static sock_t WLS = SOCK_BAD;
+static void eq_push(const Ev *e){
+  pthread_mutex_lock(&WM);
+  if(e->kind == EV_MOUSE && !strcasecmp(e->sub, "move") && EQ.h != EQ.t){
+    Ev *l = &EQ.q[(EQ.t + 255) % 256]; if(l->kind == EV_MOUSE && !strcasecmp(l->sub, "move")){ *l = *e; pthread_mutex_unlock(&WM); return; }
+  }
+  int n = (EQ.t + 1) % 256; if(n != EQ.h){ EQ.q[EQ.t] = *e; EQ.t = n; } pthread_mutex_unlock(&WM); }
+static int eq_pop(Ev *e){ int r = 0; pthread_mutex_lock(&WM); if(EQ.h != EQ.t){ *e = EQ.q[EQ.h]; EQ.h = (EQ.h + 1) % 256; r = 1; } pthread_mutex_unlock(&WM); return r; }
+
+static void present(void){
+  if(!S.win.on || !S.fb) return;
+  size_t n = (size_t)S.fb->w * S.fb->h * 3;
+  pthread_mutex_lock(&WM);
+  if(S.win.fw != S.fb->w || S.win.fh != S.fb->h || !S.win.fd){ S.win.fd = xr(S.win.fd, n); S.win.fw = S.fb->w; S.win.fh = S.fb->h; }
+  memcpy(S.win.fd, S.fb->d, n); S.win.fver++; S.win.lastp = now();
+  pthread_mutex_unlock(&WM);
+}
+static void present_maybe(void){ if(S.win.on && now() - S.win.lastp > 0.1) present(); }
+static void win_sound(double f, double ms){
+  if(!S.win.on) return;
+  pthread_mutex_lock(&WM);
+  size_t l = strlen(S.win.snd);
+  if(l < 200) snprintf(S.win.snd + l, sizeof S.win.snd - l, "%s%d,%d", l ? ";" : "", (int)f, (int)ms);
+  pthread_mutex_unlock(&WM);
+}
+
+static const char PAGE_HTML[] =
+"<!doctype html>\n"
+"<html><head><meta charset=\"utf-8\"><title>Logl</title>\n"
+"<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n"
+"<style>\n"
+":root{--bg:#10151c;--fg:#e6edf3;--mut:#8b98a5;--acc:#4ade80;--pnl:#18202a;--bd:#2a3644}\n"
+":root.light{--bg:#f4f6f8;--fg:#1b232c;--mut:#5b6875;--acc:#16a34a;--pnl:#ffffff;--bd:#cfd8e0}\n"
+"html,body{margin:0;height:100%}\n"
+"body{display:flex;flex-direction:column;background:var(--bg);color:var(--fg);font:14px system-ui,Segoe UI,sans-serif}\n"
+"#bar{display:flex;align-items:center;gap:10px;padding:6px 10px;background:var(--pnl);border-bottom:1px solid var(--bd)}\n"
+"#ttl{flex:1;font-weight:600}\n"
+"button{font:inherit;color:var(--fg);background:var(--pnl);border:1px solid var(--bd);border-radius:6px;padding:5px 12px;cursor:pointer}\n"
+"button:hover{border-color:var(--acc)}\n"
+"button:disabled{opacity:.5;cursor:default}\n"
+"#start{background:var(--acc);color:#101820;border-color:var(--acc);font-weight:600}\n"
+"#ui{padding:10px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}\n"
+"#ui:empty{display:none}\n"
+".row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}\n"
+"label{display:flex;gap:8px;align-items:center}\n"
+"input[type=text],select{font:inherit;color:var(--fg);background:var(--pnl);border:1px solid var(--bd);border-radius:6px;padding:4px 8px}\n"
+"#stage{flex:1;display:flex;align-items:center;justify-content:center;min-height:0;overflow:hidden}\n"
+"canvas{image-rendering:pixelated;background:#000;display:none;touch-action:none;outline:none}\n"
+"</style></head>\n"
+"<body>\n"
+"<div id=\"bar\"><span id=\"ttl\">Logl</span><button id=\"start\">START</button></div>\n"
+"<div id=\"ui\"></div>\n"
+"<div id=\"stage\"><canvas id=\"cv\" tabindex=\"0\"></canvas></div>\n"
+"<script>\n"
+"const K='%%TOKEN%%';\n"
+"const $=id=>document.getElementById(id);\n"
+"const sleep=ms=>new Promise(r=>setTimeout(r,ms));\n"
+"const cv=$('cv'),cx=cv.getContext('2d');\n"
+"let img=null,fw=0,fh=0,fv=0,uv=0;\n"
+"\n"
+"/* ---- events to the interpreter (batched, strictly ordered) ---- */\n"
+"let evq=[],busy=false;\n"
+"function send(ev){\n"
+"  if(ev[0]==='c'&&ev[1]==='move'){\n"
+"    for(let i=evq.length-1;i>=0;i--){ if(evq[i][0]==='c'&&evq[i][1]==='move'){evq.splice(i,1);break;} }\n"
+"  }\n"
+"  evq.push(ev); pump();\n"
+"}\n"
+"async function pump(){\n"
+"  if(busy||!evq.length)return;\n"
+"  busy=true;\n"
+"  const b=evq.splice(0).map(e=>e.map(x=>encodeURIComponent(x)).join(',')).join(';');\n"
+"  try{await fetch('/ev?k='+K+'&b='+b);}catch(e){}\n"
+"  busy=false; pump();\n"
+"}\n"
+"\n"
+"/* ---- canvas ---- */\n"
+"function fit(){\n"
+"  if(!fw)return;\n"
+"  const st=$('stage'),aw=st.clientWidth,ah=st.clientHeight;\n"
+"  let s=Math.min(aw/fw,ah/fh); if(s>=1)s=Math.floor(s);\n"
+"  cv.style.width=Math.floor(fw*s)+'px'; cv.style.height=Math.floor(fh*s)+'px';\n"
+"}\n"
+"addEventListener('resize',fit);\n"
+"function draw(b,w,h){\n"
+"  if(w!==fw||h!==fh){fw=w;fh=h;cv.width=w;cv.height=h;img=cx.createImageData(w,h);cv.style.display='block';fit();}\n"
+"  const d=img.data;\n"
+"  for(let i=0,j=0,n=w*h*3;i<n;i+=3,j+=4){d[j]=b[i];d[j+1]=b[i+1];d[j+2]=b[i+2];d[j+3]=255;}\n"
+"  cx.putImageData(img,0,0);\n"
+"}\n"
+"function pos(e){\n"
+"  const r=cv.getBoundingClientRect();\n"
+"  return [Math.floor((e.clientX-r.left)*fw/r.width),Math.floor((e.clientY-r.top)*fh/r.height)];\n"
+"}\n"
+"cv.addEventListener('pointermove',e=>{const p=pos(e);send(['c','move',p[0],p[1],e.buttons]);});\n"
+"cv.addEventListener('pointerdown',e=>{\n"
+"  cv.focus(); try{cv.setPointerCapture(e.pointerId);}catch(_){}\n"
+"  const p=pos(e); send(['c','down',p[0],p[1],e.button]); e.preventDefault();\n"
+"});\n"
+"cv.addEventListener('pointerup',e=>{\n"
+"  const p=pos(e); send(['c','up',p[0],p[1],e.button]);\n"
+"});\n"
+"\n"
+"/* ---- keyboard ---- */\n"
+"function typing(){const a=document.activeElement;return a&&(a.tagName==='INPUT'||a.tagName==='SELECT'||a.tagName==='TEXTAREA');}\n"
+"addEventListener('keydown',e=>{\n"
+"  if(typing())return;\n"
+"  send(['k','down',e.key]);\n"
+"  if(e.key.indexOf('Arrow')===0||e.key===' ')e.preventDefault();\n"
+"});\n"
+"addEventListener('keyup',e=>{ if(typing())return; send(['k','up',e.key]); });\n"
+"$('start').onclick=()=>{send(['s','press']);$('start').blur();};\n"
+"addEventListener('pagehide',()=>{try{navigator.sendBeacon('/bye?k='+K);}catch(e){}});\n"
+"\n"
+"/* ---- sound ---- */\n"
+"let ac=null;\n"
+"function unlock(){\n"
+"  if(!ac){try{ac=new (window.AudioContext||window.webkitAudioContext)();}catch(e){}}\n"
+"  if(ac&&ac.state==='suspended')ac.resume();\n"
+"}\n"
+"addEventListener('pointerdown',unlock);addEventListener('keydown',unlock);\n"
+"function snd(s){\n"
+"  unlock(); if(!ac)return;\n"
+"  s.split(';').forEach(p=>{\n"
+"    const a=p.split(',').map(Number); if(!a[0]||!a[1])return;\n"
+"    const o=ac.createOscillator(),g=ac.createGain();\n"
+"    o.type='square';o.frequency.value=a[0];g.gain.value=0.04;\n"
+"    o.connect(g);g.connect(ac.destination);o.start();o.stop(ac.currentTime+a[1]/1000);\n"
+"  });\n"
+"}\n"
+"\n"
+"/* ---- widgets (UIVisuals: Button, Label, Slider, Check, TextBox) ---- */\n"
+"let nodes={},structKey='',revs={};\n"
+"function mk(w){\n"
+"  const id=w.id; let root,set;\n"
+"  if(w.t==='label'){\n"
+"    root=document.createElement('span'); set=w=>{root.textContent=w.text;};\n"
+"  }else if(w.t==='button'){\n"
+"    root=document.createElement('button'); set=w=>{root.textContent=w.text;};\n"
+"    root.onclick=()=>send(['u','press',id,'']);\n"
+"  }else{\n"
+"    root=document.createElement('label'); const sp=document.createElement('span'),i=document.createElement('input');\n"
+"    root.append(sp,i);\n"
+"    if(w.t==='slider'){\n"
+"      i.type='range'; i.oninput=()=>send(['u','input',id,i.value]);\n"
+"      set=w=>{sp.textContent=w.text;i.min=w.min;i.max=w.max;i.value=w.val;};\n"
+"    }else if(w.t==='check'){\n"
+"      i.type='checkbox'; i.oninput=()=>send(['u','input',id,i.checked?'1':'0']);\n"
+"      set=w=>{sp.textContent=w.text;i.checked=w.val==='1';};\n"
+"    }else{\n"
+"      i.type='text'; i.oninput=()=>send(['u','input',id,i.value]);\n"
+"      set=w=>{sp.textContent=w.text;i.value=w.val;};\n"
+"    }\n"
+"  }\n"
+"  return {root,set};\n"
+"}\n"
+"function applyUI(j){\n"
+"  const sk=j.w.map(w=>w.id+':'+w.t).join('|'),ui=$('ui');\n"
+"  if(sk!==structKey){\n"
+"    structKey=sk; ui.replaceChildren(); nodes={}; revs={};\n"
+"    for(const w of j.w){const n=mk(w);nodes[w.id]=n;ui.appendChild(n.root);}\n"
+"  }\n"
+"  for(const w of j.w){\n"
+"    const n=nodes[w.id]; if(!n)continue;\n"
+"    if(revs[w.id]!==w.rev){revs[w.id]=w.rev;n.set(w);}\n"
+"  }\n"
+"}\n"
+"\n"
+"/* ---- long-poll loops ---- */\n"
+"async function frames(){\n"
+"  for(;;){\n"
+"    try{\n"
+"      const r=await fetch('/frame?k='+K+'&v='+fv);\n"
+"      if(r.status===200){\n"
+"        const w=+r.headers.get('X-W'),h=+r.headers.get('X-H'); fv=+r.headers.get('X-V');\n"
+"        const s=r.headers.get('X-Sound'),buf=new Uint8Array(await r.arrayBuffer());\n"
+"        if(w&&h&&buf.length>=w*h*3)draw(buf,w,h);\n"
+"        if(s)snd(s);\n"
+"      }else if(r.status!==204){await sleep(500);}\n"
+"    }catch(e){await sleep(500);}\n"
+"  }\n"
+"}\n"
+"async function uiloop(){\n"
+"  for(;;){\n"
+"    try{\n"
+"      const r=await fetch('/ui?k='+K+'&v='+uv);\n"
+"      if(r.status===200){const j=await r.json();uv=j.v;applyUI(j);}\n"
+"      else if(r.status!==204){await sleep(500);}\n"
+"    }catch(e){await sleep(500);}\n"
+"  }\n"
+"}\n"
+"frames(); uiloop();\n"
+"</script>\n"
+"</body></html>\n"
+"\n"
+;
+
+static int sock_send(sock_t s, const char *d, size_t n){
+  while(n){ int k = (int)send(s, d, (int)n, 0); if(k <= 0) return -1; d += k; n -= (size_t)k; }
+  return 0;
+}
+static void http_reply(sock_t s, int code, const char *ctype, const char *extra, const void *body, size_t n){
+  const char *st = code == 200 ? "OK" : code == 204 ? "No Content" : code == 403 ? "Forbidden" : "Not Found";
+  char h[900]; int l = snprintf(h, sizeof h, "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %lu\r\nCache-Control: no-store\r\nConnection: close\r\n%s\r\n",
+                                code, st, ctype, (unsigned long)n, extra ? extra : "");
+  sock_send(s, h, (size_t)l); if(n) sock_send(s, (const char *)body, n);
+}
+static int hexv(int c){ return isdigit(c) ? c - '0' : (tolower(c) - 'a' + 10); }
+static void pdec(char *s){
+  char *o = s;
+  for(; *s; s++){
+    if(*s == '%' && isxdigit((unsigned char)s[1]) && isxdigit((unsigned char)s[2])){ *o++ = (char)(hexv((unsigned char)s[1]) * 16 + hexv((unsigned char)s[2])); s += 2; }
+    else *o++ = *s;
+  }
+  *o = 0;
+}
+static int qget(const char *q, const char *k, char *out_, size_t sz){
+  size_t kl = strlen(k);
+  for(const char *p = q; p && *p; ){
+    if(!strncmp(p, k, kl) && p[kl] == '='){ p += kl + 1; size_t n = strcspn(p, "&"); if(n >= sz) n = sz - 1; memcpy(out_, p, n); out_[n] = 0; return 1; }
+    p = strchr(p, '&'); if(p) p++;
+  }
+  return 0;
+}
+static int ui_user(const char *id, const char *val, const char *sub);
+static void ui_var(const char *id, const char *val);
+static void ui_json(Buf *b);
+static void win_events(char *b){
+  while(b && *b){
+    char *e = strchr(b, ';'); if(e) *e = 0;
+    char *f[6]; int nf = 0; char *p = b;
+    while(nf < 6){ f[nf++] = p; char *c = strchr(p, ','); if(!c) break; *c = 0; p = c + 1; }
+    for(int i = 0; i < nf; i++) pdec(f[i]);
+    Ev ev; memset(&ev, 0, sizeof ev);
+    if(nf >= 2 && f[0][0]){
+      char tp = f[0][0];
+      snprintf(ev.sub, sizeof ev.sub, "%s", f[1]);
+      if(tp == 'k' && nf >= 3){ ev.kind = EV_KEY; snprintf(ev.key, sizeof ev.key, "%s", f[2]); eq_push(&ev); }
+      else if(tp == 'c' && nf >= 4){
+        ev.mx = atof(f[2]); ev.my = atof(f[3]); ev.btn = nf >= 5 ? atoi(f[4]) : 0;
+        if(!strcmp(ev.sub, "down")){ Ev cv_ = ev; cv_.kind = EV_CANVAS; eq_push(&cv_); }   /* Canvas fires on pointer down */
+        ev.kind = EV_MOUSE; eq_push(&ev);
+      }
+      else if(tp == 's'){ ev.kind = EV_START; eq_push(&ev); }
+      else if(tp == 'u' && nf >= 3){
+        ev.kind = EV_UI; snprintf(ev.id, sizeof ev.id, "%s", f[2]); if(nf >= 4) snprintf(ev.val, sizeof ev.val, "%s", f[3]);
+        ev.isnum = ui_user(ev.id, ev.val, ev.sub); eq_push(&ev);
+      }
+    }
+    b = e ? e + 1 : NULL;
+  }
+}
+static void *srv_conn(void *a){
+  sock_t s = *(sock_t *)a; free(a);
+  char *rq = xm(16384); int n = 0;
+  while(n < 16383){ int k = (int)recv(s, rq + n, 16383 - n, 0); if(k <= 0) break; n += k; rq[n] = 0; if(strstr(rq, "\r\n\r\n")) break; }
+  rq[n] = 0;
+  if(strncmp(rq, "GET ", 4) && strncmp(rq, "POST ", 5)){ http_reply(s, 404, "text/plain", NULL, "not found", 9); goto done; }
+  { char *tg = strchr(rq, ' ') + 1; char *e = strchr(tg, ' '); if(e) *e = 0;
+    char *q = strchr(tg, '?'); if(q) *q++ = 0; else q = tg + strlen(tg);
+    char k[64] = "";
+    if(!qget(q, "k", k, sizeof k) || strcmp(k, S.win.token)){ http_reply(s, 403, "text/plain", NULL, "forbidden", 9); goto done; }
+    S.win.last = now(); S.win.seen = 1;
+    if(!strcmp(tg, "/")){
+      const char *m = strstr(PAGE_HTML, "%%TOKEN%%"); size_t pl = strlen(PAGE_HTML);
+      Buf b = {0}; bcat(&b, PAGE_HTML, (int)(m - PAGE_HTML)); bs(&b, S.win.token); bcat(&b, m + 9, (int)(pl - (size_t)(m - PAGE_HTML) - 9));
+      http_reply(s, 200, "text/html; charset=utf-8", NULL, b.s, (size_t)b.n); free(b.s);
+    } else if(!strcmp(tg, "/frame")){
+      char vs[32] = "0"; qget(q, "v", vs, sizeof vs); unsigned v = (unsigned)strtoul(vs, NULL, 10);
+      double end = now() + 1.0;
+      for(;;){
+        pthread_mutex_lock(&WM);
+        int fresh = S.win.fd && S.win.fver != v;
+        if(fresh || S.win.snd[0]){
+          char sx[300]; sx[0] = 0; if(S.win.snd[0]){ snprintf(sx, sizeof sx, "X-Sound: %s\r\n", S.win.snd); S.win.snd[0] = 0; }
+          size_t bn = fresh ? (size_t)S.win.fw * S.win.fh * 3 : 0; unsigned char *cp = NULL;
+          if(fresh){ cp = xm(bn); memcpy(cp, S.win.fd, bn); }
+          char hx[420]; snprintf(hx, sizeof hx, "X-V: %u\r\nX-W: %d\r\nX-H: %d\r\n%s", S.win.fver, fresh ? S.win.fw : 0, fresh ? S.win.fh : 0, sx);
+          pthread_mutex_unlock(&WM);
+          http_reply(s, 200, "application/octet-stream", hx, cp, bn); free(cp); break;
+        }
+        pthread_mutex_unlock(&WM);
+        if(now() >= end || S.win.closed){ http_reply(s, 204, "text/plain", NULL, NULL, 0); break; }
+        usleep(4000);
+      }
+    } else if(!strcmp(tg, "/ui")){
+      char vs[32] = "0"; qget(q, "v", vs, sizeof vs); unsigned v = (unsigned)strtoul(vs, NULL, 10);
+      double end = now() + 1.0;
+      for(;;){
+        pthread_mutex_lock(&WM);
+        if(S.win.uver != v){ Buf b = {0}; ui_json(&b); pthread_mutex_unlock(&WM); http_reply(s, 200, "application/json; charset=utf-8", NULL, b.s, (size_t)b.n); free(b.s); break; }
+        pthread_mutex_unlock(&WM);
+        if(now() >= end || S.win.closed){ http_reply(s, 204, "text/plain", NULL, NULL, 0); break; }
+        usleep(8000);
+      }
+    } else if(!strcmp(tg, "/ev")){
+      size_t ql = strlen(q) + 1; char *bb = xm(ql);
+      if(qget(q, "b", bb, ql)) win_events(bb);
+      free(bb); http_reply(s, 204, "text/plain", NULL, NULL, 0);
+    } else if(!strcmp(tg, "/bye")){
+      S.win.bye = now(); http_reply(s, 204, "text/plain", NULL, NULL, 0);
+    } else http_reply(s, 404, "text/plain", NULL, "not found", 9);
+  }
+done:
+  sclose(s); free(rq); return NULL;
+}
+static void *srv_accept(void *a_){
+  (void)a_;
+  for(;;){
+    sock_t c = accept(WLS, NULL, NULL);
+    if(c == SOCK_BAD){ if(S.win.closed) break; usleep(10000); continue; }
+    sock_t *p = xm(sizeof *p); *p = c;
+    pthread_t th; pthread_attr_t at; pthread_attr_init(&at); pthread_attr_setdetachstate(&at, PTHREAD_CREATE_DETACHED);
+    if(pthread_create(&th, &at, srv_conn, p)){ sclose(c); free(p); }
+  }
+  return NULL;
+}
+/* the program stops when the browser tab is closed */
+static void *win_watch(void *a_){
+  (void)a_;
+  while(!S.win.closed){
+    usleep(300000);
+    double t = now();
+    if(S.win.seen && ((t - S.win.last > 10.0) || (S.win.bye > 0 && t - S.win.bye > 2.0 && S.win.last < S.win.bye))){ S.win.closed = 1; S.stop = 1; }
+  }
+  return NULL;
+}
+
+/* ---- events: run the On: handlers ---- */
+static int evmatch(EvH *h, const Ev *e){
+  if(h->kind != e->kind) return 0;
+  if(e->kind == EV_KEY){ int up = !strcasecmp(h->sub, "up"); return up ? !strcasecmp(e->sub, "up") : !strcasecmp(e->sub, "down"); }
+  if(e->kind == EV_MOUSE) return !strcasecmp(h->sub[0] ? h->sub : "move", e->sub);
+  if(e->kind == EV_UI) return !strcasecmp(h->id, e->id);
+  return 1;
+}
+static void setg(const char *n, Val v){ Val *p = dget(S.root->v, n); if(p){ vdrop(*p); *p = v; } else dset(S.root->v, n, v); }
+static void fire_ev(const Ev *e){
+  if(e->kind == EV_CANVAS || e->kind == EV_MOUSE){
+    setg("mx", Vn(e->mx)); setg("my", Vn(e->my));
+    if(e->kind == EV_MOUSE && strcasecmp(e->sub, "move")) setg("mb", Vn(!strcasecmp(e->sub, "down") ? (e->btn == 2 ? 2 : 1) : 0));
+  }
+  if(e->kind == EV_KEY){
+    setg("key", Vs(e->key)); Val *kd = dget(S.root->v, "keys");
+    if(kd && kd->t == T_DICT){ if(!strcasecmp(e->sub, "down")) dset(DP(*kd), e->key, Vn(1)); else dremove(DP(*kd), e->key); }
+  }
+  if(e->kind == EV_UI) ui_var(e->id, e->val);
+  for(int i = 0; i < S.nevh; i++){
+    EvH *h = &S.evh[i]; if(!evmatch(h, e)) continue;
+    Scope *volatile loc = scope_new(h->sc);
+    jmp_buf jb, *old = T->jb; T->jb = &jb;
+    if(!setjmp(jb)){ T->cur = loc; ex(h->body, loc); }
+    else { char m[1100]; snprintf(m, sizeof m, "[On] ERROR %s", T->err); out(m); T->depth = 0; }
+    T->jb = old; scope_unref(loc);
+  }
+}
+static void *ev_main(void *a_){
+  (void)a_; pthread_mutex_lock(&GIL);
+  Th th; memset(&th, 0, sizeof th); th.retv = Vu(); T = &th; jmp_buf jb; th.jb = &jb; nthreads++;
+  while(!S.stop){ Ev e; if(eq_pop(&e)) fire_ev(&e); else nap(3000); }
+  nthreads--; pthread_mutex_unlock(&GIL); return NULL;
+}
+/* bare On:Key (no window): one line typed in the terminal = one key press */
+static void *key_main(void *a_){
+  (void)a_; pthread_mutex_lock(&GIL);
+  Th th; memset(&th, 0, sizeof th); th.retv = Vu(); T = &th; jmp_buf jb; th.jb = &jb; nthreads++;
+  while(!S.stop){
+    char *line = readline_nogil(); if(!line) break;
+    Val *keys = dget(S.root->v, "keys"); if(keys && keys->t == T_DICT) dset(DP(*keys), "last", Vs(line));
+    Ev e; memset(&e, 0, sizeof e); e.kind = EV_KEY; snprintf(e.sub, sizeof e.sub, "down"); snprintf(e.key, sizeof e.key, "%s", line);
+    fire_ev(&e); { Val *kd = dget(S.root->v, "keys"); if(kd && kd->t == T_DICT) dremove(DP(*kd), e.key); } free(line);
+  }
+  S.nstdin = 0; nthreads--; pthread_mutex_unlock(&GIL); return NULL;
+}
+static void start_keys(void){
+  if(S.keythread) return; S.keythread = 1; S.nstdin = 1;
+  pthread_t th; pthread_attr_t at; pthread_attr_init(&at); pthread_attr_setdetachstate(&at, PTHREAD_CREATE_DETACHED);
+  pthread_create(&th, &at, key_main, NULL);
+}
+static void open_url(const char *u){
+  char c[700];
+#ifdef _WIN32
+  snprintf(c, sizeof c, "start \"\" \"%s\"", u);
+#elif defined(__APPLE__)
+  snprintf(c, sizeof c, "open \"%s\" >/dev/null 2>&1 &", u);
+#else
+  snprintf(c, sizeof c, "xdg-open \"%s\" >/dev/null 2>&1 &", u);
+#endif
+  if(system(c)){}
+}
+/* starts the local window server (once). Returns 0 if windows are disabled (--no-window) */
+static int win_ensure(void){
+  if(S.nowin) return 0;
+  if(S.win.on) return 1;
+#ifdef _WIN32
+  { WSADATA wd; if(WSAStartup(MAKEWORD(2, 2), &wd)) lerr("Window: could not start the network layer"); }
+#endif
+  sock_t s = socket(AF_INET, SOCK_STREAM, 0); if(s == SOCK_BAD) lerr("Window: could not create a socket");
+#ifndef _WIN32
+  { int o = 1; setsockopt(s, SOL_SOCKET, SO_REUSEADDR, (const char *)&o, sizeof o); }
+#endif
+  struct sockaddr_in a; memset(&a, 0, sizeof a); a.sin_family = AF_INET; a.sin_addr.s_addr = htonl(INADDR_LOOPBACK); a.sin_port = htons((unsigned short)S.port);
+  if(bind(s, (struct sockaddr *)&a, sizeof a) || listen(s, 16)){ sclose(s); lerr("Window: could not listen on 127.0.0.1:%d (try --port N)", S.port); }
+  socklen_t sl = sizeof a; getsockname(s, (struct sockaddr *)&a, &sl); S.win.port = ntohs(a.sin_port);
+  snprintf(S.win.token, sizeof S.win.token, "%08llx%08llx", (ull)(rnd() * 4294967296.0), (ull)(rnd() * 4294967296.0));
+  WLS = s; S.win.uver = 1; S.win.last = now(); S.win.on = 1;
+  pthread_t th; pthread_attr_t at; pthread_attr_init(&at); pthread_attr_setdetachstate(&at, PTHREAD_CREATE_DETACHED);
+  pthread_create(&th, &at, srv_accept, NULL); pthread_create(&th, &at, win_watch, NULL); pthread_create(&th, &at, ev_main, NULL);
+  char url[160]; snprintf(url, sizeof url, "http://127.0.0.1:%d/?k=%s", S.win.port, S.win.token);
+  char m[220]; snprintf(m, sizeof m, "Window: %s", url); out(m);
+  if(!S.nobrowser) open_url(url);
+  return 1;
+}
+
+/* ================================================================ option helpers shared by the libraries */
+static int oi(Stmt *x, const char *k){ for(int i = 0; i < x->no; i++) if(!strcasecmp(x->o[i].v[0], k)) return i; return -1; }
+static double od(Stmt *x, const char *k, double d){ const char *s = og(x, k); return s && *s ? evd(s) : d; }
+static Col oc(Stmt *x, const char *k, Col d){ int i = oi(x, k); return i >= 0 ? cs_(&x->o[i], 1) : d; }
+static char *os_(Stmt *x, const char *k){ const char *s = og(x, k); return s ? fm(s) : NULL; }
+static double vdot(const double *a, const double *b){ return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
+static void vcross(const double *a, const double *b, double *o){ o[0] = a[1] * b[2] - a[2] * b[1]; o[1] = a[2] * b[0] - a[0] * b[2]; o[2] = a[0] * b[1] - a[1] * b[0]; }
+static double vnorm(double *a){ double l = sqrt(vdot(a, a)); if(l > 1e-12){ a[0] /= l; a[1] /= l; a[2] /= l; } return l; }
+
+/* ================================================================ G3D / Graphics3D (same engine and commands as the web Log OS) */
+typedef struct { double (*V)[3]; int (*F)[3]; int nV, nF; } G3M;
+typedef struct { char *id; int type; double size, x, y, z, rx, ry, rz, s; Col col; } G3O;
+/* mesh types: 0 cube, 1 sphere, 2 torus, 3 pyramid */
+static struct { G3O *o; int n, cap; G3M m[4]; int init, wire; Col bg; double cam[3], tgt[3], fov, lit[3]; } G3;
+static double g3n(double *a){ double l = sqrt(vdot(a, a)); if(l == 0) l = 1; a[0] /= l; a[1] /= l; a[2] /= l; return l; }
+static void g3_build(int t){
+  G3M *m = &G3.m[t]; double h = 0.5; m->V = xm(512 * sizeof *m->V); m->F = xm(512 * sizeof *m->F); m->nV = m->nF = 0;
+#define PV(a, b, c) do{ m->V[m->nV][0] = (a); m->V[m->nV][1] = (b); m->V[m->nV][2] = (c); m->nV++; }while(0)
+#define PF(a, b, c) do{ m->F[m->nF][0] = (a); m->F[m->nF][1] = (b); m->F[m->nF][2] = (c); m->nF++; }while(0)
+  if(t == 0){
+    for(int i = 0; i < 8; i++) PV(i & 1 ? h : -h, i & 2 ? h : -h, i & 4 ? h : -h);
+    static const int Q[6][4] = {{0,1,3,2},{4,5,7,6},{0,1,5,4},{2,3,7,6},{0,2,6,4},{1,3,7,5}};
+    for(int q = 0; q < 6; q++){ PF(Q[q][0], Q[q][1], Q[q][2]); PF(Q[q][0], Q[q][2], Q[q][3]); }
+  } else if(t == 3){
+    PV(-h,-h,-h); PV(h,-h,-h); PV(h,-h,h); PV(-h,-h,h); PV(0,h,0);
+    PF(0,1,4); PF(1,2,4); PF(2,3,4); PF(3,0,4); PF(0,1,2); PF(0,2,3);
+  } else if(t == 1){
+    int a = 10, b = 16;
+    for(int i = 0; i <= a; i++) for(int j = 0; j <= b; j++){ double p = M_PI * i / a, q = 2 * M_PI * j / b; PV(h * sin(p) * cos(q), h * cos(p), h * sin(p) * sin(q)); }
+    for(int i = 0; i < a; i++) for(int j = 0; j < b; j++){ int k = i * (b + 1) + j; PF(k, k + b + 1, k + 1); PF(k + 1, k + b + 1, k + b + 2); }
+  } else {
+    double R = 0.35, r = 0.15; int a = 20, b = 10;
+    for(int i = 0; i <= a; i++) for(int j = 0; j <= b; j++){ double u = 2 * M_PI * i / a, v = 2 * M_PI * j / b; PV((R + r * cos(v)) * cos(u), r * sin(v), (R + r * cos(v)) * sin(u)); }
+    for(int i = 0; i < a; i++) for(int j = 0; j < b; j++){ int k = i * (b + 1) + j; PF(k, k + b + 1, k + 1); PF(k + 1, k + b + 1, k + b + 2); }
+  }
+#undef PV
+#undef PF
+  for(int f = 0; f < m->nF; f++){                        /* make every face point outwards */
+    double *A = m->V[m->F[f][0]], *B = m->V[m->F[f][1]], *C = m->V[m->F[f][2]];
+    double ab[3] = {B[0] - A[0], B[1] - A[1], B[2] - A[2]}, ac[3] = {C[0] - A[0], C[1] - A[1], C[2] - A[2]}, n[3]; vcross(ab, ac, n);
+    double c[3] = {(A[0] + B[0] + C[0]) / 3, (A[1] + B[1] + C[1]) / 3, (A[2] + B[2] + C[2]) / 3}, rf[3] = {c[0], c[1], c[2]};
+    if(t == 3) rf[1] += 0.25;
+    else if(t == 2){ double l = hypot(c[0], c[2]); if(l == 0) l = 1; rf[0] = c[0] - 0.35 * c[0] / l; rf[2] = c[2] - 0.35 * c[2] / l; }
+    if(vdot(n, rf) < 0){ int tmp = m->F[f][1]; m->F[f][1] = m->F[f][2]; m->F[f][2] = tmp; }
+  }
+}
+static void g3_init(void){
+  if(G3.init) return; G3.init = 1;
+  G3.cam[0] = 0; G3.cam[1] = 2; G3.cam[2] = 6; G3.fov = 60; G3.lit[0] = 3; G3.lit[1] = 5; G3.lit[2] = 4;
+  G3.bg.r = 5; G3.bg.g = 7; G3.bg.b = 22;
+  for(int t = 0; t < 4; t++) g3_build(t);
+}
+static G3O *g3_find(const char *id){ for(int i = 0; i < G3.n; i++) if(!strcmp(G3.o[i].id, id)) return &G3.o[i]; return NULL; }
+typedef struct { double x[3], y[3], z, d, sp; Col col; } G3T;
+static int g3_cmp(const void *a, const void *b){ double d = ((const G3T *)b)->z - ((const G3T *)a)->z; return d < 0 ? -1 : d > 0 ? 1 : 0; }
+static void fb_tri(FB *f, const double *x, const double *y, Col c){
+  double area = (x[1] - x[0]) * (y[2] - y[0]) - (y[1] - y[0]) * (x[2] - x[0]); if(fabs(area) < 1e-12) return;
+  int x0 = (int)floor(fmin(fmin(x[0], x[1]), x[2])), x1 = (int)ceil(fmax(fmax(x[0], x[1]), x[2]));
+  int y0 = (int)floor(fmin(fmin(y[0], y[1]), y[2])), y1 = (int)ceil(fmax(fmax(y[0], y[1]), y[2]));
+  if(x0 < 0) x0 = 0; if(y0 < 0) y0 = 0; if(x1 > f->w - 1) x1 = f->w - 1; if(y1 > f->h - 1) y1 = f->h - 1;
+  for(int j = y0; j <= y1; j++) for(int i = x0; i <= x1; i++){
+    double px = i + 0.5, py = j + 0.5;
+    double w0 = ((x[1] - px) * (y[2] - py) - (y[1] - py) * (x[2] - px)) / area, w1 = ((x[2] - px) * (y[0] - py) - (y[2] - py) * (x[0] - px)) / area, w2 = 1 - w0 - w1;
+    if(w0 >= -1e-9 && w1 >= -1e-9 && w2 >= -1e-9) fb_put(f, i, j, c);
+  }
+}
+static unsigned char clamp8(double v){ return (unsigned char)(v < 0 ? 0 : v > 255 ? 255 : v); }
+static void g3_render(void){
+  if(!S.fb) S.fb = fb_new(320, 180);
+  FB *f = S.fb; int W = f->w, H = f->h;
+  double fw[3] = {G3.tgt[0] - G3.cam[0], G3.tgt[1] - G3.cam[1], G3.tgt[2] - G3.cam[2]}; g3n(fw);
+  double up[3] = {0, 1, 0}, r[3], u[3]; vcross(fw, up, r); g3n(r); vcross(r, fw, u);
+  double F = H / 2.0 / tan(G3.fov * M_PI / 360.0), L[3] = {G3.lit[0], G3.lit[1], G3.lit[2]}; g3n(L);
+  G3T *tr = NULL; int nt = 0, ct = 0;
+  for(int oi_ = 0; oi_ < G3.n; oi_++){
+    G3O *o = &G3.o[oi_]; G3M *m = &G3.m[o->type]; double sc = o->size * o->s;
+    double cxr = cos(o->rx), sxr = sin(o->rx), cyr = cos(o->ry), syr = sin(o->ry), czr = cos(o->rz), szr = sin(o->rz);
+    double (*P)[3] = xm((size_t)(m->nV + 1) * sizeof *P);
+    for(int v = 0; v < m->nV; v++){
+      double x = m->V[v][0] * sc, y = m->V[v][1] * sc, z = m->V[v][2] * sc, t;
+      t = y * cxr - z * sxr; z = y * sxr + z * cxr; y = t;
+      t = x * cyr + z * syr; z = -x * syr + z * cyr; x = t;
+      t = x * czr - y * szr; y = x * szr + y * czr; x = t;
+      P[v][0] = x + o->x; P[v][1] = y + o->y; P[v][2] = z + o->z;
+    }
+    for(int fi = 0; fi < m->nF; fi++){
+      double *A = P[m->F[fi][0]], *B = P[m->F[fi][1]], *C = P[m->F[fi][2]];
+      double ab[3] = {B[0] - A[0], B[1] - A[1], B[2] - A[2]}, ac[3] = {C[0] - A[0], C[1] - A[1], C[2] - A[2]}, N[3]; vcross(ab, ac, N); g3n(N);
+      double M[3] = {(A[0] + B[0] + C[0]) / 3, (A[1] + B[1] + C[1]) / 3, (A[2] + B[2] + C[2]) / 3}, E[3] = {G3.cam[0] - M[0], G3.cam[1] - M[1], G3.cam[2] - M[2]}; g3n(E);
+      if(vdot(N, E) <= 0) continue;
+      G3T t; int bad = 0; double *Q3[3] = {A, B, C};
+      for(int k = 0; k < 3; k++){
+        double q[3] = {Q3[k][0] - G3.cam[0], Q3[k][1] - G3.cam[1], Q3[k][2] - G3.cam[2]}, z = vdot(q, fw);
+        if(z < 0.1){ bad = 1; break; }
+        t.x[k] = W / 2.0 + F * vdot(q, r) / z; t.y[k] = H / 2.0 - F * vdot(q, u) / z; if(k == 0) t.z = 0; t.z += z / 3;
+      }
+      if(bad) continue;
+      double Hh[3] = {L[0] + E[0], L[1] + E[1], L[2] + E[2]}; g3n(Hh);
+      t.d = 0.18 + 0.82 * fmax(0, vdot(N, L)); t.sp = 0.5 * pow(fmax(0, vdot(N, Hh)), 30); t.col = o->col;
+      if(nt == ct){ ct = ct ? ct * 2 : 256; tr = xr(tr, (size_t)ct * sizeof(G3T)); }
+      tr[nt++] = t;
+    }
+    free(P);
+  }
+  qsort(tr, (size_t)nt, sizeof(G3T), g3_cmp);                /* far to near (painter's algorithm) */
+  fb_rect(f, 0, 0, W, H, G3.bg);
+  for(int i = 0; i < nt; i++){
+    G3T *t = &tr[i]; Col c = {clamp8(floor(t->col.r * t->d + 255 * t->sp)), clamp8(floor(t->col.g * t->d + 255 * t->sp)), clamp8(floor(t->col.b * t->d + 255 * t->sp))};
+    if(!G3.wire) fb_tri(f, t->x, t->y, c);
+    for(int k = 0; k < 3; k++){ int k2 = (k + 1) % 3; fb_line(f, (ll)lround(t->x[k]), (ll)lround(t->y[k]), (ll)lround(t->x[k2]), (ll)lround(t->y[k2]), c); }
+  }
+  free(tr);
+}
+static void do_g3d(Stmt *x){
+  win_ensure(); g3_init();
+  char op[32]; snprintf(op, sizeof op, "%s", hw_(x, 1)); for(char *c = op; *c; c++) *c = (char)tolower((unsigned char)*c);
+  if(!strcmp(op, "render")){ g3_render(); return; }
+  if(!strcmp(op, "clear")){ for(int i = 0; i < G3.n; i++) free(G3.o[i].id); G3.n = 0; return; }
+  if(!strcmp(op, "scene")){
+    int i = oi(x, "bg"); if(i >= 0) G3.bg = cs_(&x->o[i], 1);
+    const char *m = og(x, "mode"); if(m) G3.wire = !strcasecmp(m, "wire");
+    double fv = od(x, "fov", 0); if(fv) G3.fov = fv;
+    if(!S.fb) S.fb = fb_new(320, 180);
+    return;
+  }
+  if(!strcmp(op, "camera")){
+    G3.cam[0] = od(x, "x", G3.cam[0]); G3.cam[1] = od(x, "y", G3.cam[1]); G3.cam[2] = od(x, "z", G3.cam[2]);
+    G3.tgt[0] = od(x, "tx", G3.tgt[0]); G3.tgt[1] = od(x, "ty", G3.tgt[1]); G3.tgt[2] = od(x, "tz", G3.tgt[2]); G3.fov = od(x, "fov", G3.fov); return;
+  }
+  if(!strcmp(op, "light")){ G3.lit[0] = od(x, "x", G3.lit[0]); G3.lit[1] = od(x, "y", G3.lit[1]); G3.lit[2] = od(x, "z", G3.lit[2]); return; }
+  static const char *SH[] = {"cube", "sphere", "torus", "pyramid", NULL}; int ty = -1;
+  for(int i = 0; SH[i]; i++) if(!strcmp(op, SH[i])) ty = i;
+  const char *id = og(x, "id"); if(!id || !*id) lerr("G3D: Id is missing, for example \"Id;box\"");
+  if(!strcmp(op, "set")){
+    G3O *o = g3_find(id); if(!o) lerr("G3D: object does not exist %s", id);
+    o->x = od(x, "x", o->x); o->y = od(x, "y", o->y); o->z = od(x, "z", o->z); o->rx = od(x, "rx", o->rx); o->ry = od(x, "ry", o->ry); o->rz = od(x, "rz", o->rz); o->s = od(x, "s", o->s);
+    int ci = oi(x, "color"); if(ci >= 0) o->col = cs_(&x->o[ci], 1);
+    return;
+  }
+  if(ty < 0) lerr("Unknown G3D operation: %s\n  -> Valid: cube, sphere, torus, pyramid, set, render, clear, scene, camera, light", hw_(x, 1));
+  G3O no; memset(&no, 0, sizeof no); no.type = ty; no.size = od(x, "size", 1); no.x = od(x, "x", 0); no.y = od(x, "y", 0); no.z = od(x, "z", 0);
+  no.rx = od(x, "rx", 0); no.ry = od(x, "ry", 0); no.rz = od(x, "rz", 0); no.s = 1; no.col.r = 74; no.col.g = 163; no.col.b = 255;
+  int ci = oi(x, "color"); if(ci >= 0) no.col = cs_(&x->o[ci], 1);
+  G3O *o = g3_find(id);
+  if(o){ no.id = o->id; *o = no; }
+  else { if(G3.n == G3.cap){ G3.cap = G3.cap ? G3.cap * 2 : 16; G3.o = xr(G3.o, (size_t)G3.cap * sizeof(G3O)); } no.id = xs(id); G3.o[G3.n++] = no; }
+}
+
+/* ================================================================ Dyn2D (2DDynamics): sprites, physics, tweens, collisions */
+typedef struct { int p; double from, to, t0, dur; int ease; } Tw;
+typedef struct { char *id; int shape, layer, vis, bounds, seq, ntw, tsz; double x, y, w, h, r, vx, vy, ax, ay, bounce; Col col; char *text; Tw tw[4]; } Sp;
+static struct { Sp *s; int n, cap, seq; } D2;
+static const char *SPN[] = {"x", "y", "w", "h", "r", "vx", "vy", "ax", "ay", "bounce", NULL};
+static double *sp_pi(Sp *s, int i){ double *P[] = {&s->x, &s->y, &s->w, &s->h, &s->r, &s->vx, &s->vy, &s->ax, &s->ay, &s->bounce}; return P[i]; }
+static int sp_pidx(const char *p){ for(int i = 0; SPN[i]; i++) if(!strcasecmp(p, SPN[i])) return i; return -1; }
+static Sp *sp_find(const char *id){ for(int i = 0; i < D2.n; i++) if(!strcmp(D2.s[i].id, id)) return &D2.s[i]; return NULL; }
+static void sp_box(Sp *s, double *l, double *t, double *r, double *b){
+  if(s->shape == 1){ *l = s->x - s->r; *t = s->y - s->r; *r = s->x + s->r; *b = s->y + s->r; }
+  else if(s->shape == 2){ int sc = s->tsz / 8; if(sc < 1) sc = 1; *l = s->x; *t = s->y; *r = s->x + (s->text ? (double)strlen(s->text) : 0) * 4 * sc; *b = s->y + 5 * sc; }
+  else { *l = s->x; *t = s->y; *r = s->x + s->w; *b = s->y + s->h; }
+}
+static int sp_hit(Sp *a, Sp *b){
+  if(a->shape == 1 && b->shape == 1){ double dx = a->x - b->x, dy = a->y - b->y, rr = a->r + b->r; return dx * dx + dy * dy <= rr * rr; }
+  if(a->shape == 1 || b->shape == 1){
+    Sp *c = a->shape == 1 ? a : b, *o = c == a ? b : a; double l, t, r, bt; sp_box(o, &l, &t, &r, &bt);
+    double qx = fmax(l, fmin(c->x, r)), qy = fmax(t, fmin(c->y, bt)), dx = c->x - qx, dy = c->y - qy; return dx * dx + dy * dy <= c->r * c->r;
+  }
+  double l1, t1, r1, b1, l2, t2, r2, b2; sp_box(a, &l1, &t1, &r1, &b1); sp_box(b, &l2, &t2, &r2, &b2);
+  return l1 < r2 && l2 < r1 && t1 < b2 && t2 < b1;
+}
+static int sp_pt(Sp *s, double px, double py){
+  if(s->shape == 1){ double dx = px - s->x, dy = py - s->y; return dx * dx + dy * dy <= s->r * s->r; }
+  double l, t, r, b; sp_box(s, &l, &t, &r, &b); return px >= l && px <= r && py >= t && py <= b;
+}
+static void sp_apply(Stmt *x, Sp *s){
+  for(int i = 0; SPN[i]; i++){ double *p = sp_pi(s, i); *p = od(x, SPN[i], *p); }
+  const char *sh = og(x, "shape");
+  if(sh && *sh){ s->shape = !strcasecmp(sh, "rect") ? 0 : !strcasecmp(sh, "circle") ? 1 : !strcasecmp(sh, "text") ? 2 : (lerr("Dyn2D: Shape must be rect, circle or text"), 0); }
+  s->col = oc(x, "color", s->col); s->layer = (int)od(x, "layer", s->layer); s->tsz = (int)od(x, "size", s->tsz);
+  const char *v = og(x, "visible"); if(v && *v) s->vis = evi(v) != 0;
+  v = og(x, "bounds"); if(v && *v) s->bounds = evi(v) != 0;
+  char *tx = os_(x, "text"); if(tx){ free(s->text); s->text = tx; }
+}
+static double ease_(int e, double p){ return e == 1 ? p * p : e == 2 ? 1 - (1 - p) * (1 - p) : e == 3 ? (p < 0.5 ? 2 * p * p : 1 - 2 * (1 - p) * (1 - p)) : p; }
+static void do_dyn(Stmt *x){
+  win_ensure();
+  char op[32]; snprintf(op, sizeof op, "%s", hw_(x, 1)); for(char *c = op; *c; c++) *c = (char)tolower((unsigned char)*c);
+  const char *id = og(x, "id");
+  if(!strcmp(op, "sprite")){
+    if(!id || !*id) lerr("Dyn2D:Sprite needs Id");
+    Sp *s = sp_find(id);
+    if(!s){
+      if(D2.n == D2.cap){ D2.cap = D2.cap ? D2.cap * 2 : 16; D2.s = xr(D2.s, (size_t)D2.cap * sizeof(Sp)); }
+      s = &D2.s[D2.n++]; memset(s, 0, sizeof *s); s->id = xs(id); s->w = s->h = 10; s->r = 5; s->bounce = 1; s->vis = 1; s->tsz = 8; s->seq = D2.seq++;
+      s->col.r = s->col.g = s->col.b = 255;
+    }
+    sp_apply(x, s);
+  } else if(!strcmp(op, "set")){
+    Sp *s = id ? sp_find(id) : NULL; if(!s) lerr("Dyn2D: sprite not found: %s", id ? id : "(no Id)"); sp_apply(x, s);
+  } else if(!strcmp(op, "remove")){
+    Sp *s = id ? sp_find(id) : NULL; if(!s) lerr("Dyn2D: sprite not found: %s", id ? id : "(no Id)");
+    free(s->id); free(s->text); memmove(s, s + 1, (size_t)(D2.s + D2.n - 1 - s) * sizeof(Sp)); D2.n--;
+  } else if(!strcmp(op, "clear")){
+    for(int i = 0; i < D2.n; i++){ free(D2.s[i].id); free(D2.s[i].text); } D2.n = 0;
+  } else if(!strcmp(op, "tween")){
+    Sp *s = id ? sp_find(id) : NULL; if(!s) lerr("Dyn2D: sprite not found: %s", id ? id : "(no Id)");
+    const char *pr = og(x, "prop"); int pi = pr ? sp_pidx(pr) : -1; if(pi < 0) lerr("Dyn2D:Tween needs Prop (x, y, w, h, r, vx, vy, ax, ay or bounce)");
+    const char *ez = og(x, "ease"); int ea = !ez ? 0 : !strcasecmp(ez, "in") ? 1 : !strcasecmp(ez, "out") ? 2 : !strcasecmp(ez, "inout") ? 3 : 0;
+    double to = od(x, "to", *sp_pi(s, pi)), from = od(x, "from", *sp_pi(s, pi)), ms = od(x, "ms", 1000); if(ms < 1) ms = 1;
+    int k = -1; for(int i = 0; i < s->ntw; i++) if(s->tw[i].p == pi) k = i;
+    if(k < 0){ if(s->ntw >= 4) lerr("Dyn2D: too many tweens on one sprite (max 4)"); k = s->ntw++; }
+    s->tw[k].p = pi; s->tw[k].from = from; s->tw[k].to = to; s->tw[k].t0 = now(); s->tw[k].dur = ms; s->tw[k].ease = ea; *sp_pi(s, pi) = from;
+  } else if(!strcmp(op, "step")){
+    double dt = od(x, "dt", 1), tn = now(); int W = S.fb ? S.fb->w : 320, H = S.fb ? S.fb->h : 180;
+    for(int i = 0; i < D2.n; i++){
+      Sp *s = &D2.s[i];
+      for(int k = 0; k < s->ntw; ){
+        Tw *w = &s->tw[k]; double p = (tn - w->t0) * 1000.0 / w->dur; int done = p >= 1; if(done) p = 1;
+        *sp_pi(s, w->p) = w->from + (w->to - w->from) * ease_(w->ease, p);
+        if(done){ memmove(w, w + 1, (size_t)(s->ntw - k - 1) * sizeof(Tw)); s->ntw--; } else k++;
+      }
+      s->vx += s->ax * dt; s->vy += s->ay * dt; s->x += s->vx * dt; s->y += s->vy * dt;
+      if(s->bounds){
+        double l, t, r, b; sp_box(s, &l, &t, &r, &b);
+        if(l < 0){ s->x -= l; s->vx = -s->vx * s->bounce; } if(r > W){ s->x -= r - W; s->vx = -s->vx * s->bounce; }
+        if(t < 0){ s->y -= t; s->vy = -s->vy * s->bounce; } if(b > H){ s->y -= b - H; s->vy = -s->vy * s->bounce; }
+      }
+    }
+  } else if(!strcmp(op, "draw")){
+    if(!S.fb) S.fb = fb_new(320, 180);
+    int ci = oi(x, "clear"); if(ci >= 0) fb_rect(S.fb, 0, 0, S.fb->w, S.fb->h, cs_(&x->o[ci], 1));
+    int *ord = xm((size_t)(D2.n + 1) * sizeof(int)); for(int i = 0; i < D2.n; i++) ord[i] = i;
+    for(int i = 1; i < D2.n; i++){ int v = ord[i], j = i - 1; while(j >= 0 && (D2.s[ord[j]].layer > D2.s[v].layer || (D2.s[ord[j]].layer == D2.s[v].layer && D2.s[ord[j]].seq > D2.s[v].seq))){ ord[j + 1] = ord[j]; j--; } ord[j + 1] = v; }
+    for(int i = 0; i < D2.n; i++){
+      Sp *s = &D2.s[ord[i]]; if(!s->vis) continue;
+      if(s->shape == 1) fb_circle(S.fb, (ll)lround(s->x), (ll)lround(s->y), (ll)lround(s->r), s->col, 1);
+      else if(s->shape == 2){ int sc = s->tsz / 8; if(sc < 1) sc = 1; fb_text(S.fb, (ll)lround(s->x), (ll)lround(s->y), s->text ? s->text : "", s->col, sc); }
+      else fb_rect(S.fb, (ll)lround(s->x), (ll)lround(s->y), (ll)lround(s->w), (ll)lround(s->h), s->col);
+    }
+    free(ord);
+  } else if(!strcmp(op, "hit")){
+    const char *ia = og(x, "a"), *ib = og(x, "b"); Sp *a = ia ? sp_find(ia) : NULL; if(!a) lerr("Dyn2D:Hit: sprite not found: %s", ia ? ia : "(no A)");
+    int r;
+    if(ib){ Sp *b = sp_find(ib); if(!b) lerr("Dyn2D:Hit: sprite not found: %s", ib); r = sp_hit(a, b); }
+    else if(og(x, "x") && og(x, "y")) r = sp_pt(a, od(x, "x", 0), od(x, "y", 0));
+    else lerr("Dyn2D:Hit needs B, or X and Y for a point test");
+    into(x, Vn(r));
+  } else if(!strcmp(op, "get")){
+    Sp *s = id ? sp_find(id) : NULL; if(!s) lerr("Dyn2D: sprite not found: %s", id ? id : "(no Id)");
+    const char *pr = og(x, "prop"); int pi = pr ? sp_pidx(pr) : -1; if(pi < 0) lerr("Dyn2D:Get needs Prop");
+    into(x, Vn(*sp_pi(s, pi)));
+  } else lerr("Dyn2D: unknown operation: %s (use Sprite, Set, Remove, Clear, Tween, Step, Draw, Hit or Get)", hw_(x, 1));
+}
+
+/* ================================================================ UI (UIVisuals): Button, Label, Slider, Check, TextBox, Set, Clear */
+enum { UW_BUTTON, UW_LABEL, UW_SLIDER, UW_CHECK, UW_TEXTBOX };
+static const char *UWN[] = {"button", "label", "slider", "check", "textbox", NULL};
+typedef struct { char *id, *text, *val; int type; double mn, mx; unsigned rev; Scope *sc; } UW;
+static struct { UW *w; int n, cap; } UI;
+static UW *ui_find(const char *id){ for(int i = 0; i < UI.n; i++) if(!strcmp(UI.w[i].id, id)) return &UI.w[i]; return NULL; }
+static void ui_json(Buf *b){                                /* caller holds WM */
+  Val root = Vd(); Dict *D = DP(root); dset(D, "v", Vn(S.win.uver));
+  Val l = Vl();
+  for(int i = 0; i < UI.n; i++){
+    UW *w = &UI.w[i]; Val d = Vd(); Dict *E = DP(d);
+    dset(E, "id", Vs(w->id)); dset(E, "t", Vs(UWN[w->type])); dset(E, "text", Vs(w->text)); dset(E, "val", Vs(w->val));
+    dset(E, "min", Vn(w->mn)); dset(E, "max", Vn(w->mx)); dset(E, "rev", Vn(w->rev));
+    lpush(LP(l), d);
+  }
+  dset(D, "w", l); jdump(b, root); vdrop(root);
+}
+/* called by the server thread when the user edits a widget */
+static int ui_user(const char *id, const char *val, const char *sub){
+  (void)sub; int num = 0; pthread_mutex_lock(&WM);
+  UW *w = ui_find(id);
+  if(w){ num = w->type == UW_SLIDER || w->type == UW_CHECK; if(w->type != UW_BUTTON && w->type != UW_LABEL){ free(w->val); w->val = xs(val); } }
+  pthread_mutex_unlock(&WM); return num;
+}
+/* runs in the event thread: the widget value becomes the variable named like its Id */
+static void ui_var(const char *id, const char *val){
+  pthread_mutex_lock(&WM); UW *w = ui_find(id); Scope *sc = w ? w->sc : NULL; int ty = w ? w->type : -1; pthread_mutex_unlock(&WM);
+  if(!sc || ty == UW_BUTTON || ty == UW_LABEL) return;
+  dset(sc->v, id, ty == UW_TEXTBOX ? Vs(val) : Vn(atof(val)));
+}
+static int ui_ident(const char *s){ if(!(isalpha((unsigned char)*s) || *s == '_')) return 0; for(; *s; s++) if(!(isalnum((unsigned char)*s) || *s == '_')) return 0; return 1; }
+static void ui_free(UW *w){ free(w->id); free(w->text); free(w->val); }
+static void do_ui(Stmt *x, Scope *sc){
+  if(!win_ensure()) lerr("UI: the window is disabled (--no-window)");
+  char op[32]; snprintf(op, sizeof op, "%s", hw_(x, 1)); for(char *c = op; *c; c++) *c = (char)tolower((unsigned char)*c);
+  if(!strcmp(op, "clear")){
+    pthread_mutex_lock(&WM); for(int i = 0; i < UI.n; i++) ui_free(&UI.w[i]); UI.n = 0; S.win.uver++; pthread_mutex_unlock(&WM); return;
+  }
+  const char *id = og(x, "id"); if(!id || !ui_ident(id)) lerr("UI: a valid Id is missing, for example \"Id;button1\"");
+  const char *lb0 = og(x, "label"); if(!lb0) lb0 = og(x, "text");
+  char *lb = fm(lb0 ? lb0 : "");
+  if(!strcmp(op, "set")){
+    UW *w = ui_find(id); if(!w) lerr("UI: widget does not exist %s", id);
+    const char *v = og(x, "value"), *tx = og(x, "text"); char *ntx = tx ? fm(tx) : NULL, *nv = NULL; Val vv = Vu();
+    if(v && (w->type == UW_SLIDER || w->type == UW_CHECK || w->type == UW_TEXTBOX)){
+      vv = ev(v);
+      if(w->type == UW_CHECK) nv = xs(truthy(vv) ? "1" : "0"); else nv = jstr(vv);
+    }
+    pthread_mutex_lock(&WM);
+    if(ntx){ free(w->text); w->text = ntx; } if(nv){ free(w->val); w->val = nv; }
+    w->rev++; S.win.uver++; pthread_mutex_unlock(&WM);
+    if(nv) dset(sc->v, id, vv);
+    free(lb); return;
+  }
+  int ty = -1; for(int i = 0; UWN[i]; i++) if(!strcmp(op, UWN[i])) ty = i;
+  if(ty < 0){ free(lb); lerr("UI: unknown widget: %s (Button, Label, Slider, Check, TextBox, Set, Clear)", hw_(x, 1)); }
+  double mn = 0, mx = 100; char *val = xs(""); Val vv = Vu();
+  if(ty == UW_SLIDER){
+    mn = od(x, "min", 0); mx = od(x, "max", 100); const char *v = og(x, "value");
+    double d = v ? evd(v) : mn; vv = Vn(d); Buf b = {0}; fmtnum(&b, d); free(val); val = btake(&b);
+  } else if(ty == UW_CHECK){
+    const char *v = og(x, "value"); double d = v ? evd(v) : 0; vv = Vn(d); free(val); val = xs(d != 0 ? "1" : "0");
+  } else if(ty == UW_TEXTBOX){
+    char *v = os_(x, "value"); free(val); val = v ? v : xs(""); vv = Vs(val);
+  }
+  if(ty == UW_BUTTON && !*lb){ free(lb); lb = xs(id); }
+  pthread_mutex_lock(&WM);
+  UW *old = ui_find(id); if(old){ ui_free(old); memmove(old, old + 1, (size_t)(UI.w + UI.n - 1 - old) * sizeof(UW)); UI.n--; }
+  if(UI.n == UI.cap){ UI.cap = UI.cap ? UI.cap * 2 : 16; UI.w = xr(UI.w, (size_t)UI.cap * sizeof(UW)); }
+  UW *w = &UI.w[UI.n++]; memset(w, 0, sizeof *w); w->id = xs(id); w->text = lb; w->val = val; w->type = ty; w->mn = mn; w->mx = mx; w->rev = 1; w->sc = sc;
+  S.win.uver++; pthread_mutex_unlock(&WM);
+  scope_ref(sc);
+  if(ty == UW_SLIDER || ty == UW_CHECK || ty == UW_TEXTBOX) dset(sc->v, id, vv);
+}
+
+/* ================================================================ libraries: built-in ones + Log libraries found on disk */
+static const char *LEXT[] = {".log+", ".log-", ".log++", ".logall", NULL};
+static int file_ok(const char *p){ struct stat st; return !stat(p, &st) && S_ISREG(st.st_mode); }
+static char *exe_dir(void){
+  char buf[4096]; buf[0] = 0;
+#ifdef _WIN32
+  { DWORD n = GetModuleFileNameA(NULL, buf, sizeof buf); if(!n || n >= sizeof buf) buf[0] = 0; }
+#elif defined(__APPLE__)
+  { uint32_t sz = sizeof buf; if(_NSGetExecutablePath(buf, &sz)) buf[0] = 0; }
+#else
+  { ssize_t n = readlink("/proc/self/exe", buf, sizeof buf - 1); if(n > 0) buf[n] = 0; else buf[0] = 0; }
+#endif
+  if(!buf[0] && S.argv0) snprintf(buf, sizeof buf, "%s", S.argv0);
+  fixslash(buf); char *d = pdirname(buf); if(!*d){ free(d); d = xs("."); } return d;
+}
+/* directories searched for libraries: 1 = relative to the program root, 0 = absolute */
+static void lib_dirs(SV *dirs, SV *rel){
+  svp(dirs, xs("libs")); svp(rel, xs("1")); svp(dirs, xs(".")); svp(rel, xs("1"));
+  char *ed = exe_dir(); Buf b = {0}; bs(&b, ed); bs(&b, "/libs"); svp(dirs, btake(&b)); svp(rel, xs("0")); svp(dirs, ed); svp(rel, xs("0"));
+  const char *env = getenv("LOGL_LIBS");
+  if(env && *env){
+#ifdef _WIN32
+    const char dl = ';';
+#else
+    const char dl = ':';
+#endif
+    char *cp = xs(env); char *p = cp;
+    while(p){ char *e = strchr(p, dl); if(e) *e = 0; if(*p){ char *q = xs(p); fixslash(q); svp(dirs, q); svp(rel, xs("0")); } p = e ? e + 1 : NULL; }
+    free(cp);
+  }
+}
+static char *find_lib(const char *name){
+  SV dirs = {0}, rel = {0}; lib_dirs(&dirs, &rel);
+  for(int i = 0; i < dirs.n; i++) for(int j = 0; LEXT[j]; j++){
+    Buf b = {0}; bs(&b, dirs.v[i]); bc(&b, '/'); bs(&b, name); bs(&b, LEXT[j]); char *cand = btake(&b);
+    char *probe = rel.v[i][0] == '1' ? pjoin(S.root_dir, cand) : xs(cand);
+    int ok = file_ok(probe); free(probe);
+    if(ok) return cand;
+    free(cand);
+  }
+  return NULL;
+}
+static int is_builtin_lib(const char *name){
+  char lo[128]; snprintf(lo, sizeof lo, "%s", name); for(char *c = lo; *c; c++) *c = (char)tolower((unsigned char)*c);
+  return !strcmp(lo, "g3d") || !strcmp(lo, "graphics3d") || !strcmp(lo, "2ddynamics") || !strcmp(lo, "dyn2d") || !strcmp(lo, "ui") || !strcmp(lo, "uivisuals") || !strcmp(lo, "storage");
+}
+static int use_lib(Scope *sc, const char *name){
+  char m[300];
+  if(is_builtin_lib(name)){ win_ensure(); snprintf(m, sizeof m, "[lib] %s loaded from silicon", name); out(m); return ST_OK; }
+  char *f = find_lib(name);
+  if(!f){ snprintf(m, sizeof m, "[lib] WARNING: library '%s' not found (looked in libs/, the program folder, <logl folder>/libs and LOGL_LIBS)", name); out(m); return ST_OK; }
+  SL *nodes = load(f, "host"); Scope *top = stop_(sc);
+  reg_defs(nodes, top, top); char *p0 = S.path; S.path = pdirname(f);
+  int st = ex(nodes, sc); S.path = p0; return st;
+}
+static int pkg_cmd(int argc, char **argv){
+  static const struct { const char *n, *alias, *d; } CAT[] = {
+    {"Graphics3D", "G3D", "Software 3D engine: cube, sphere, torus and pyramid, camera with lookAt, light with shininess, hidden faces and depth sorting. Log+ and Log- (Log++ has no screen)."},
+    {"UIVisuals", "UI", "Buttons, labels, sliders, checkboxes and text boxes. Log+ and #+ lines of mixed files only."},
+    {"Storage", "", "Save and load data between runs with Store:Save and Store:Load. All variants."},
+    {"2DDynamics", "Dyn2D", "2D graphics: all the classic Screen:* commands plus Dyn2D: sprites, physics, tweens and collisions (Dyn2D is new: not in the web Log OS)."},
+    {NULL, NULL, NULL}};
+  const char *sub = argc > 2 ? argv[2] : "list", *name = argc > 3 ? argv[3] : NULL;
+  if(!strcmp(sub, "list")){
+    for(int i = 0; CAT[i].n; i++) printf("[built in] %s%s%s%s\n   %s\n", CAT[i].n, *CAT[i].alias ? " (" : "", CAT[i].alias, *CAT[i].alias ? ")" : "", CAT[i].d);
+    S.root_dir = xs("."); SV dirs = {0}, rel = {0}; lib_dirs(&dirs, &rel); int any = 0;
+    for(int i = 0; i < dirs.n; i++){
+      if(!strcmp(dirs.v[i], ".")) continue;
+      char *p = rel.v[i][0] == '1' ? pjoin(S.root_dir, dirs.v[i]) : xs(dirs.v[i]); DIR *d = opendir(p);
+      if(d){ struct dirent *e; while((e = readdir(d))){ size_t l = strlen(e->d_name);
+          for(int j = 0; LEXT[j]; j++){ size_t el = strlen(LEXT[j]); if(l > el && !strcmp(e->d_name + l - el, LEXT[j])){ if(!any){ puts("Libraries found on disk:"); any = 1; } printf("  %.*s   (%s/%s)\n", (int)(l - el), e->d_name, p, e->d_name); } } }
+        closedir(d); }
+      free(p);
+    }
+    if(!any) puts("Your own libraries: put NAME.log+ in a 'libs' folder (next to your program or next to logl) and use it with  Use:NAME");
+    return 0;
+  }
+  if((!strcmp(sub, "install") || !strcmp(sub, "remove") || !strcmp(sub, "info")) && name){
+    for(int i = 0; CAT[i].n; i++) if(!strcasecmp(name, CAT[i].n) || (*CAT[i].alias && !strcasecmp(name, CAT[i].alias))){
+      if(!strcmp(sub, "info")) printf("%s: %s\n", CAT[i].n, CAT[i].d);
+      else if(!strcmp(sub, "install")) printf("%s is built in: nothing to install\n", CAT[i].n);
+      else printf("%s is built in and cannot be removed\n", CAT[i].n);
+      return 0;
+    }
+    if(!strcmp(sub, "install")){ char *ed = exe_dir(); printf("To add the library '%s': copy %s.log+ into a 'libs' folder next to your program, or into %s/libs\nthen use it in your code with  Use:%s\n", name, name, ed, name); return 0; }
+    printf("package not found: %s. Use: pkg list\n", name); return 1;
+  }
+  puts("usage: logl pkg list | install <name> | remove <name> | info <name>"); return 1;
+}
+
 /* ---------------------------------------------------------------- ejecucion */
 static int lp(SL *b, Scope *sc){ /* 0 sigue, -1 break consumido, >0 propagar */
   int st = ex(b, sc);
@@ -1593,7 +2486,7 @@ static int ex(SL *ns, Scope *sc){
   for(int i = 0; i < ns->n; i++){
     Stmt *x = ns->v[i];
     if(chk_stop()) return ST_STOP;
-    if(nthreads && ((++T->tick) & 127) == 0) gil_yield();
+    if(nthreads && ((++T->tick) & 127) == 0){ if(S.win.on) present_maybe(); gil_yield(); }
     T->cur = sc;
     jmp_buf jb, *old = T->jb; T->jb = &jb; int st;
     if(!setjmp(jb)){ st = one(x, sc); T->jb = old; }
@@ -1611,7 +2504,6 @@ static int sleep_stmt(double ms){ return sleep_ms(ms, 0); }
 
 static int one(Stmt *x, Scope *sc){
   int k = x->kw; SV *h = &x->h; T->cur = sc;
-  if(k == K_ui || k == K_g3d) lerr("%s is not supported yet", h->v[0]);
   switch(k){
   case K_use:
     if(x->q.n){
@@ -1620,14 +2512,15 @@ static int one(Stmt *x, Scope *sc){
       char *fr = lowerdup(fr0); SL *nodes = load(f, fr); Scope *top = stop_(sc);
       reg_defs(nodes, top, top); char *p0 = S.path; S.path = pdirname(f);
       int st = ex(nodes, sc); S.path = p0; return st;
-    } else { char m[256]; snprintf(m, sizeof m, "[lib] %s loaded", h->n > 1 ? h->v[1] : ""); out(m); }
+    } else return use_lib(sc, h->n > 1 ? h->v[1] : "");
     break;
   case K_print: { char *s = fm(x->q.n ? x->q.v[0] : ""); out(s); free(s); break; }
   case K_serial: { const char *q = x->q.n ? x->q.v[0] : ""; if(!strncasecmp(q, "write;", 6)) q += 6; char *s = fm(q); out(s); free(s); break; }
   case K_sound: {
     const char *fq = NULL, *ms = NULL;
     for(int i = 0; i < x->no; i++){ if(!strcasecmp(x->o[i].v[0], "freq") && x->o[i].n > 1) fq = x->o[i].v[1]; if(!strcasecmp(x->o[i].v[0], "ms") && x->o[i].n > 1) ms = x->o[i].v[1]; }
-    Val f = ev(fq ? fq : "440"), m = ev(ms ? ms : "200"); char *a = jstr(f), *b = jstr(m); char t[256]; snprintf(t, sizeof t, "\a[sound %s Hz, %s ms]", a, b); out(t);
+    Val f = ev(fq ? fq : "440"), m = ev(ms ? ms : "200"); char *a = jstr(f), *b = jstr(m);
+    if(S.win.on) win_sound(tonum(f), tonum(m)); else { char t[256]; snprintf(t, sizeof t, "\a[sound %s Hz, %s ms]", a, b); out(t); }
     double d = tonum(m); free(a); free(b); vdrop(f); vdrop(m); if(sleep_stmt(d)) return ST_STOP; break;
   }
   case K_var: case K_set: do_vs(x, k, sc); break;
@@ -1718,6 +2611,9 @@ static int one(Stmt *x, Scope *sc){
     }
     free(pq); break;
   }
+  case K_g3d: case K_graphics3d: do_g3d(x); break;
+  case K_ui: do_ui(x, sc); break;
+  case K_dyn2d: do_dyn(x); break;
   case K_console: do_console(x, sc); break;
   case K_sys: {
     into_need(x); Val d = Vd(); Dict *D = DP(d);
@@ -1808,8 +2704,19 @@ static int one(Stmt *x, Scope *sc){
   case K_on: {
     const char *nm = hw_(x, 1);
     if(!strcasecmp(nm, "timer")){ const char *ev_ = og(x, "every"); ll ms = evi(ev_ && *ev_ ? ev_ : "1000"); if(ms < 10) ms = 10; S.tid++; char id[64]; snprintf(id, sizeof id, "timer#%d", S.tid); scope_ref(sc); start_task(id, &x->body, sc, 0, (int)ms); }
-    else if(!strcasecmp(nm, "key")){ if(S.nkeyh >= 32) lerr("Too many On:Key handlers"); scope_ref(sc); S.keyh[S.nkeyh].body = &x->body; S.keyh[S.nkeyh].sc = sc; S.nkeyh++; start_keys(); }
-    else lerr("On: event not supported in console: %s (use Timer or Key)", nm);
+    else {
+      const char *a0 = x->no && x->o[0].n == 1 ? x->o[0].v[0] : "";
+      int kind; char hid[64] = "";
+      if(!strcasecmp(nm, "key")) kind = EV_KEY; else if(!strcasecmp(nm, "mouse")) kind = EV_MOUSE; else if(!strcasecmp(nm, "canvas")) kind = EV_CANVAS;
+      else if(!strcasecmp(nm, "start_button")) kind = EV_START; else { kind = EV_UI; snprintf(hid, sizeof hid, "%s", nm); }
+      if(S.nevh >= 64) lerr("Too many event handlers");
+      EvH *eh = &S.evh[S.nevh]; memset(eh, 0, sizeof *eh); eh->kind = kind; eh->body = &x->body; eh->sc = sc;
+      snprintf(eh->id, sizeof eh->id, "%s", hid);
+      if(kind == EV_KEY || kind == EV_MOUSE) snprintf(eh->sub, sizeof eh->sub, "%s", a0);
+      scope_ref(sc); S.nevh++;
+      int w = (kind != EV_KEY || eh->sub[0] || S.win.on) ? win_ensure() : 0;
+      if(!w && kind == EV_KEY) start_keys();
+    }
     break;
   }
   case K_proc: {
@@ -1861,13 +2768,13 @@ static int one(Stmt *x, Scope *sc){
 }
 
 /* ---------------------------------------------------------------- arranque */
-static int alive_events(void){ if(S.nkeyh) return 1; for(int i = 0; i < S.ntasks; i++) if(S.tasks[i]->on) return 1; return 0; }
+static int alive_events(void){ if(S.win.on && !S.win.closed) return 1; if(S.nstdin) return 1; for(int i = 0; i < S.ntasks; i++) if(S.tasks[i]->on) return 1; return 0; }
 static void halt_all(void){ S.stop = 1; for(int i = 0; i < S.ntasks; i++) S.tasks[i]->stop = 1; }
 static void wait_events(void){
-  if(alive_events() && !S.stop){ out("Waiting for events (Ctrl+C to exit)"); while(alive_events() && !S.stop) nap(50000); }
+  if(alive_events() && !S.stop){ out(S.win.on ? "Window open: close the browser tab or press Ctrl+C to exit" : "Waiting for events (Ctrl+C to exit)"); while(alive_events() && !S.stop) nap(50000); }
 }
 static void finish_run(void){
-  halt_all(); nap(50000);
+  present(); halt_all(); nap(50000);
   if(S.show_end && S.fb){ char *r = fb_render(S.fb, S.ansi); out(r); free(r); }
   if(S.png && S.fb){ fb_png(S.fb, S.png); char m[600]; snprintf(m, sizeof m, "[screen saved to %s]", S.png); out(m); }
 }
@@ -1875,7 +2782,7 @@ static void finish_run(void){
 static int run_nodes(SL *nodes){
   jmp_buf jb; T->jb = &jb; int r = 0;
   reg_defs(nodes, S.root, S.root);
-  if(!setjmp(jb)){ int st = ex(nodes, S.root); if(st == ST_STOP) r = 1; else wait_events(); }
+  if(!setjmp(jb)){ if(S.forcewin) win_ensure(); int st = ex(nodes, S.root); if(st == ST_STOP) r = 1; else wait_events(); }
   else r = 2;
   return r;
 }
@@ -1921,11 +2828,18 @@ static void usage(void){
   puts("Logl " LOGL_VERSION " - Log+/Log-/Log++/LogAll interpreter\n"
        "usage: logl [file] [--png X] [--no-wait] [--check] [--root DIR] [--show] [--ansi] [--plain]\n"
        "             [--strict] [--repl] [--lang log+|log-|log++|logall] [--hw] [--version]\n"
+       "             [--window] [--no-window] [--no-browser] [--port N]\n"
+       "       logl pkg list | logl pkg install NAME\n"
+       "  Graphics, events and UI programs open a window in your web browser (local only).\n"
+       "  --no-window  never open a window (G3D/Screen still render, e.g. with --png)\n"
+       "  --no-browser print the window address instead of opening the browser\n"
        "  with no file it opens the interactive REPL.\n"
        "  --hw  enables REAL hardware access (Reg, Port, Pin). Linux only; may need root.");
 }
 int main(int argc, char **argv){
   const char *file = NULL, *root = NULL, *lang = "log+"; int check = 0, strict = 0, repl_ = 0, ansi = -1;
+  S.argv0 = argv[0]; if(getenv("LOGL_NO_BROWSER")) S.nobrowser = 1;
+  if(argc > 1 && !strcmp(argv[1], "pkg")) return pkg_cmd(argc, argv);
 #ifdef _WIN32
   SetConsoleOutputCP(CP_UTF8);
   { HANDLE ho = GetStdHandle(STD_OUTPUT_HANDLE); DWORD md;
@@ -1942,6 +2856,10 @@ int main(int argc, char **argv){
     else if(!strcmp(a, "--strict")) strict = 1; else if(!strcmp(a, "--repl")) repl_ = 1;
     else if(!strcmp(a, "--lang") && i + 1 < argc) lang = argv[++i];
     else if(!strcmp(a, "--hw")) S.hw = 1;
+    else if(!strcmp(a, "--window")) S.forcewin = 1;
+    else if(!strcmp(a, "--no-window")) S.nowin = 1;
+    else if(!strcmp(a, "--no-browser")) S.nobrowser = 1;
+    else if(!strcmp(a, "--port") && i + 1 < argc) S.port = atoi(argv[++i]);
     else if(!strcmp(a, "-v") || !strcmp(a, "--version")){ puts("logl " LOGL_VERSION); return 0; }
     else if(!strcmp(a, "-h") || !strcmp(a, "--help")){ usage(); return 0; }
     else if(a[0] == '-'){ fprintf(stderr, "unknown option: %s\n", a); return 2; }
@@ -1966,6 +2884,7 @@ int main(int argc, char **argv){
   S.path = xs(""); S.ansi = ansi >= 0 ? ansi : (isatty(1) && !getenv("NO_COLOR")); S.showfirst = 1; S.t0 = now();
   rngs ^= (ull)(now() * 1e9) * 2654435761ULL + (ull)time(NULL) + (ull)getpid(); if(!rngs) rngs = 1;
   math_init(); S.queues = Vd(); S.locks = Vd(); S.root = scope_new(NULL); dset(S.root->v, "keys", Vd());
+  sdecl(S.root, "mb", Vn(0), -1); sdecl(S.root, "mx", Vn(0), -1); sdecl(S.root, "my", Vn(0), -1); sdecl(S.root, "key", Vs(""), -1);
   S.vdpath = pjoin(S.root_dir, "logdisk.json"); S.stpath = pjoin(S.root_dir, "logdata.json"); S.vd = Vd();
   { char *tx = readfile(S.vdpath, NULL); if(tx){ int err; Val v = jparse(tx, &err); if(!err && v.t == T_DICT){ vdrop(S.vd); S.vd = v; } free(tx); } }
   if(repl_ || !file){ repl(lang); return 0; }
@@ -1988,6 +2907,7 @@ int main(int argc, char **argv){
   if(E.n){ printf("Compilation aborted: %d error(s)\n", E.n); return 1; }
   printf("Compiled with no errors (%d warning(s)).\n", W.n); fflush(stdout);
   if(check) return 0;
+  S.autowin = !S.nowin && !S.png && !S.show_end && !has_show(nodes);
   int r = run_nodes(nodes);
   finish_run();
   if(r == 1 || S.gotint){ puts(S.gotint ? "\nSTOPPED" : "STOPPED"); return 0; }
