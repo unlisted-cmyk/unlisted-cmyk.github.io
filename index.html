@@ -184,7 +184,7 @@ Loop
 }
 `};
 /* ---------- parser ---------- */
-const KN=['use','print','var','set','repeat','for','if','wait','screen','display','reg','pin','on','loop','setup','expect','sound','serial','else','while','break','continue','input','ui','store','g3d','push','pop','remove','insert','sort','shuffle','each','def','call','return','elseif','console','mem','disk','exec','panic','stop','task','spawn','kill','join','import','try','lock','unlock','send','recv','yield','assert','sys','proc','surface','host','i2c'],OPS=['pixel','rect','line','circle','clear','resolution','text','blit','get'],TYP=['u8','u16','u32','i32','f32','f64','str'];
+const KN=['use','print','var','set','repeat','for','if','wait','screen','display','reg','pin','on','loop','setup','expect','sound','serial','else','while','break','continue','input','ui','store','g3d','push','pop','remove','insert','sort','shuffle','each','def','call','return','elseif','console','mem','disk','exec','panic','stop','task','spawn','kill','join','import','try','lock','unlock','send','recv','yield','assert','sys','proc','surface','host','i2c','ram','cpu','irq','pci','dev','admin'],OPS=['pixel','rect','line','circle','clear','resolution','text','blit','get'],TYP=['u8','u16','u32','i32','f32','f64','str'];
 const CAST={u8:v=>v&255,u16:v=>v&65535,u32:v=>v>>>0,i32:v=>v|0,f32:v=>Math.fround(+v),f64:v=>+v,str:v=>String(v).slice(0,65535)};
 function sp(s){const a=[];let d=0,q=0,b=0;for(let i=0;i<=s.length;i++){const c=s[i];if(c==='"')q^=1;if(!q){if(c==='('||c==='[')d++;if(c===')'||c===']')d--}if(i===s.length||(c===','&&!d&&!q)){a.push(s.slice(b,i).trim());b=i+1}}return a}
 function grp(s){const g=[];let d=0,b=0;for(let i=0;i<s.length;i++){const c=s[i];if(c==='"'){if(!d)return null;const j=s.indexOf('"',i+1);if(j<0)return null;i=j}else if(c==='('){if(d++===0)b=i+1}else if(c===')'){if(--d<0)return null;if(d===0)g.push(s.slice(b,i))}else if(!d&&c!==' ')return null}return d?null:g}
@@ -212,6 +212,7 @@ function chk(ns,E,W,s){for(const x of ns){const k=x.h[0].toLowerCase(),l=x.lg,n=
 if(x.bad){E.push([n,'Incorrect syntax in the instruction',x.why]);continue}
 if(!KN.includes(k)){E.push([n,`Unknown instruction: ${x.h[0]}`,sug(x.h[0])||'Instructions: '+KN.join(', ')]);continue}
 if(k==='reg'&&l!=='log-')E.push([n,'Reg: is exclusive to Log- (use Screen: or Display:)']);
+if(['ram','cpu','irq','pci','dev','admin'].includes(k)&&l!=='log-')E.push([n,x.h[0]+': is exclusive to Log-','Change the header to <log-> or tag the line with #-']);
 if(['screen','display','reg'].includes(k)){const p=x.h.map(v=>v.toLowerCase()).find(v=>OPS.includes(v));
 if(!p)E.push([n,'Unknown screen operation (Pixel, Rect, Line, Circle, Clear, Resolution)']);
 else if(l==='log++')E.push([n,'Log++ has no screen: use Log+ or Log-']);
@@ -246,7 +247,161 @@ else if(p==='text'){const tq=x.q.find(s=>/^text;/i.test(s)),sz=og(x,'size');g.fo
 else if(p==='blit'){const sn=og(x,'src');if(sn===null)throw'Screen:Blit needs Src';const sr=sn==='screen'?{c:CV}:SURF[sn];if(!sr)throw'Surface: does not exist '+sn;const bw=og(x,'w'),bh=og(x,'h');if(bw!==null&&bh!==null)g.drawImage(sr.c,a[0],a[1],+ev(bw),+ev(bh));else g.drawImage(sr.c,a[0],a[1])}
 else if(p==='get'){const d=g.getImageData(a[0],a[1],1,1).data,to=og(x,'into');if(to===null||!(to in V))throw'Undeclared variable: '+(to||'(missing Into)');V[to]=cv(TY[to],[d[0],d[1],d[2]])}}
 const led=n=>{const e=$('#pins').children[n];if(e)e.className=PIN[n]?'on':'';CIR.pe(n)};
-async function ex(ns,fl){for(const x of ns){if(R.stop)throw'STOP';if(fl.task&&fl.task.stop)throw'KILL';if(++R.st%(R.k?20000:2500)===0)await(R.k?tick():sleep(0));if(R.stop)throw'STOP';if(fl.task&&fl.task.stop)throw'KILL';V=fl.v;TY=fl.t;R.fn=fl.fn;
+/* ===== Log- low-level toolkit (emulated machine): Ram, Cpu, Irq, Pci, Dev, Admin. Same commands as logl.c --hw ===== */
+const LL={on:1,any:0,busy:0,pend:new Uint8Array(256),fn:{},tmr:{},sigv:{},heap:[],next:0x10000000,total:0,pid:4242,nice:0,modes:{},fobj:null,disk:null,dev:{},sv:0,
+msr:{16:0n,27:0xFEE00900n,58:1n,372:0n,373:0n,374:0n,3221225600:0xD01n}};
+function LLreset(){LLstop();LL.on=1;LL.any=0;LL.busy=0;LL.pend.fill(0);LL.fn={};LL.sigv={};LL.heap=[];LL.next=0x10000000;LL.total=0;LL.dev={};LL.nice=0}
+function LLstop(){Object.keys(LL.tmr).forEach(k=>{clearInterval(LL.tmr[k]);delete LL.tmr[k]})}
+const LLh=n=>'0x'+Number(n).toString(16);
+const PV=c=>{if(!R.k)throw'Privileged operation: '+c+' only works with run # file (kernel mode)'};
+function LLset(n,v){if(!(n in V))throw'Undeclared variable: '+n;V[n]=cv(TY[n],v)}
+function LLinto(x,v){const t=og(x,'into');if(t!==null)LLset(t,v)}
+function LLn(x,k,d){const v=og(x,k);return v===null||v===''?d:+ev(v)}
+function LLin64(x){const lo=og(x,'lo'),hi=og(x,'hi'),v=og(x,'value');
+if((lo!==null&&lo!=='')||(hi!==null&&hi!==''))return(BigInt(hi?ev(hi)>>>0:0)<<32n)|BigInt(lo?ev(lo)>>>0:0);
+if(v===null)throw'missing Value (or Lo and Hi)';return BigInt.asUintN(64,BigInt(Math.trunc(+ev(v))))}
+function LLout64(x,v){LLinto(x,Number(v));const lo=og(x,'lo'),hi=og(x,'hi');if(lo)LLset(lo,Number(v&0xFFFFFFFFn));if(hi)LLset(hi,Number((v>>32n)&0xFFFFFFFFn))}
+/* ---- Ram: a separate emulated address space with page permissions ---- */
+function LLblk(a,n){for(const b of LL.heap)if(a>=b.a&&a+n<=b.a+b.n)return b;return null}
+function LLacc(a,n,need,who){a=Math.trunc(+a);const b=LLblk(a,n);if(!b||!b.p.includes(need))throw`${who}: invalid address ${LLh(a)}`+(need==='w'?' (or read-only memory)':'');return[b,a-b.a]}
+function LLram(x){PV('Ram');const w=(x.h[1]||'').toLowerCase(),as=og(x,'addr'),a=as!==null?Math.trunc(+ev(as)):0;
+if(w==='alloc'){const n=Math.trunc(LLn(x,'size',4096));if(!(n>0))throw'Ram:Alloc: invalid Size';if(n>2**26)throw'Ram:Alloc: the simulator limits a block to 64 MB';
+if(LL.heap.length>=256)throw'Ram:Alloc: too many blocks (max 256)';const sz=Math.ceil(n/4096)*4096;if(LL.total+sz>2**28)throw'Ram:Alloc: the system refused the memory';
+const b={a:LL.next,n:sz,d:new Uint8Array(sz),p:'rw'};LL.next+=sz+4096;LL.total+=sz;LL.heap.push(b);LLinto(x,b.a)}
+else if(w==='free'){const i=LL.heap.findIndex(b=>b.a===a);if(i<0)throw`Ram:Free: ${LLh(a)} is not a block returned by Ram:Alloc`;LL.total-=LL.heap[i].n;LL.heap.splice(i,1)}
+else if(w==='read'||w==='write'){const n=Math.trunc(LLn(x,'size',4));if(![1,2,4,8].includes(n))throw'Ram: Size must be 1, 2, 4 or 8';
+if(w==='read'){const[b,o]=LLacc(a,n,'r','Ram:Read');let v=0n;for(let i=n-1;i>=0;i--)v=(v<<8n)|BigInt(b.d[o+i]);LLout64(x,v)}
+else{const v=LLin64(x),[b,o]=LLacc(a,n,'w','Ram:Write');for(let i=0;i<n;i++)b.d[o+i]=Number((v>>BigInt(8*i))&255n)}}
+else if(w==='copy'){const f=og(x,'from'),t=og(x,'to'),l=og(x,'len');if(f===null||t===null||l===null)throw'Ram:Copy needs From, To and Len';
+const n=Math.trunc(+ev(l));if(n<0)throw'Ram:Copy: invalid Len';const[sb,so]=LLacc(+ev(f),n,'r','Ram:Copy'),[db,dof]=LLacc(+ev(t),n,'w','Ram:Copy');db.d.set(sb.d.slice(so,so+n),dof)}
+else if(w==='load'||w==='store'){const l=og(x,'len');if(as===null||l===null)throw`Ram:${x.h[1]} needs Addr and Len`;const n=Math.trunc(+ev(l)),ld=w==='load',em=og(x,ld?'from':'to'),e=em===null?0:Math.trunc(+ev(em));
+if(n<0)throw`Ram:${x.h[1]}: invalid Len`;if(n){mc(e);mc(e+n-1)}const[b,o]=LLacc(a,n,ld?'w':'r','Ram:'+x.h[1]);if(ld)b.d.set(MEM.subarray(e,e+n),o);else MEM.set(b.d.subarray(o,o+n),e)}
+else if(w==='protect'){const l=og(x,'len'),m=og(x,'mode');if(as===null||l===null||m===null)throw'Ram:Protect needs Addr, Len and Mode (r, w, x)';
+const b=LLblk(a,Math.max(1,Math.trunc(+ev(l))));if(!b)throw'Ram:Protect: Cannot allocate memory';b.p=['r','w','x'].filter(c=>m.includes(c)).join('')}
+else throw'Ram: use Alloc, Free, Read, Write, Copy, Load, Store or Protect'}
+/* ---- Cpu: CPUID of the virtual Log-SoC, cycle counter, MSRs and a small x86-64 subset to run machine code ---- */
+function LLcpuid(leaf){const s=(t,i)=>{let v=0;for(let k=0;k<4;k++)v|=(t.charCodeAt(i+k)||0)<<(8*k);return v>>>0};
+if(leaf===0){const v='Log-SoC-0001';return[4,s(v,0),s(v,8),s(v,4)]}
+if(leaf===1)return[0x000A0001,0x00010800,0,0x31];if(leaf===0x80000000)return[0x80000004,0,0,0];
+if(leaf>=0x80000002&&leaf<=0x80000004){const t='Log-SoC 3.0 GHz virtual CPU',i=(leaf-0x80000002)*16;return[s(t,i),s(t,i+4),s(t,i+8),s(t,i+12)]}
+return[0,0,0,0]}
+function LLx86(addr,arg){const M64=(1n<<64n)-1n,M32=(1n<<32n)-1n,r=Array(16).fill(0n),st=[];r[7]=BigInt.asUintN(64,BigInt(Math.trunc(arg)));
+let ip=addr,ZF=0,SF=0,CF=0,OF=0,steps=0;const bad=()=>{throw`Cpu:Call: the code at ${LLh(addr)} crashed (invalid instruction or memory access)`};
+const f8=()=>{const b=LLblk(ip,1);if(!b||!b.p.includes('x'))bad();return b.d[ip++-b.a]},s8=()=>{const v=f8();return v>127?v-256:v};
+const i32=()=>{let v=0;for(let i=0;i<4;i++)v|=f8()<<(8*i);return v},i64=()=>{let v=0n;for(let i=0n;i<8n;i++)v|=BigInt(f8())<<(8n*i);return v};
+const cc=c=>{switch(c){case 0:return OF;case 1:return!OF;case 2:return CF;case 3:return!CF;case 4:return ZF;case 5:return!ZF;case 6:return CF||ZF;case 7:return!(CF||ZF);case 8:return SF;case 9:return!SF;case 12:return SF!==OF;case 13:return SF===OF;case 14:return ZF||SF!==OF;case 15:return!ZF&&SF===OF;default:return 0}};
+const gr=(i,b)=>r[i]&(b===64?M64:M32),sr=(i,b,v)=>{r[i]=v&(b===64?M64:M32)};
+const alu=(op,a,b,bits)=>{const m=bits===64?M64:M32,sb=1n<<BigInt(bits-1);a&=m;b&=m;let res;
+if(op==='add'){res=a+b;const q=res&m;CF=res>m?1:0;OF=(~(a^b)&(a^q)&sb)?1:0;res=q}
+else if(op==='sub'||op==='cmp'){res=a-b;const q=res&m;CF=a<b?1:0;OF=((a^b)&(a^q)&sb)?1:0;res=q}
+else{res=op==='and'||op==='test'?a&b:op==='or'?a|b:a^b;CF=0;OF=0}
+ZF=res===0n?1:0;SF=(res&sb)?1:0;return res};
+const A2={0x01:['add',0],0x03:['add',1],0x29:['sub',0],0x2B:['sub',1],0x31:['xor',0],0x33:['xor',1],0x21:['and',0],0x23:['and',1],0x09:['or',0],0x0B:['or',1],0x39:['cmp',0],0x3B:['cmp',1],0x85:['test',0]};
+const AI={0x05:'add',0x2D:'sub',0x3D:'cmp',0x25:'and',0x0D:'or',0x35:'xor'},EX=['add','or',0,0,'and','sub','xor','cmp'];
+for(;;){if(++steps>1e6)throw'Cpu:Call: the code did not return (instruction limit reached)';
+let rex=0,b=f8();if((b&0xF0)===0x40){rex=b;b=f8()}const bits=rex&8?64:32,RR=rex&4?8:0,BB=rex&1?8:0;
+const mrm=()=>{const m=f8();if((m>>6)!==3)bad();return[((m>>3)&7)|RR,(m&7)|BB]};
+if(b===0xC3)return Number(BigInt.asIntN(64,r[0]));
+else if(b===0x90){}
+else if(b===0x89||b===0x8B){const[rg,rm]=mrm();if(b===0x89)sr(rm,bits,gr(rg,bits));else sr(rg,bits,gr(rm,bits))}
+else if(A2[b]){const[op,dir]=A2[b],[rg,rm]=mrm(),d=dir?rg:rm,s=dir?rm:rg,res=alu(op,gr(d,bits),gr(s,bits),bits);if(op!=='cmp'&&op!=='test')sr(d,bits,res)}
+else if(b===0x81||b===0x83){const m=f8();if((m>>6)!==3)bad();const op=EX[(m>>3)&7];if(!op)bad();const rm=(m&7)|BB,imm=BigInt.asUintN(bits,BigInt(b===0x83?s8():i32())),res=alu(op,gr(rm,bits),imm,bits);if(op!=='cmp')sr(rm,bits,res)}
+else if(b>=0xB8&&b<=0xBF){const rg=(b&7)|BB;if(rex&8)sr(rg,64,i64());else sr(rg,32,BigInt(i32()>>>0))}
+else if(AI[b]){const op=AI[b],res=alu(op,gr(0,bits),BigInt.asUintN(bits,BigInt(i32())),bits);if(op!=='cmp')sr(0,bits,res)}
+else if(b===0xFF){const m=f8();if((m>>6)!==3)bad();const e=(m>>3)&7,rm=(m&7)|BB;if(e>1)bad();const cf=CF,res=alu(e?'sub':'add',gr(rm,bits),1n,bits);CF=cf;sr(rm,bits,res)}
+else if(b===0xF7){const m=f8();if((m>>6)!==3)bad();const e=(m>>3)&7,rm=(m&7)|BB,a=gr(rm,bits);if(e===2)sr(rm,bits,~a);else if(e===3){sr(rm,bits,alu('sub',0n,a,bits));CF=a!==0n?1:0}else bad()}
+else if(b===0x0F){const b2=f8();
+if(b2===0xAF){const[rg,rm]=mrm();sr(rg,bits,BigInt.asUintN(bits,BigInt.asIntN(bits,gr(rg,bits))*BigInt.asIntN(bits,gr(rm,bits))))}
+else if(b2===0x1F){const m=f8(),mod=m>>6;if((m&7)===4)f8();if(mod===1)f8();else if(mod===2||(mod===0&&(m&7)===5))i32()}
+else if(b2>=0x80&&b2<=0x8F){const d=i32();if(cc(b2&15))ip+=d}else bad()}
+else if(b>=0x70&&b<=0x7F){const d=s8();if(cc(b&15))ip+=d}
+else if(b===0xEB)ip+=s8();else if(b===0xE9)ip+=i32();
+else if(b>=0x50&&b<=0x57)st.push(gr((b&7)|BB,64));
+else if(b>=0x58&&b<=0x5F){if(!st.length)bad();sr((b&7)|BB,64,st.pop())}
+else bad()}}
+function LLcpu(x){const w=(x.h[1]||'').toLowerCase();
+if(w==='id'){const q=LLcpuid(LLn(x,'leaf',0)>>>0),[a,b,c,d]=q;[['eax',a],['ebx',b],['ecx',c],['edx',d]].forEach(([k,v])=>{const n=og(x,k);if(n)LLset(n,v)});
+let tx='',vn='';q.forEach(v=>{for(let i=0;i<4;i++){const ch=(v>>>(8*i))&255;tx+=ch>=32&&ch<127?String.fromCharCode(ch):'.'}});[b,d,c].forEach(v=>{for(let i=0;i<4;i++)vn+=String.fromCharCode((v>>>(8*i))&255)});
+const v1=og(x,'vendor');if(v1)LLset(v1,vn);const t1=og(x,'text');if(t1)LLset(t1,tx)}
+else if(w==='tick')LLout64(x,BigInt(Math.floor(performance.now()*3e6)));
+else if(w==='call'){PV('Cpu:Call');const as=og(x,'addr');if(as===null)throw'Cpu:Call needs Addr';LLinto(x,LLx86(Math.trunc(+ev(as)),LLn(x,'arg',0)))}
+else if(w==='msr'){PV('Cpu:Msr');const rg=og(x,'reg');if(rg===null)throw'Cpu:Msr needs Reg';const k=String(Math.trunc(+ev(rg))>>>0),wr=og(x,'value')!==null||og(x,'lo')!==null||og(x,'hi')!==null;
+if(!(k in LL.msr))throw'Cpu:Msr: access to that register failed: Input/output error (general protection fault)';
+if(wr){if(k==='16')throw'Cpu:Msr: access to that register failed: Input/output error (general protection fault)';LL.msr[k]=LLin64(x)}else LLout64(x,k==='16'?BigInt(Math.floor(performance.now()*3e6)):LL.msr[k])}
+else throw'Cpu: use Id, Tick, Call or Msr'}
+/* ---- Irq: interrupt vector table ---- */
+const LLraise=n=>{LL.pend[n]=1;LL.any=1};
+async function LLisr(name,n){const f=R.fn[name];if(!f){op(`[irq ${n}] ERROR function not defined: ${name}`,'err');return}
+const loc={},tl={};f.a.forEach((p,i)=>{loc[p]=i?undefined:n;tl[p]=undefined});const rt=R.root,f2={v:mkScope(rt.v,loc),t:mkScope(rt.t,tl),fn:R.fn,task:null,xd:rt.xd,dp:0,proc:rt.proc,path:rt.path},sv=[V,TY,R.fn];
+try{await ex(f.body,f2)}catch(e){if(e instanceof Ret){}else if(e==='STOP'||e==='KILL')throw e;else op(`[irq ${n}] ERROR ${e}`,'err')}finally{V=sv[0];TY=sv[1];R.fn=sv[2]}}
+async function LLdeliver(){if(LL.busy)return;LL.busy=1;LL.any=0;try{for(let n=0;n<256;n++)if(LL.pend[n]){LL.pend[n]=0;if(LL.fn[n])await LLisr(LL.fn[n],n)}}finally{LL.busy=0}}
+function LLtimer(n,ms){if(LL.tmr[n]){clearInterval(LL.tmr[n]);delete LL.tmr[n]}if(ms>0)LL.tmr[n]=setInterval(()=>{if(R&&R.on&&!R.stop)LLraise(n)},ms)}
+async function LLirq(x){const w=(x.h[1]||'').toLowerCase();
+if(w==='enable'){LL.on=1;if(LL.any)await LLdeliver();return}if(w==='disable'){LL.on=0;return}
+const ns=og(x,'n');if(ns===null)throw`Irq:${x.h[1]} needs N (vector 0-255)`;const n=Math.trunc(+ev(ns));if(!(n>=0&&n<=255))throw'Irq: N must be between 0 and 255';
+if(w==='set'){const f=fm(og(x,'call')||'');if(!f)throw'Irq:Set needs Call (the name of a Def function)';LL.fn[n]=f}
+else if(w==='off'){delete LL.fn[n];LL.pend[n]=0;LLtimer(n,0)}
+else if(w==='raise'){LLraise(n);if(LL.on)await LLdeliver()}
+else if(w==='timer')LLtimer(n,Math.trunc(LLn(x,'ms',0)));
+else if(w==='signal'){const sg=og(x,'sig');if(sg===null)throw'Irq:Signal needs Sig (USR1, USR2, HUP or ALRM)';const s={usr1:10,usr2:12,hup:1,alrm:14}[sg.toLowerCase()];if(s===undefined)throw'Irq:Signal: Sig must be USR1, USR2, HUP or ALRM';LL.sigv[s]=n}
+else throw'Irq: use Set, Off, Raise, Enable, Disable, Timer or Signal'}
+async function LLsleep(ms,fl){if(!LL.any&&!Object.keys(LL.tmr).length&&!Object.keys(LL.fn).length)return sleep(ms);
+const end=performance.now()+ms;for(;;){if(LL.any&&LL.on)await LLdeliver();const rem=end-performance.now();if(rem<=0||R.stop||(fl.task&&fl.task.stop))return;await sleep(Math.min(rem,5))}}
+/* ---- Pci: a small virtual bus ---- */
+const LLPCI=(()=>{const mk=(d,v,id,cls,rev,bar)=>{const c=new Uint8Array(256);c[0]=v&255;c[1]=v>>8;c[2]=id&255;c[3]=id>>8;c[6]=0x10;c[8]=rev;c[9]=cls&255;c[10]=(cls>>8)&255;c[11]=cls>>16;c[0x10]=bar&255;c[0x11]=(bar>>8)&255;c[0x12]=(bar>>16)&255;c[0x13]=(bar>>>24)&255;return{b:0,d,f:0,cfg:c}};
+return[mk(0,0x8086,0x1237,0x060000,2,0),mk(1,0x1234,0x1111,0x030000,2,0xFEB00000),mk(2,0x8086,0x100e,0x020000,3,0xFEB10000),mk(3,0x4c47,0x0001,0x118000,1,0xFEB20000)]})();
+function LLpci(x){PV('Pci');const w=(x.h[1]||'').toLowerCase(),H=(n,d)=>'0x'+n.toString(16).padStart(d,'0');
+if(w==='list'){LLinto(x,LLPCI.map(p=>{const c=p.cfg;return`0000:${p.b.toString(16).padStart(2,'0')}:${p.d.toString(16).padStart(2,'0')}.${p.f} ${H(c[0]|c[1]<<8,4)} ${H(c[2]|c[3]<<8,4)} ${H(c[9]|c[10]<<8|c[11]<<16,6)}`}));return}
+if(w!=='read'&&w!=='write')throw'Pci: use List, Read or Write';
+const seg=LLn(x,'seg',0),bus=LLn(x,'bus',0),dv=LLn(x,'dev',0),fn=LLn(x,'fn',0),off=LLn(x,'off',0),sz=LLn(x,'size',4);if(![1,2,4].includes(sz))throw'Pci: Size must be 1, 2 or 4';
+const p=LLPCI.find(q=>seg===0&&q.b===bus&&q.d===dv&&q.f===fn);
+if(!p)throw`Pci: could not open /sys/bus/pci/devices/${String(seg).padStart(4,'0')}:${bus.toString(16).padStart(2,'0')}:${dv.toString(16).padStart(2,'0')}.${fn}/config: No such file or directory`;
+if(off<0||off+sz>256)throw'Pci: access failed: Invalid argument';
+if(w==='read'){let v=0;for(let i=sz-1;i>=0;i--)v=v*256+p.cfg[off+i];LLinto(x,v)}
+else{const v=Number(LLin64(x)&0xFFFFFFFFn);for(let i=0;i<sz;i++){const a=off+i;if((a>=4&&a<=5)||(a>=0x10&&a<=0x27)||a===0x0C||a===0x3C)p.cfg[a]=(v>>>(8*i))&255}}}
+/* ---- Dev: /dev/null, /dev/zero, /dev/random, /dev/console, /dev/disk0 (virtual disk) and plain files (disk images) ---- */
+const LLDEV={'/dev/null':'null','/dev/zero':'zero','/dev/random':'rand','/dev/urandom':'rand','/dev/console':'con','/dev/disk0':'disk'};
+const LLb64=u=>{let s='';for(let i=0;i<u.length;i+=8192)s+=String.fromCharCode.apply(null,u.subarray(i,i+8192));return btoa(s)},LLub64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+function LLload(){if(LL.fobj)return;LL.fobj={};try{const j=JSON.parse(localStorage.getItem('logl_dev_files')||'{}');for(const k in j)LL.fobj[k]=LLub64(j[k])}catch(_){}
+LL.disk=new Uint8Array(1<<20);try{const d=localStorage.getItem('logl_dev_disk0');if(d)LL.disk.set(LLub64(d).subarray(0,1<<20))}catch(_){}}
+function LLsave(){if(LL.sv)return;LL.sv=setTimeout(()=>{LL.sv=0;try{const j={};for(const k in LL.fobj)j[k]=LLb64(LL.fobj[k]);localStorage.setItem('logl_dev_files',JSON.stringify(j));localStorage.setItem('logl_dev_disk0',LLb64(LL.disk))}catch(_){}},400)}
+function LLdev(x){PV('Dev');LLload();const w=(x.h[1]||'').toLowerCase(),id=og(x,'id');if(id===null||id==='')throw'Dev: missing Id';
+if(w==='open'){const p=fm(og(x,'path')||'');if(!p)throw'Dev:Open needs Path';const m=og(x,'mode')||'r',wr=m.includes('w'),c=m.includes('c');
+if(LL.dev[id])throw`Dev: ${id} is already open`;if(Object.keys(LL.dev).length>=16)throw'Dev: too many open devices (max 16)';
+const k=LLDEV[p]||(p.startsWith('/dev/')?null:'file');if(k==null||(k==='file'&&!(p in LL.fobj)&&!c))throw`Dev:Open: could not open ${p}: No such file or directory`;
+if(k==='file'&&!(p in LL.fobj)){LL.fobj[p]=new Uint8Array(0);LLsave()}
+LL.dev[id]={k,p,pos:0,r:!wr||m.includes('r'),w:wr};return}
+const d=LL.dev[id];if(!d)throw'Dev: not open: '+id;const buf=()=>d.k==='disk'?LL.disk:d.k==='file'?LL.fobj[d.p]:new Uint8Array(0);
+if(w==='close'){delete LL.dev[id];return}
+if(w==='size'){LLinto(x,buf().length);return}
+if(w==='ioctl'){if(og(x,'req')===null)throw'Dev:Ioctl needs Req';throw'Dev:Ioctl: Inappropriate ioctl for device'}
+if(w==='read'||w==='write'){const len=Math.trunc(LLn(x,'len',0)),am=Math.trunc(LLn(x,'addr',0)),of=og(x,'off');if(len<0)throw'Dev: invalid Len';if(len){mc(am);mc(am+len-1)}
+const pos=of!==null&&of!==''?Math.trunc(+ev(of)):d.pos;let n=0;
+if(w==='read'){if(!d.r)throw'Dev:read: Bad file descriptor';
+if(d.k==='zero'){MEM.fill(0,am,am+len);n=len}else if(d.k==='rand'){for(let i=0;i<len;i++)MEM[am+i]=Math.random()*256;n=len}
+else if(d.k==='file'||d.k==='disk'){const b=buf();n=Math.max(0,Math.min(len,b.length-pos));if(n)MEM.set(b.subarray(pos,pos+n),am)}}
+else{if(!d.w)throw'Dev:write: Bad file descriptor';
+if(d.k==='null'||d.k==='zero'||d.k==='rand')n=len;else if(d.k==='con'){n=len;op(String.fromCharCode(...MEM.subarray(am,am+len)).replace(/\n$/,''))}
+else if(d.k==='disk'){n=Math.max(0,Math.min(len,LL.disk.length-pos));if(n){LL.disk.set(MEM.subarray(am,am+n),pos);LLsave()}if(n<len&&!n)throw'Dev:write: No space left on device'}
+else{let b=LL.fobj[d.p];if(pos+len>b.length){const nb=new Uint8Array(pos+len);nb.set(b);b=LL.fobj[d.p]=nb}b.set(MEM.subarray(am,am+len),pos);n=len;LLsave()}}
+if(of===null||of==='')d.pos=pos+n;LLinto(x,n);return}
+throw'Dev: use Open, Read, Write, Size, Ioctl or Close'}
+/* ---- Admin ---- */
+function LLadmin(x){PV('Admin');const w=(x.h[1]||'').toLowerCase();
+if(w==='id'){const v={uid:0,euid:0,gid:0,egid:0,root:1,pid:LL.pid};for(const k in v){const n=og(x,k);if(n)LLset(n,v[k])}}
+else if(w==='run'){const cmd=fm(og(x,'cmd')||'').trim();if(!cmd)throw'Admin:Run needs Cmd';const a=cmd.split(/\s+/);let out='',code=0;
+if(a[0]==='echo')out=a.slice(1).join(' ')+'\n';else if(a[0]==='uname')out=(a[1]==='-a'?'Log-OS 0.8 Log-SoC 3.0 GHz virtual':'Log-OS')+'\n';else if(a[0]==='whoami')out='root\n';else if(a[0]==='id')out='uid=0(root) gid=0(root)\n';
+else if(a[0]==='pwd')out='/\n';else if(a[0]==='date')out=new Date().toString()+'\n';else if(a[0]==='ls')out=Object.keys(VD).sort().map(k=>k+'\n').join('');
+else if(a[0]==='cat'){if(VD[a[1]]===undefined){code=1}else out=VD[a[1]]}else if(a[0]==='true')code=0;else if(a[0]==='false')code=1;else code=127;
+LLinto(x,out);const cv_=og(x,'code');if(cv_)LLset(cv_,code)}
+else if(w==='kill'){const pd=og(x,'pid');if(pd===null)throw'Admin:Kill needs Pid';const p=Math.trunc(+ev(pd)),sg=Math.trunc(LLn(x,'sig',15));
+if(p!==LL.pid)throw'Admin:Kill: No such process';if(sg===0)return;
+if(LL.sigv[sg]!==undefined){LLraise(LL.sigv[sg]);return}R.stop=1;R.fin&&R.fin();throw'STOP'}
+else if(w==='nice'){const p=LLn(x,'pid',0);if(p!==0&&p!==LL.pid)throw'Admin:Nice: No such process';LL.nice=LLn(x,'level',0)}
+else if(w==='chmod'){const f=fm(og(x,'file')||''),m=og(x,'mode');if(!f||m===null)throw'Admin:Chmod needs File and Mode (octal, for example 0644)';if(VD[f]===undefined&&files[f]===undefined)throw'Admin:Chmod: No such file or directory';LL.modes[f]=parseInt(m,8)}
+else throw'Admin: use Id, Run, Kill, Nice or Chmod'}
+
+async function ex(ns,fl){for(const x of ns){if(R.stop)throw'STOP';if(fl.task&&fl.task.stop)throw'KILL';if(++R.st%(R.k?20000:2500)===0)await(R.k?tick():sleep(0));if(R.stop)throw'STOP';if(fl.task&&fl.task.stop)throw'KILL';if(LL.any&&LL.on)await LLdeliver();V=fl.v;TY=fl.t;R.fn=fl.fn;
 try{await one(x,fl)}catch(e){if(e==='STOP'||e==='KILL'||e===BRK||e===CNT||e instanceof Ret||/^l\.\d+:/.test(e))throw e;throw`l.${x.n}: ${typeof e==='string'?e:e.message}`}}}
 async function one(x,fl){const k=x.h[0].toLowerCase();
 switch(k){
@@ -338,7 +493,8 @@ case'send':{R.queues=R.queues||{};(R.queues[x.h[1]]=R.queues[x.h[1]]||[]).push(v
 case'recv':{R.queues=R.queues||{};const n=x.h[1],to=og(x,'into'),okv=og(x,'ok'),tm=og(x,'timeout'),dl=tm===null?Infinity:Date.now()+(+ev(tm));R.waiting=1;while(!(R.queues[n]&&R.queues[n].length)&&!R.stop&&!(fl.task&&fl.task.stop)&&Date.now()<dl)await sleep(5);R.waiting=0;V=fl.v;TY=fl.t;R.fn=fl.fn;if(R.stop)throw'STOP';if(fl.task&&fl.task.stop)throw'KILL';const got=!!(R.queues[n]&&R.queues[n].length);if(got){const v=R.queues[n].shift();if(to!==null){if(!(to in V))throw'Undeclared variable: '+to;V[to]=cv(TY[to],v)}}if(okv!==null){if(!(okv in V))throw'Undeclared variable: '+okv;V[okv]=got?1:0}break}
 case'yield':await sleep(0);break;
 case'assert':{const c=og(x,'cond');if(c===null)throw'Assert needs Cond';if(!ev(c))throw'Assert failed: '+fm(og(x,'text')||c);break}
-case'sys':{const to=og(x,'into');if(to===null||!(to in V))throw'Undeclared variable: '+(to||'(missing Into)');V[to]={ghz:3,cpu:'Log-SoC 3.0 GHz',ram_mb:4096,mem_bytes:MEM.length,width:res?res.w:0,height:res?res.h:0,kernel:R.k?1:0,uptime_ms:Date.now()-R.t0,tasks:Object.values(R.tasks).filter(t=>t.on).length,version:'0.8'};break}
+case'ram':LLram(x);break;case'cpu':LLcpu(x);break;case'irq':await LLirq(x);break;case'pci':LLpci(x);break;case'dev':LLdev(x);break;case'admin':LLadmin(x);break;
+case'sys':{const to=og(x,'into');if(to===null||!(to in V))throw'Undeclared variable: '+(to||'(missing Into)');V[to]={ghz:3,cpu:'Log-SoC 3.0 GHz',ram_mb:4096,mem_bytes:MEM.length,width:res?res.w:0,height:res?res.h:0,kernel:R.k?1:0,uptime_ms:Date.now()-R.t0,tasks:Object.values(R.tasks).filter(t=>t.on).length,version:'0.8',uid:R.k?0:1000,is_root:R.k?1:0};break}
 case'proc':{const w=(x.h[1]||'').toLowerCase(),to=og(x,'into');if(to===null||!(to in V))throw'Undeclared variable: '+(to||'(missing Into)');if(w==='list')V[to]=cv(TY[to],Object.values(R.tasks).filter(t=>t.on).map(t=>t.n));else if(w==='alive'){const t=R.tasks[fm(og(x,'id')||'')];V[to]=cv(TY[to],t&&t.on?1:0)}else throw'Proc: use List or Alive';break}
 case'panic':{const m=fm(x.q.length?x.q[0].replace(/^text;/i,''):'no message');if(!res)setRes(318,180);Con.on=0;clearTimeout(Con.t);Con.t=0;cx.fillStyle='#7a0000';cx.fillRect(0,0,res.w,res.h);cx.fillStyle='#ffffff';cx.font='8px ui-monospace,Menlo,Consolas,monospace';cx.textBaseline='top';cx.fillText('KERNEL PANIC',6,6);const ln=(m.match(/.{1,48}/g)||['']);ln.forEach((s,i)=>cx.fillText(s,6,22+i*10));cx.fillText('System halted.',6,28+ln.length*10);throw'KERNEL PANIC: '+m}
 case'stop':if(fl.xd)throw new Ret();R.stop=1;R.fin&&R.fin();throw'STOP';
@@ -370,7 +526,7 @@ if(k==='var'&&dc!==null)v=Object.fromEntries((dc.trim()?sp(dc):[]).map(e=>{const
 if(ky!==null){const o=V[n];if(!o||typeof o!=='object'||Array.isArray(o))throw n+' is not a dictionary';o[fm(ky)]=v;break}
 if(ix!==null){let a=V[n];if(!Array.isArray(a))throw n+' is not a list';const p=sp(ix).map(e=>ev(e));for(let i=0;i<p.length-1;i++)a=a[p[i]];const li=p[p.length-1];if(!Array.isArray(a)||!Number.isInteger(li)||li<0||li>=a.length)throw'Index out of range: '+p.join(',');a[li]=TY[n]?CAST[TY[n]](v):v;break}
 V[n]=cv(TY[n],v);break}
-case'wait':R.waiting=1;if(/^press$/i.test(x.o[0][0]))await new Promise((f,j)=>{R.pw=f;R.pj=j});else if(/^until$/i.test(x.o[0][0])){const c=x.o[0].slice(1).join(';');for(;;){V=fl.v;TY=fl.t;R.fn=fl.fn;if(ev(c)||R.stop||(fl.task&&fl.task.stop))break;await sleep(10)}}else await sleep(ev(x.o[0][1]));R.waiting=0;break;
+case'wait':R.waiting=1;if(/^press$/i.test(x.o[0][0]))await new Promise((f,j)=>{R.pw=f;R.pj=j});else if(/^until$/i.test(x.o[0][0])){const c=x.o[0].slice(1).join(';');for(;;){V=fl.v;TY=fl.t;R.fn=fl.fn;if(ev(c)||R.stop||(fl.task&&fl.task.stop))break;await sleep(10)}}else await LLsleep(/^us$/i.test(x.o[0][0])?ev(x.o[0][1])/1000:ev(x.o[0][1]),fl);R.waiting=0;break;
 case'repeat':{const n=ev(x.a[0]);for(let i=0;i<n;i++)if(await lp(x.body,fl))break;break}
 case'for':{const v=x.h[1],a=ev(x.a[0]),b=ev(x.a[1]),s=x.a[2]?ev(x.a[2]):1;if(!s)throw'The step of For cannot be 0';for(let i=a;s>0?i<b:i>b;i+=s){V=fl.v;TY=fl.t;V[v]=i;if(await lp(x.body,fl))break}break}
 case'if':if(ev(x.a[0]))await ex(x.body,fl);else if(x.alt)await ex(x.alt,fl);break;
@@ -394,11 +550,11 @@ SL=files[n].split('\n');const p=parse(files[n],n);if(p.nodes){chk(p.nodes,p.E,p.
 p.E.sort((a,b)=>a[0]-b[0]);p.W.forEach(w=>show('WARNING',w,'wrn'));p.E.forEach(e=>show('ERROR',e,'err'));
 if(p.E.length){op(`Compilation aborted: ${p.E.length} error(s)`,'err');ss('ERROR');return}
 op(`Compiled without errors (${p.W.length} warning(s)). Running...`,'ok');
-const r=R={on:1,stop:0,st:0,hd:[],t0:Date.now(),n,fn:{},k:kmode,tasks:{},tid:0,tn:0,pid:0,locks:{},queues:{},mods:{},modf:{}};Object.keys(KD).forEach(k=>delete KD[k]);r.root={v:V,t:TY,fn:r.fn,path:dirOf(n)};V.keys=KD;reg(p.nodes);if(kmode)showDev();ss('RUNNING');let bad=0;
+const r=R={on:1,stop:0,st:0,hd:[],t0:Date.now(),n,fn:{},k:kmode,tasks:{},tid:0,tn:0,pid:0,locks:{},queues:{},mods:{},modf:{}};Object.keys(KD).forEach(k=>delete KD[k]);LLreset();r.root={v:V,t:TY,fn:r.fn,path:dirOf(n)};V.keys=KD;reg(p.nodes);if(kmode)showDev();ss('RUNNING');let bad=0;
 try{await ex(p.nodes,r.root);r.done=1;if((r.hd.length||r.ui||(r.tm&&r.tm.length)||r.tn>0)&&!r.stop){op('Waiting for events (Stop to exit)','ok');await new Promise(f=>{r.fin=f;taskEnd()})}}
 catch(e){if(e!=='STOP'){bad=1;const m=String(e).match(/^l\.(\d+): ([\s\S]*)$/);if(m)show('ERROR',[+m[1],m[2]],'err');else op('ERROR '+e,'err')}}
 r.on=0;(r.tm||[]).forEach(t=>clearInterval(t.i));Object.values(r.tasks).forEach(t=>t.stop=1);ss(bad?'ERROR':r.stop?'STOPPED':'FINISHED');r.dn&&r.dn()}
-const stopRun=()=>{if(R&&R.on){R.stop=1;Object.values(R.tasks||{}).forEach(t=>t.stop=1);R.fin&&R.fin();R.pj&&R.pj('STOP')}};
+const stopRun=()=>{if(R&&R.on){LLstop();R.stop=1;Object.values(R.tasks||{}).forEach(t=>t.stop=1);R.fin&&R.fin();R.pj&&R.pj('STOP')}};
 /* ---------- terminal y editor ---------- */
 for(let i=0;i<16;i++){const e=document.createElement('i');e.title='pin '+i;$('#pins').appendChild(e)}
 function openEd(n){cur=n;EA.value=files[n];$('#en').textContent=n;ED.hidden=false;EA.focus()}
@@ -472,7 +628,7 @@ function sug(w,L){L=L||KN;w=w.toLowerCase();let b='',d=9;for(const c of L){const
 function diag(t){if(/^[A-Za-z_][\w:]*:\s+\S/.test(t))return'There is a space after ":". Write it attached: '+t.replace(/^([A-Za-z_][\w:]*:)\s+/,'$1');
 if((t.match(/"/g)||[]).length%2)return'A quote is not closed (")';const a=(t.match(/\(/g)||[]).length,b=(t.match(/\)/g)||[]).length;if(a>b)return'A parenthesis is not closed ")"';if(b>a)return'Extra parenthesis ")"';return'There cannot be loose text after the parentheses'}
 const ids=ns=>ns.flatMap(x=>[...(x.h[0].toLowerCase()==='ui'&&x.o?x.o.filter(q=>q[0].toLowerCase()==='id').map(q=>q[1].toLowerCase()):[]),...ids(x.body||[]),...ids(x.alt||[])]);
-const OA=(()=>{const S=['w','h','bits','set','color','write','text','target','style','size','src','into'];return{var:['value','text','list','size','fill','index','dict','key'],set:['value','text','index','key'],push:['value','text'],insert:['index','value','text'],remove:['index','key'],pop:['into'],sort:['order'],call:['into'],return:['value','text'],wait:['ms','press','until'],pin:['set','output','input','mode'],screen:S,display:S,reg:S,sound:['freq','ms'],i2c:['addr','byte','bytes','text','into'],expect:['equals'],input:['prompt'],ui:['id','label','text','min','max','value'],store:['key','value','into','default'],g3d:['id','x','y','z','size','color','rx','ry','rz','s','tx','ty','tz','fov','mode','bg'],console:['cols','rows','color','bg','text','col','row','into','prompt'],mem:['addr','value','size','len','from','to','text','into','type'],disk:['file','into','text','value','prefix','to'],import:['as','from'],host:['file','into','text','value'],exec:['file','args','into','from','bg','id'],surface:['id','w','h'],proc:['id','into'],recv:['into','timeout','ok'],send:['value','text'],sys:['into'],assert:['cond','text'],kill:['id'],join:['id'],panic:['text'],spawn:['id']}})();
+const OA=(()=>{const S=['w','h','bits','set','color','write','text','target','style','size','src','into'];return{var:['value','text','list','size','fill','index','dict','key'],set:['value','text','index','key'],push:['value','text'],insert:['index','value','text'],remove:['index','key'],pop:['into'],sort:['order'],call:['into'],return:['value','text'],wait:['ms','us','press','until'],pin:['set','output','input','mode'],screen:S,display:S,reg:S,sound:['freq','ms'],i2c:['addr','byte','bytes','text','into'],expect:['equals'],input:['prompt'],ui:['id','label','text','min','max','value'],store:['key','value','into','default'],g3d:['id','x','y','z','size','color','rx','ry','rz','s','tx','ty','tz','fov','mode','bg'],console:['cols','rows','color','bg','text','col','row','into','prompt'],mem:['addr','value','size','len','from','to','text','into','type'],disk:['file','into','text','value','prefix','to'],import:['as','from'],host:['file','into','text','value'],exec:['file','args','into','from','bg','id'],surface:['id','w','h'],proc:['id','into'],recv:['into','timeout','ok'],send:['value','text'],sys:['into'],ram:['addr','size','len','from','to','mode','value','lo','hi','into'],cpu:['leaf','sub','eax','ebx','ecx','edx','vendor','text','into','addr','arg','core','reg','value','lo','hi'],irq:['n','call','ms','sig'],pci:['seg','bus','dev','fn','off','size','value','lo','hi','into'],dev:['id','path','mode','off','addr','len','into','req','arg'],admin:['uid','euid','gid','egid','root','pid','cmd','into','code','sig','level','file','mode'],assert:['cond','text'],kill:['id'],join:['id'],panic:['text'],spawn:['id']}})();
 const ARG={blit:[2],get:[2],text:[2],each:[1],pixel:[2],rect:[4],line:[4],circle:[3],repeat:[1],if:[1],while:[1],for:[2,3]};
 function chkx(ns,E,W,s,lp){s.ids=s.ids||new Set();for(const x of ns){if(x.bad||!KN.includes(x.h[0].toLowerCase()))continue;const k=x.h[0].toLowerCase(),l=x.lg,n=x.n;
 if(!['print','serial','use','import'].includes(k))x.o.forEach(q=>{const a=q[0];if(/[:\s]/.test(a))E.push([n,`The command "${q.join(';')}" is not properly separated`,`Use ";" to separate: "${a.split(/[:\s]+/).filter(Boolean).join(';')}"`]);else if(OA[k]&&!OA[k].includes(a.toLowerCase()))W.push([n,`Unknown command "${a}" in ${x.h[0]}`,sug(a,OA[k])||'Valid: '+OA[k].join(', ')])});
@@ -1039,6 +1195,9 @@ const EVK=['mx','my','mb','key','keys'];
 const mkChild=l=>new Proxy(l,{get:(t,k)=>k in t?t[k]:EVK.includes(k)?RV()[k]:undefined,has:(t,k)=>k in t||(EVK.includes(k)&&k in RV()),set:(t,k,v)=>{t[k]=v;return true},deleteProperty:(t,k)=>{delete t[k];return true},ownKeys:t=>[...new Set([...Reflect.ownKeys(t),...EVK.filter(k=>k in RV())])],getOwnPropertyDescriptor:(t,k)=>(k in t||(EVK.includes(k)&&k in RV()))?{value:k in t?t[k]:RV()[k],enumerable:true,configurable:true,writable:true}:undefined});
 function killProc(p,r){r=r||R;if(!r)return;r.hd=r.hd.filter(h=>!(h.sc&&h.sc.proc===p));(r.tm||[]).filter(t=>t.p===p).forEach(t=>clearInterval(t.i));if(r.tm)r.tm=r.tm.filter(t=>t.p!==p);Object.values(r.tasks).filter(t=>t.proc===p).forEach(t=>t.stop=1)}
 const HF={pin:n=>PIN[n]|0,rnd:(a,b)=>a+Math.floor(Math.random()*(b-a+1)),peek:pk,peek16:pk16,peek32:pk32,peekstr:pks,peekf:a=>{a=mc(a);mc(a+3);return DV.getFloat32(a,true)},peekd:a=>{a=mc(a);mc(a+7);return DV.getFloat64(a,true)},fix:(v,n)=>(+v).toFixed(n===undefined?2:n)};
+{const U=v=>BigInt.asUintN(64,BigInt(Math.trunc(+v))),U32=v=>(+v)>>>0;
+Object.assign(HF,{hex:(v,w)=>'0x'+U(v).toString(16).toUpperCase().padStart(Math.max(1,Math.min(16,w===undefined?1:+w)),'0'),bit:(v,n)=>Number((U(v)>>BigInt(+n&63))&1n),lo32:v=>Number(U(v)&0xFFFFFFFFn),hi32:v=>Number(U(v)>>32n),
+rol:(v,n)=>{n&=31;v=U32(v);return((v<<n)|(v>>>((32-n)&31)))>>>0},ror:(v,n)=>{n&=31;v=U32(v);return((v>>>n)|(v<<((32-n)&31)))>>>0},bswap:v=>{v=U32(v);return(((v&255)<<24)|(((v>>8)&255)<<16)|(((v>>16)&255)<<8)|(v>>>24))>>>0}})}
 Object.defineProperty(HF,'t',{get:()=>Date.now()-R.t0});
 let CWD='';
 const normP=p=>{const o=[];for(const s of String(p).split('/')){if(!s||s==='.')continue;if(s==='..')o.pop();else o.push(s)}return o.join('/')};
