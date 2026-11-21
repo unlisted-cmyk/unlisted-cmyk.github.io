@@ -1,0 +1,67 @@
+<log+>
+// ================================================================
+//  demo3d - Logl 2.0 3D: click an object to select it,
+//  arrows orbit the camera, +/- zoom, E exports the scene to scene.obj
+// ================================================================
+Var:picked("Value;''")
+Var:r("Value;0")
+Var:zoom("Value;1")
+Screen:Resolution("W;480","H;270")
+G3D:Scene("Grid;1","BG;12;14;30","Ambient;0.22")
+G3D:Plane("Id;floor","Y;-0.5","Size;8","Color;60;70;90")
+G3D:Cube("Id;box","X;-2.5","Color;red")
+G3D:Sphere("Id;ball","X;-1","Color;green")
+G3D:Torus("Id;ring","X;0.6","Color;orange","RX;1.2")
+G3D:Cylinder("Id;pillar","X;2","SY;1.6","Color;cyan")
+G3D:Cone("Id;cone","X;3.4","Color;magenta")
+G3D:Diamond("Id;gem","Y;1.8","Size;0.8","Color;yellow")
+G3D:Orbit("Yaw;25","Pitch;22","Dist;9")
+G3D:Render()
+Screen:Show()
+UI:Label("Id;info","Text;click an object")
+
+On:Canvas
+{
+  G3D:Pick("X;mx","Y;my","Into;picked")
+  UI:Set("Id;info","Text;picked: {picked}")
+  If(picked != '')
+  {
+    G3D:Set("Id;{picked}","Color;255;255;255")
+  }
+  G3D:Render()
+  Screen:Show()
+}
+On:Key
+{
+  If(key == 'ArrowLeft')
+  {
+    G3D:Orbit("DYaw;-8")
+  }
+  ElseIf(key == 'ArrowRight')
+  {
+    G3D:Orbit("DYaw;8")
+  }
+  ElseIf(key == 'ArrowUp')
+  {
+    G3D:Orbit("DPitch;6")
+  }
+  ElseIf(key == 'ArrowDown')
+  {
+    G3D:Orbit("DPitch;-6")
+  }
+  ElseIf(key == '+')
+  {
+    G3D:Orbit("Zoom;0.9")
+  }
+  ElseIf(key == '-')
+  {
+    G3D:Orbit("Zoom;1.1")
+  }
+  ElseIf(key == 'e')
+  {
+    G3D:Save("File;scene.obj")
+    UI:Set("Id;info","Text;saved scene.obj")
+  }
+  G3D:Render()
+  Screen:Show()
+}

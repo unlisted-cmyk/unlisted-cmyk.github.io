@@ -1,0 +1,106 @@
+<log+>
+// ================================================================
+//  LogEdit - a code editor for Log, written in Log (needs Logl 2.0)
+//  Ctrl+S save    F5 / Ctrl+R save and run    Ctrl+N new file
+//  Tab / Shift+Tab indent    click a file in the list to open it
+// ================================================================
+Var:dir("Value;''")
+Var:files("List;")
+Var:stack("List;")
+Var:opt("Value;''")
+Var:txt("Value;''")
+Var:rc("Value;0")
+
+UI:Title("Text;LogEdit")
+UI:TextBox("Id;fname","Label;File:","Value;untitled.log+")
+UI:Button("Id;bnew","Label;New")
+UI:Button("Id;bsave","Label;Save (Ctrl+S)")
+UI:Button("Id;brun","Label;Save and run (F5)")
+UI:Label("Id;status","Text;ready")
+UI:Break()
+UI:List("Id;flist","Label;Files","Options;","Rows;22")
+UI:TextArea("Id;code","Value;<log+>","Rows;22","Cols;90","Syntax;log")
+
+Def:refresh()
+{
+  Host:List("File;{dir}","Mark;1","Into;files")
+  Set:opt("Value;files.join('|')")
+  If(dir != '')
+  {
+    Set:opt("Value;'../|' + opt")
+  }
+  UI:Set("Id;flist","Options;{opt}")
+}
+Def:save()
+{
+  If(fname == '')
+  {
+    UI:Set("Id;status","Text;Type a file name first")
+    Return
+  }
+  Host:Write("File;{dir}{fname}","Value;code","Raw;1")
+  UI:Set("Id;status","Text;Saved {dir}{fname}")
+  Call:refresh()
+}
+Def:run()
+{
+  Call:save()
+  Exec("File;{dir}{fname}","From;host","Into;rc")
+  UI:Set("Id;status","Text;Finished {fname} (exit code {rc})")
+}
+Def:newfile()
+{
+  UI:Set("Id;code","Value;'<log+>\n\n'")
+  UI:Set("Id;fname","Value;'untitled.log+'")
+  UI:Set("Id;status","Text;New file")
+}
+Call:refresh()
+
+On:bsave
+{
+  Call:save()
+}
+On:brun
+{
+  Call:run()
+}
+On:bnew
+{
+  Call:newfile()
+}
+On:flist
+{
+  If(flist == '../')
+  {
+    Pop:stack("Into;dir")
+    Call:refresh()
+  }
+  ElseIf(flist.slice(-1) == '/')
+  {
+    Push:stack("Value;dir")
+    Set:dir("Value;dir + flist")
+    Call:refresh()
+  }
+  Else
+  {
+    Host:Read("File;{dir}{flist}","Into;txt")
+    UI:Set("Id;code","Value;txt","Goto;1")
+    UI:Set("Id;fname","Value;flist")
+    UI:Set("Id;status","Text;Opened {dir}{flist}")
+  }
+}
+On:Key
+{
+  If(key == 'Ctrl+S')
+  {
+    Call:save()
+  }
+  ElseIf(key == 'F5' || key == 'Ctrl+R')
+  {
+    Call:run()
+  }
+  ElseIf(key == 'Ctrl+N')
+  {
+    Call:newfile()
+  }
+}
