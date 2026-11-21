@@ -2155,7 +2155,7 @@ static const char PAGE_HTML[] =
 ".ttl2{flex-basis:100%;font-size:1.15em;font-weight:700}\n"
 ".sep{flex-basis:100%;height:1px;background:var(--bd)}\n"
 ".brk{flex-basis:100%;height:0}\n"
-".ed{flex:1 1 100%;display:flex;flex-direction:column;min-width:0}\n"
+".ed{flex:1 1 100%;display:flex;flex-direction:column;min-width:0;max-width:100%}\n"
 ".edcap{font-weight:600;margin-bottom:4px;color:var(--mut)}\n"
 ".edbox{display:flex;height:25em;border:1px solid var(--bd);border-radius:6px;background:var(--pnl);overflow:hidden;font:13px/1.5 ui-monospace,Consolas,Menlo,monospace}\n"
 ".gut{margin:0;padding:8px 8px 30px 10px;text-align:right;color:var(--mut);background:rgba(127,127,127,.08);overflow:hidden;user-select:none;min-width:3ch;font:inherit}\n"
