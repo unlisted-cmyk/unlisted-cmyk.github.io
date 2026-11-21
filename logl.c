@@ -748,7 +748,7 @@ static Val eval(Node *n, Scope *sc){
 }
 
 /* ---------------------------------------------------------------- sentencias */
-#define KWLIST X(use) X(print) X(var) X(set) X(repeat) X(for) X(if) X(wait) X(screen) X(display) X(reg) X(pin) X(on) X(loop) X(setup) X(expect) X(sound) X(serial) X(else) X(while) X(break) X(continue) X(input) X(ui) X(store) X(g3d) X(push) X(pop) X(remove) X(insert) X(sort) X(shuffle) X(each) X(def) X(call) X(return) X(elseif) X(console) X(mem) X(disk) X(exec) X(panic) X(stop) X(task) X(spawn) X(kill) X(join) X(import) X(try) X(lock) X(unlock) X(send) X(recv) X(yield) X(assert) X(sys) X(proc) X(surface) X(host) X(port) X(graphics3d) X(dyn2d) X(ram) X(cpu) X(irq) X(pci) X(dev) X(admin) X(catch)
+#define KWLIST X(use) X(print) X(var) X(set) X(repeat) X(for) X(if) X(wait) X(screen) X(display) X(reg) X(pin) X(on) X(loop) X(setup) X(expect) X(sound) X(serial) X(else) X(while) X(break) X(continue) X(input) X(ui) X(store) X(g3d) X(push) X(pop) X(remove) X(insert) X(sort) X(shuffle) X(split) X(each) X(def) X(call) X(return) X(elseif) X(console) X(mem) X(disk) X(exec) X(panic) X(stop) X(task) X(spawn) X(kill) X(join) X(import) X(try) X(lock) X(unlock) X(send) X(recv) X(yield) X(assert) X(sys) X(proc) X(surface) X(host) X(port) X(graphics3d) X(dyn2d) X(ram) X(cpu) X(irq) X(pci) X(dev) X(admin) X(catch)
 enum {
 #define X(n) K_##n,
 KWLIST
@@ -1758,6 +1758,34 @@ static void do_vs(Stmt *x, int k, Scope *sc){
     Val nv = cv(ty, v); vdrop(LP(cur)->a[(int)li]); LP(cur)->a[(int)li] = nv; vdrop(a); return;
   }
   if(k == K_var) sdecl(sc, n, cv(ty, v), ty); else ssetv(sc, n, v);
+}
+/* Split:parts("Value;text","By;,")   or   Split("Text;a b c","Into;parts")
+   Cuts a text into a list (the destination must be declared, e.g. Var:parts("List;")).
+   By/Sep/On = separator (\\n and \\t allowed; none = any run of spaces), Limit;n = at most n pieces, Trim;1 = trim every piece, Skip;1 = drop empty pieces */
+static void do_split(Stmt *x, Scope *sc){
+  const char *dst = *hw_(x, 1) ? hw_(x, 1) : og(x, "into");
+  if(!dst) lerr("Split needs a destination: Split:list(\"Value;text\",\"By;,\") or Split(\"Value;text\",\"Into;list\")");
+  if(!shas(sc, dst)) lerr("Undeclared variable: %s (declare it first, for example Var:%s(\"List;\"))", dst, dst);
+  Val v = valof(x); char *s = jstrdup_nl(v); vdrop(v);
+  const char *bs0 = og(x, "by"); if(!bs0) bs0 = og(x, "sep"); if(!bs0) bs0 = og(x, "on");
+  char *sep = NULL; if(bs0){ char *f = fm(bs0); Buf b = {0};
+    for(char *p = f; *p; p++){ if(p[0] == '\\' && p[1] == 'n'){ bc(&b, '\n'); p++; } else if(p[0] == '\\' && p[1] == 't'){ bc(&b, '\t'); p++; } else bc(&b, *p); }
+    free(f); sep = btake(&b); }
+  const char *ts = og(x, "trim"), *ks = og(x, "skip"), *ls = og(x, "limit");
+  int trim = ts && evi(ts), skip = ks && evi(ks); ll lim = ls ? evi(ls) : 0; int t = sty(sc, dst);
+  Val l = Vl(); size_t sl = sep ? strlen(sep) : 0; const char *p = s; int n = 0;
+  for(;;){
+    const char *e; size_t len;
+    if(sl){ e = (lim > 0 && n + 1 >= lim) ? NULL : strstr(p, sep); len = e ? (size_t)(e - p) : strlen(p); }
+    else { while(*p && isspace((unsigned char)*p)) p++; if(!*p) break; e = p; if(lim > 0 && n + 1 >= lim) e = p + strlen(p); else while(*e && !isspace((unsigned char)*e)) e++; len = (size_t)(e - p); if(!*e) e = NULL; }
+    char *piece = xsn(p, len);
+    if(trim || !sl){ char *a = piece; while(*a && isspace((unsigned char)*a)) a++; size_t m = strlen(a); while(m && isspace((unsigned char)a[m - 1])) m--; char *q = xsn(a, m); free(piece); piece = q; }
+    if(!(skip && !*piece)){ lpush(LP(l), cv(t, Vs(piece))); n++; }
+    free(piece);
+    if(!e) break; p = e + sl;
+    if(!sl && !*p) break;
+  }
+  free(s); free(sep); ssetv(sc, dst, l);
 }
 static void do_lst(Stmt *x, int k, Scope *sc){
   const char *n = hw_(x, 1); int has = shas(sc, n); Val a = has ? sget(sc, n) : Vu();
@@ -3290,6 +3318,7 @@ static int one(Stmt *x, Scope *sc){
   }
   case K_var: case K_set: do_vs(x, k, sc); break;
   case K_push: case K_pop: case K_remove: case K_insert: case K_sort: case K_shuffle: do_lst(x, k, sc); break;
+  case K_split: do_split(x, sc); break;
   case K_each: {
     Val a = ev(arg(x, 0)); if(a.t != T_LIST){ vdrop(a); lerr("Each needs a list"); }
     List *l = LP(a); int n = l->n; Val *cp = xm((n + 1) * sizeof(Val)); for(int i = 0; i < n; i++) cp[i] = vref(l->a[i]);
