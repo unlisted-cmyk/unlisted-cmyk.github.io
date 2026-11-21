@@ -62,6 +62,22 @@ canvas{display:block;width:100%;image-rendering:pixelated;background:#000;border
 #chdw{position:absolute;right:8px;bottom:8px;width:176px;background:#000;border:1px solid #34455a;padding:4px;display:none}#cir.f #chdw{display:block}
 #chd{width:100%;height:auto;image-rendering:pixelated;border:0}#clog{font-size:10px;color:#8fb0cf;white-space:pre-wrap;max-height:48px;overflow:hidden}
 @media(max-width:760px){#cbtn{left:auto;right:10px;top:10px;bottom:auto}}
+#ui{max-height:62vh;overflow:auto}
+#ui select{background:#0c1520;border:1px solid #2a3b4f;color:#cfe6ff;border-radius:4px;padding:4px}
+#ui select.lst{min-width:12em}#ui label.lstl{align-items:flex-start}
+#ui progress{width:12em}
+#ui .ttl2{flex-basis:100%;font-size:1.15em;font-weight:700;color:#ffb454}
+#ui .sep{flex-basis:100%;height:1px;background:#1d2b3b}#ui .brk{flex-basis:100%;height:0}
+#ui .ed{flex:1 1 100%;display:flex;flex-direction:column;min-width:0;max-width:100%}
+#ui .edcap{font-weight:600;margin-bottom:4px;color:#8fb0cf}
+#ui .edbox{display:flex;height:25em;border:1px solid #2a3b4f;border-radius:6px;background:#0c1520;overflow:hidden;font:13px/1.5 ui-monospace,Consolas,Menlo,monospace}
+#ui .gut{margin:0;padding:8px 8px 30px 10px;text-align:right;color:#5d7894;background:#0a1118;overflow:hidden;user-select:none;min-width:3ch;font:inherit}
+#ui .edwr{position:relative;flex:1;min-width:0}
+#ui .edwr textarea,#ui .edwr .hl{position:absolute;inset:0;margin:0;padding:8px 8px 30px 8px;border:0;font:inherit;white-space:pre;tab-size:4;box-sizing:border-box;width:100%;height:100%}
+#ui .edwr textarea{resize:none;outline:none;background:transparent;color:#cfe6ff;z-index:1;overflow:auto}
+#ui .edwr .hl{overflow:hidden;pointer-events:none;color:#cfe6ff;display:none}
+#ui .syn .hl{display:block}#ui .syn textarea{color:transparent;caret-color:#cfe6ff}
+#ui .tc{color:#6a9955}#ui .ts{color:#d19a66}#ui .th{color:#c678dd}#ui .tk{color:#7fe3a1;font-weight:600}#ui .tn{color:#56b6c2}#ui .tp{color:#8fb0cf}
 </style></head><body>
 <input type="file" id="upl" hidden multiple>
 <div id="app">
@@ -184,7 +200,7 @@ Loop
 }
 `};
 /* ---------- parser ---------- */
-const KN=['use','print','var','set','repeat','for','if','wait','screen','display','reg','pin','on','loop','setup','expect','sound','serial','else','while','break','continue','input','ui','store','g3d','push','pop','remove','insert','sort','shuffle','each','def','call','return','elseif','console','mem','disk','exec','panic','stop','task','spawn','kill','join','import','try','lock','unlock','send','recv','yield','assert','sys','proc','surface','host','i2c','ram','cpu','irq','pci','dev','admin'],OPS=['pixel','rect','line','circle','clear','resolution','text','blit','get'],TYP=['u8','u16','u32','i32','f32','f64','str'];
+const KN=['use','print','var','set','repeat','for','if','wait','screen','display','reg','pin','on','loop','setup','expect','sound','serial','else','while','break','continue','input','ui','store','g3d','push','pop','remove','insert','sort','shuffle','each','def','call','return','elseif','console','mem','disk','exec','panic','stop','task','spawn','kill','join','import','try','lock','unlock','send','recv','yield','assert','sys','proc','surface','host','i2c','ram','cpu','irq','pci','dev','admin'],OPS=['pixel','rect','line','circle','clear','resolution','text','blit','get','show'],TYP=['u8','u16','u32','i32','f32','f64','str'];
 const CAST={u8:v=>v&255,u16:v=>v&65535,u32:v=>v>>>0,i32:v=>v|0,f32:v=>Math.fround(+v),f64:v=>+v,str:v=>String(v).slice(0,65535)};
 function sp(s){const a=[];let d=0,q=0,b=0;for(let i=0;i<=s.length;i++){const c=s[i];if(c==='"')q^=1;if(!q){if(c==='('||c==='[')d++;if(c===')'||c===']')d--}if(i===s.length||(c===','&&!d&&!q)){a.push(s.slice(b,i).trim());b=i+1}}return a}
 function grp(s){const g=[];let d=0,b=0;for(let i=0;i<s.length;i++){const c=s[i];if(c==='"'){if(!d)return null;const j=s.indexOf('"',i+1);if(j<0)return null;i=j}else if(c==='('){if(d++===0)b=i+1}else if(c===')'){if(--d<0)return null;if(d===0)g.push(s.slice(b,i))}else if(!d&&c!==' ')return null}return d?null:g}
@@ -214,7 +230,7 @@ if(!KN.includes(k)){E.push([n,`Unknown instruction: ${x.h[0]}`,sug(x.h[0])||'Ins
 if(k==='reg'&&l!=='log-')E.push([n,'Reg: is exclusive to Log- (use Screen: or Display:)']);
 if(['ram','cpu','irq','pci','dev','admin'].includes(k)&&l!=='log-')E.push([n,x.h[0]+': is exclusive to Log-','Change the header to <log-> or tag the line with #-']);
 if(['screen','display','reg'].includes(k)){const p=x.h.map(v=>v.toLowerCase()).find(v=>OPS.includes(v));
-if(!p)E.push([n,'Unknown screen operation (Pixel, Rect, Line, Circle, Clear, Resolution)']);
+if(!p)E.push([n,'Unknown screen operation (Pixel, Rect, Line, Circle, Clear, Resolution, Text, Blit, Get, Show)']);
 else if(l==='log++')E.push([n,'Log++ has no screen: use Log+ or Log-']);
 else if(p==='resolution')s.res=1;
 else if(l==='log-'&&!s.res)E.push([n,'Log- requires Resolution before drawing']);}
@@ -236,7 +252,7 @@ function col(o){const c=o.find(a=>a[0].toLowerCase()==='color');if(c)return cs(c
 function setRes(w,h){w=Math.max(1,Math.min(1920,w|0));h=Math.max(1,Math.min(1080,h|0));CV.width=w;CV.height=h;res={w,h};cx.fillStyle='#000';cx.fillRect(0,0,w,h);$('#cw').hidden=false;hd()}
 function scr(x){const p=x.h.map(v=>v.toLowerCase()).find(v=>OPS.includes(v)),a=x.a.map(e=>ev(e)),o=x.o;
 if(p==='resolution'){let w=320,h=180;if(o[0][0].toLowerCase()==='set'){w=ev(o[0][1]);h=ev(o[0][2])}else o.forEach(q=>{const m=q[0].toLowerCase();if(m==='w')w=ev(q[1]);if(m==='h')h=ev(q[1])});return setRes(w,h)}
-const tg=og(x,'target'),S=tg?SURF[tg]:null;if(tg&&!S)throw'Surface: does not exist '+tg;
+if(p==='show'){if(!res)setRes(320,180);return}const tg=og(x,'target'),S=tg?SURF[tg]:null;if(tg&&!S)throw'Surface: does not exist '+tg;
 if(!res)setRes(320,180);const g=S?S.g:cx,W=S?S.w:res.w,Hh=S?S.h:res.h;if(!S)Con.sus=1;g.fillStyle=g.strokeStyle=col(o);const ln=/^line$/i.test(og(x,'style')||'');
 if(p==='clear')g.fillRect(0,0,W,Hh);
 else if(p==='pixel')g.fillRect(a[0],a[1],1,1);
@@ -447,7 +463,15 @@ else if(w==='read'){const sz=g('size')??1;let v=0;for(let i=sz-1;i>=0;i--)v=v*25
 else if(w==='fill'){const n=g('len')??0,v=g('value')??0;mc(a);mc(a+n-1);for(let i=0;i<n;i++)MEM[a+i]=v&255}
 else if(w==='copy'){const f=g('from'),t=g('to'),n=g('len')??0;mc(f);mc(f+n-1);mc(t);mc(t+n-1);MEM.copyWithin(t,f,f+n)}
 else if(w==='writetext'){const s=String(valOf(x));for(let i=0;i<=s.length;i++)MEM[mc(a+i)]=i<s.length?s.charCodeAt(i)&255:0}
-else throw'Mem: use Write, Read, Fill, Copy or WriteText';break}
+else{const mi=v=>{const to=og(x,'into');if(to===null||!(to in V))throw'Undeclared variable: '+(to||'(missing Into)');V[to]=cv(TY[to],v)};
+if(w==='find'){const pv=valOf(x),pat=typeof pv==='number'?[pv&255]:[...String(pv)].map(c=>c.charCodeAt(0)&255),ln=g('len'),n=Math.min(ln===undefined?MEM.length-a:ln,MEM.length-a);mc(a);let res=-1;if(pat.length)for(let i=0;i+pat.length<=n&&res<0;i++){let ok=1;for(let j=0;j<pat.length;j++)if(MEM[a+i+j]!==pat[j]){ok=0;break}if(ok)res=a+i}mi(res)}
+else if(w==='cmp'){const pa=g('a')??0,pb=g('b')??0,n=g('len')??0;if(n>0){mc(pa);mc(pa+n-1);mc(pb);mc(pb+n-1)}let r=0;for(let i=0;i<n&&!r;i++)r=Math.sign(MEM[pa+i]-MEM[pb+i]);mi(r)}
+else if(w==='hash'){const n=g('len')??0;if(n>0){mc(a);mc(a+n-1)}mi(crc32(MEM,a,n>0?n:0))}
+else if(w==='swap'){const f=g('from')??0,t=g('to')??0,n=g('len')??0;if(n>0){mc(f);mc(f+n-1);mc(t);mc(t+n-1);if(f<t+n&&t<f+n)throw'Mem:Swap: the blocks overlap';for(let i=0;i<n;i++){const c=MEM[f+i];MEM[f+i]=MEM[t+i];MEM[t+i]=c}}}
+else if(w==='readtext'){const ln=g('len'),mx=Math.min(ln===undefined?MEM.length-a:ln,MEM.length-a);mc(a);let n=0;while(n<mx&&MEM[a+n])n++;let s='';for(let i=0;i<n;i++)s+=String.fromCharCode(MEM[a+i]);mi(s)}
+else if(['setbit','clearbit','togglebit','testbit'].includes(w)){const bit=g('bit')??0,ba=a+(bit>>3),m=1<<(bit&7);mc(ba);if(w==='setbit')MEM[ba]|=m;else if(w==='clearbit')MEM[ba]&=~m;else if(w==='togglebit')MEM[ba]^=m;else mi(MEM[ba]&m?1:0)}
+else if(['xor','and','or','not'].includes(w)){const n=g('len')??0,v=g('value')??0;if(n>0){mc(a);mc(a+n-1)}for(let i=0;i<n;i++){const b=MEM[a+i];MEM[a+i]=w==='xor'?b^v:w==='and'?b&v:w==='or'?b|v:~b}}
+else throw'Mem: use Write, Read, Fill, Copy, WriteText, Find, Cmp, Hash, Swap, ReadText, SetBit, ClearBit, ToggleBit, TestBit, Xor, And, Or or Not'}break}
 case'disk':{const w=(x.h[1]||'').toLowerCase(),f=fm(og(x,'file')||''),into=v=>{const to=og(x,'into');if(to!==null){if(!(to in V))throw'Undeclared variable: '+to;V[to]=cv(TY[to],v)}},txt=()=>String(valOf(x)).split('\\n').join(String.fromCharCode(10));
 if(w==='list'){const pf=fm(og(x,'prefix')||'');into(Object.keys(VD).filter(k=>k.startsWith(pf)&&!k.endsWith('/.dir')).sort())}
 else if(w==='read'){if(VD[f]===undefined)throw'Disk: does not exist '+f;into(VD[f])}
@@ -464,15 +488,27 @@ else if(w==='isdir')into(VD[f]===undefined&&isDirIn(VD,f)?1:0);
 else if(w==='rmdir'){const d=f.replace(/\/+$/,'');for(const k of Object.keys(VD))if(k.startsWith(d+'/'))delete VD[k];vdSave()}
 else if(w==='format'){for(const k of Object.keys(VD))delete VD[k];vdSave()}
 else throw'Disk: use List, ListDir, Read, Exists, IsDir, Size, Usage, Write, Append, Mkdir, Rmdir, Delete, Rename, Copy or Format';break}
-case'host':{const w=(x.h[1]||'').toLowerCase(),f=fm(og(x,'file')||''),pv=()=>{if(!R.k)throw'Privileged operation: Host:'+x.h[1]+' only works with run # file (kernel mode)'},into=v=>{const to=og(x,'into');if(to!==null){if(!(to in V))throw'Undeclared variable: '+to;V[to]=cv(TY[to],v)}},txt=()=>String(valOf(x)).split('\\n').join(String.fromCharCode(10));
-if(w==='list')into(Object.keys(files).filter(k=>!k.endsWith('/.dir')).sort());else if(w==='listdir')into(childrenOf(files,fm(og(x,'prefix')||'')));
-else if(w==='read'){if(files[f]===undefined)throw'Host: does not exist '+f;into(files[f])}
-else if(w==='exists')into(files[f]!==undefined?1:0);
+case'host':{const w=(x.h[1]||'').toLowerCase(),f=fm(og(x,'file')||''),pv=()=>{if(!R.k)throw'Privileged operation: Host:'+x.h[1]+' only works with run # file (kernel mode)'},into=v=>{const to=og(x,'into');if(to!==null){if(!(to in V))throw'Undeclared variable: '+to;V[to]=cv(TY[to],v)}},rawOn=og(x,'raw')!==null&&+ev(og(x,'raw')),txt=()=>{const s=String(valOf(x));return rawOn?s:s.split('\\n').join(String.fromCharCode(10))},isF=n=>files[n]!==undefined,need=()=>{if(!isF(f))throw'Host: not found: '+f},touch=n=>{FMT[n]=Math.floor(Date.now()/1000)};
+if(w==='list'){if(!['file','mark','filter','hidden'].some(k=>og(x,k)!==null))into(Object.keys(files).filter(k=>!k.endsWith('/.dir')).sort());
+else{const fl_=k=>og(x,k)!==null&&+ev(og(x,k)),mk=fl_('mark'),hd_=fl_('hidden'),ft=og(x,'filter')===null?'':fm(og(x,'filter')).toLowerCase();let r=childrenOf(files,f).filter(n=>(hd_||n[0]!=='.')&&(!ft||n.endsWith('/')||n.toLowerCase().endsWith(ft)));if(!mk)r=r.map(n=>n.replace(/\/$/,''));into(r)}}
+else if(w==='listdir')into(childrenOf(files,fm(og(x,'prefix')||'')));
+else if(w==='read'){need();into(files[f])}
+else if(w==='exists')into(isF(f)?1:0);
+else if(w==='size')into(isF(f)?new TextEncoder().encode(files[f]).length:-1);
 else if(w==='mkdir'){pv();if(!f)throw'Host: File is missing';files[f.replace(/\/+$/,'')+'/.dir']='';sv()}
-else if(w==='isdir')into(files[f]===undefined&&isDirIn(files,f)?1:0);
-else if(w==='write'){pv();if(!f)throw'Host: File is missing';files[f]=txt();sv()}
-else if(w==='delete'){pv();delete files[f];sv()}
-else throw'Host: use List, ListDir, Read, Exists, IsDir, Mkdir, Write or Delete';break}
+else if(w==='isdir')into(!isF(f)&&isDirIn(files,f)?1:0);
+else if(w==='write'){pv();if(!f)throw'Host: File is missing';files[f]=txt();touch(f);sv()}
+else if(w==='append'){pv();if(!f)throw'Host: File is missing';files[f]=(files[f]||'')+txt();touch(f);sv()}
+else if(w==='delete'){pv();if(isF(f)){delete files[f];sv()}}
+else if(w==='copy'||w==='move'){pv();const t=fm(og(x,'to')||'');if(!t)throw'Host:'+x.h[1]+' needs To';need();files[t]=files[f];touch(t);if(w==='move')delete files[f];sv()}
+else if(w==='lines'){need();const l=files[f].split('\n').map(r=>r.replace(/\r$/,''));if(l.length&&l[l.length-1]==='')l.pop();into(l)}
+else if(w==='writelines'){pv();if(!f)throw'Host: missing File';const v=valOf(x);if(!Array.isArray(v))throw'Host:WriteLines needs a list';files[f]=v.map(s=>String(s)+'\n').join('');touch(f);sv()}
+else if(w==='stat'){const ex_=isF(f)||isDirIn(files,f)&&f!=='';into({exists:ex_?1:0,size:isF(f)?new TextEncoder().encode(files[f]).length:-1,isdir:!isF(f)&&f!==''&&isDirIn(files,f)?1:0,mtime:FMT[f]||0})}
+else if(w==='rmdir'){pv();const d=f.replace(/\/+$/,'');if(d&&!isF(d)&&isDirIn(files,d)){if(Object.keys(files).some(k=>k.startsWith(d+'/')&&k!==d+'/.dir'))throw'Host: rmdir failed (is the folder empty?)';delete files[d+'/.dir'];sv()}}
+else if(w==='cwd')into('/'+CWD.replace(/\/$/,''));
+else if(w==='savejson'){pv();if(!f)throw'Host: missing File';files[f]=JSON.stringify(valOf(x));touch(f);sv()}
+else if(w==='loadjson'){need();let v;try{v=JSON.parse(files[f])}catch(_){throw'Host:LoadJson: '+f+' is not valid JSON'}into(v)}
+else throw'Host: use List, ListDir, Read, Exists, Size, Write, Append, Delete, Mkdir, IsDir, Copy, Move, Lines, WriteLines, Stat, Rmdir, Cwd, SaveJson or LoadJson';break}
 case'exec':{const f=resolveP(fl.path,fm(og(x,'file')||'')),to=og(x,'into'),fr=(og(x,'from')||(R.k?'disk':'host')).toLowerCase(),st=fr==='disk'?VD[f]:files[f];if(st===undefined)throw'Exec: does not exist '+f+' (in '+fr+')';
 const p=parse(st,f);if(p.nodes){chk(p.nodes,p.E,p.W,{});chkx(p.nodes,p.E,p.W,{ids:new Set(ids(p.nodes)),fns:new Set(fnn(p.nodes))},0)}
 let code=0;if(p.E.length){code=1;p.E.forEach(e=>op(`[${f}] ERROR l.${e[0]}: ${e[1]}`,'err'))}
@@ -494,28 +530,55 @@ case'recv':{R.queues=R.queues||{};const n=x.h[1],to=og(x,'into'),okv=og(x,'ok'),
 case'yield':await sleep(0);break;
 case'assert':{const c=og(x,'cond');if(c===null)throw'Assert needs Cond';if(!ev(c))throw'Assert failed: '+fm(og(x,'text')||c);break}
 case'ram':LLram(x);break;case'cpu':LLcpu(x);break;case'irq':await LLirq(x);break;case'pci':LLpci(x);break;case'dev':LLdev(x);break;case'admin':LLadmin(x);break;
-case'sys':{const to=og(x,'into');if(to===null||!(to in V))throw'Undeclared variable: '+(to||'(missing Into)');V[to]={ghz:3,cpu:'Log-SoC 3.0 GHz',ram_mb:4096,mem_bytes:MEM.length,width:res?res.w:0,height:res?res.h:0,kernel:R.k?1:0,uptime_ms:Date.now()-R.t0,tasks:Object.values(R.tasks).filter(t=>t.on).length,version:'0.8',uid:R.k?0:1000,is_root:R.k?1:0};break}
+case'sys':{const to=og(x,'into');if(to===null||!(to in V))throw'Undeclared variable: '+(to||'(missing Into)');V[to]={ghz:3,cpu:'Log-SoC 3.0 GHz',ram_mb:4096,mem_bytes:MEM.length,width:res?res.w:0,height:res?res.h:0,kernel:R.k?1:0,uptime_ms:Date.now()-R.t0,tasks:Object.values(R.tasks).filter(t=>t.on).length,version:'2.0',uid:R.k?0:1000,is_root:R.k?1:0};break}
 case'proc':{const w=(x.h[1]||'').toLowerCase(),to=og(x,'into');if(to===null||!(to in V))throw'Undeclared variable: '+(to||'(missing Into)');if(w==='list')V[to]=cv(TY[to],Object.values(R.tasks).filter(t=>t.on).map(t=>t.n));else if(w==='alive'){const t=R.tasks[fm(og(x,'id')||'')];V[to]=cv(TY[to],t&&t.on?1:0)}else throw'Proc: use List or Alive';break}
 case'panic':{const m=fm(x.q.length?x.q[0].replace(/^text;/i,''):'no message');if(!res)setRes(318,180);Con.on=0;clearTimeout(Con.t);Con.t=0;cx.fillStyle='#7a0000';cx.fillRect(0,0,res.w,res.h);cx.fillStyle='#ffffff';cx.font='8px ui-monospace,Menlo,Consolas,monospace';cx.textBaseline='top';cx.fillText('KERNEL PANIC',6,6);const ln=(m.match(/.{1,48}/g)||['']);ln.forEach((s,i)=>cx.fillText(s,6,22+i*10));cx.fillText('System halted.',6,28+ln.length*10);throw'KERNEL PANIC: '+m}
 case'stop':if(fl.xd)throw new Ret();R.stop=1;R.fin&&R.fin();throw'STOP';
 case'input':{const n=x.h[1];if(!(n in V))throw`Undeclared variable: ${n} (declare it first with Var)`;const pq=fm((x.q[0]||'').replace(/^prompt;/i,''));R.waiting=1;
 for(;;){const s=await ask(pq);V=fl.v;TY=fl.t;op('> '+s,'ok');if(TY[n]==='str'||typeof V[n]==='string'){V[n]=TY[n]?CAST[TY[n]](s):s;break}const v=Number(s);if(s.trim()===''||isNaN(v)){op('Type a number','wrn');continue}V[n]=TY[n]?CAST[TY[n]](v):v;break}R.waiting=0;break}
-case'ui':{R.ui=1;const U=$('#ui'),id=og(x,'id'),w=(x.h[1]||'').toLowerCase();U.hidden=false;hd();
+case'ui':{R.ui=1;const U=$('#ui'),w=(x.h[1]||'').toLowerCase();let id=og(x,'id');U.hidden=false;hd();
 if(w==='clear'){U.innerHTML='';break}
+if(!id&&(w==='title'||w==='separator'||w==='break'))id='_w'+(++UIA);
 if(!id||!/^[A-Za-z_]\w*$/.test(id))throw'UI: a valid Id is missing, for example "Id;button1"';
-const lb=fm(og(x,'label')??og(x,'text')??'');
-if(w==='set'){const e=document.getElementById('u_'+id);if(!e)throw'UI: widget does not exist '+id;const v=og(x,'value'),tx=og(x,'text'),i=e.querySelector('input');if(tx!==null)(e.querySelector('span')||e).textContent=fm(tx);if(v!==null&&i){V[id]=ev(v);if(i.type==='checkbox')i.checked=!!V[id];else i.value=V[id]}break}
-const old=document.getElementById('u_'+id);old&&old.remove();
-const mk=(t,h)=>{const e=document.createElement(t);e.id='u_'+id;if(h!==undefined)e.textContent=h;U.appendChild(e);return e};
-if(w==='button')mk('button',lb||id).onclick=()=>fire(id.toLowerCase());
-else if(w==='label')mk('span',lb);
-else if(['slider','check','textbox'].includes(w)){const e=mk('label'),s=document.createElement('span'),i=document.createElement('input');s.textContent=lb;
-i.type=w==='slider'?'range':w==='check'?'checkbox':'text';
-if(w==='slider'){i.min=og(x,'min')??0;i.max=og(x,'max')??100;i.value=V[id]=+ev(og(x,'value')??String(i.min))}
-else if(w==='check')i.checked=!!(V[id]=+ev(og(x,'value')??'0'));
-else i.value=V[id]=fm(og(x,'value')??'');
-i.oninput=()=>{fl.v[id]=w==='slider'?+i.value:w==='check'?+i.checked:i.value;fire(id.toLowerCase())};e.append(s,i)}
-else throw'UI: unknown widget: '+x.h[1]+' (Button, Label, Slider, Check, TextBox, Set, Clear)';
+const E=document.getElementById('u_'+id),lb=fm(og(x,'label')??og(x,'text')??''),opt=k=>og(x,k);
+if(w==='get'){if(!E)throw'UI: widget does not exist '+id;const wh=(opt('what')||'').toLowerCase(),u=E._u,to=opt('into');if(to===null||!(to in V))throw'Undeclared variable: '+(to||'(missing Into)');V[to]=cv(TY[to],wh==='cursor'?u.cur.slice():wh==='options'?u.opts():u.val());break}
+if(w==='set'){if(!E)throw'UI: widget does not exist '+id;const u=E._u,v=opt('value'),tx=opt('text')??opt('label'),num=k=>opt(k)===null?undefined:+ev(opt(k));
+u.set({text:tx!==null?fm(tx):undefined,value:v!==null?ev(v):undefined,options:opt('options')!==null?fm(opt('options')):undefined,syntax:opt('syntax')!==null?fm(opt('syntax')):undefined,go:num('goto')||0,rows:num('rows'),min:num('min'),max:num('max')});
+if(v!==null&&u.isvar)fl.v[id]=u.val();break}
+E&&E.remove();
+const el=(t,c)=>{const e=document.createElement(t);if(c)e.className=c;return e},rg=(root,u)=>{root.id='u_'+id;root._u=Object.assign({cur:[1,1,0,0],opts:()=>[],isvar:0},u);U.appendChild(root)},fire_=()=>fire(id.toLowerCase());
+const splitOpts=s=>s?s.split('|'):[];
+if(w==='button'){const b=el('button');b.textContent=lb||id;b.onclick=fire_;rg(b,{t:w,val:()=>'',set:o=>{if(o.text!==undefined)b.textContent=o.text}})}
+else if(w==='label'||w==='title'){const s=el(w==='title'?'div':'span',w==='title'?'ttl2':'');s.textContent=lb;rg(s,{t:w,val:()=>s.textContent,set:o=>{if(o.text!==undefined)s.textContent=o.text}})}
+else if(w==='separator'||w==='break')rg(el('div',w==='separator'?'sep':'brk'),{t:w,val:()=>'',set:()=>{}});
+else if(w==='slider'||w==='check'||w==='textbox'){const e=el('label'),s=el('span'),i=el('input');s.textContent=lb;i.type=w==='slider'?'range':w==='check'?'checkbox':'text';
+if(w==='slider'){i.min=og(x,'min')??0;i.max=og(x,'max')??100;i.value=V[id]=+ev(og(x,'value')??String(i.min))}else if(w==='check')i.checked=!!(V[id]=+ev(og(x,'value')??'0'));else i.value=V[id]=fm(og(x,'value')??'');
+i.oninput=()=>{fl.v[id]=w==='slider'?+i.value:w==='check'?+i.checked:i.value;fire_()};e.append(s,i);
+rg(e,{t:w,isvar:1,val:()=>w==='slider'?+i.value:w==='check'?+i.checked:i.value,set:o=>{if(o.text!==undefined)s.textContent=o.text;if(o.min!==undefined)i.min=o.min;if(o.max!==undefined)i.max=o.max;if(o.value!==undefined){if(w==='check')i.checked=!!o.value;else i.value=o.value}}})}
+else if(w==='progress'){const e=el('label'),s=el('span'),p=el('progress');let mn=+ev(og(x,'min')??'0'),mx=+ev(og(x,'max')??'100'),v=+ev(og(x,'value')??String(mn));s.textContent=lb;e.append(s,p);const upd=()=>{p.max=mx-mn;p.value=v-mn};upd();
+rg(e,{t:w,val:()=>v,set:o=>{if(o.text!==undefined)s.textContent=o.text;if(o.min!==undefined)mn=o.min;if(o.max!==undefined)mx=o.max;if(o.value!==undefined)v=+o.value;upd()}})}
+else if(w==='dropdown'||w==='list'){const e=el('label',w==='list'?'lstl':''),s=el('span'),sel=el('select');let ops=fm(og(x,'options')??'');s.textContent=lb;if(w==='list'){sel.size=Math.max(2,+ev(og(x,'rows')??'8'));sel.className='lst'}e.append(s,sel);
+const fill=(keep)=>{sel.replaceChildren(...splitOpts(ops).map(t=>{const o=el('option');o.textContent=t;o.value=t;return o}));if(keep!==undefined)sel.value=keep};
+let v0=og(x,'value');v0=v0===null||fm(v0)===''?splitOpts(ops)[0]??'':fm(v0);fill(v0);V[id]=v0;sel.onchange=()=>{fl.v[id]=sel.value;fire_()};
+rg(e,{t:w,isvar:1,val:()=>sel.value,opts:()=>splitOpts(ops),set:o=>{if(o.text!==undefined)s.textContent=o.text;if(o.options!==undefined){ops=o.options;fill(sel.value)}if(o.value!==undefined)sel.value=String(o.value)}})}
+else if(w==='textarea'){const root=el('div','ed'),cap=el('div','edcap'),box=el('div','edbox'),gut=el('pre','gut'),wr=el('div','edwr'),hl=el('pre','hl'),ta=el('textarea');
+let rows=Math.max(3,Math.min(80,+ev(og(x,'rows')??'16'))),cols=+ev(og(x,'cols')??'0'),syn=fm(og(x,'syntax')??''),tm=null,ct=null;const u={t:w,isvar:1,cur:[1,1,0,0]};
+ta.spellcheck=false;ta.wrap='off';ta.value=fm(og(x,'value')??'');V[id]=ta.value;cap.textContent=lb;cap.style.display=lb?'block':'none';wr.append(hl,ta);box.append(gut,wr);root.append(cap,box);
+const lineStart=(v,s)=>s?v.lastIndexOf('\n',s-1)+1:0,sync=()=>{hl.scrollTop=ta.scrollTop;hl.scrollLeft=ta.scrollLeft;gut.scrollTop=ta.scrollTop};
+const layout=()=>{box.classList.toggle('syn',!!syn);box.style.height=(rows*1.5+1.2)+'em';if(cols){root.style.flex='0 0 auto';root.style.width=(cols+6)+'ch'}};
+const refresh=()=>{const t=ta.value;let g='';const n=t.split('\n').length;for(let i=1;i<=n;i++)g+=i+'\n';gut.textContent=g;hl.innerHTML=(syn?uiHilite(t):uiEsc(t))+'\n';sync()};
+const cursor=()=>{const v=ta.value,p=ta.selectionStart;u.cur=[v.slice(0,p).split('\n').length,p-lineStart(v,p)+1,ta.selectionStart,ta.selectionEnd]};
+const typed=()=>ta.dispatchEvent(new Event('input')),flush=()=>{clearTimeout(tm);fl.v[id]=ta.value};
+const gotoLine=n=>{const ls=ta.value.split('\n');n=Math.max(1,Math.min(n,ls.length));let off=0;for(let i=0;i<n-1;i++)off+=ls[i].length+1;ta.focus();ta.setSelectionRange(off,off+ls[n-1].length);const lh=parseFloat(getComputedStyle(ta).lineHeight)||19;ta.scrollTop=Math.max(0,(n-1)*lh-ta.clientHeight/2);sync();cursor()};
+ta.addEventListener('input',()=>{fl.v[id]=ta.value;refresh();clearTimeout(tm);tm=setTimeout(fire_,250)});ta.addEventListener('scroll',sync);
+ta.addEventListener('keyup',()=>{clearTimeout(ct);ct=setTimeout(cursor,100)});ta.addEventListener('click',cursor);
+ta.addEventListener('keydown',e=>{const k=e.key,mod=(e.ctrlKey||e.metaKey)&&!e.altKey;
+if((mod&&/^[sonfrSONFR]$/.test(k))||k==='F5'){e.preventDefault();const nm=k==='F5'?'F5':'Ctrl+'+k.toUpperCase();flush();const g=RV();g.key=nm;KD[nm]=1;g.keys=KD;fire('key').finally(()=>{delete KD[nm]});return}
+if(k==='Tab'){e.preventDefault();const v=ta.value,s=ta.selectionStart,en=ta.selectionEnd;if(s===en&&!e.shiftKey)ta.setRangeText('    ',s,en,'end');else{const ls=lineStart(v,s),out=v.slice(ls,en).split('\n').map(l=>e.shiftKey?l.replace(/^( {1,4}|\t)/,''):'    '+l).join('\n');ta.setRangeText(out,ls,en,'select')}typed()}
+else if(k==='Enter'&&!e.shiftKey&&!e.ctrlKey&&!e.metaKey){const v=ta.value,s=ta.selectionStart,cur=v.slice(lineStart(v,s),s),ind=cur.match(/^\s*/)[0],extra=/\{\s*$/.test(cur)?'    ':'';e.preventDefault();ta.setRangeText('\n'+ind+extra,s,ta.selectionEnd,'end');typed()}});
+u.val=()=>ta.value;u.set=o=>{if(o.text!==undefined){cap.textContent=o.text;cap.style.display=o.text?'block':'none'}if(o.syntax!==undefined)syn=o.syntax;if(o.rows!==undefined)rows=Math.max(3,Math.min(80,o.rows));if(o.value!==undefined)ta.value=String(o.value);layout();refresh();if(o.go>0)gotoLine(o.go)};
+layout();refresh();rg(root,u)}
+else throw'UI: unknown widget: '+x.h[1]+' (Button, Label, Slider, Check, TextBox, TextArea, Dropdown, List, Progress, Title, Separator, Break, Set, Get, Clear)';
 break}
 case'store':{const w=(x.h[1]||'').toLowerCase(),key='logdata:'+og(x,'key');try{if(w==='save')localStorage.setItem(key,JSON.stringify(ev(og(x,'value'))));else if(w==='load'){const r=localStorage.getItem(key),to=og(x,'into'),df=og(x,'default');if(!(to in V))throw'Undeclared variable: '+to;const v=r===null?(df===null?V[to]:ev(df)):JSON.parse(r);V[to]=cv(TY[to],v)}else throw'Store: use Save or Load'}catch(e){if(typeof e==='string')throw e;op('Store: the browser does not allow saving data','wrn')}break}
 case'print':op(fm(x.q[0]||''));break;
@@ -544,7 +607,7 @@ op(`Expect OK: pixel (${a}) verificado`,'ok');break}}}
 const ss=t=>{$('#os').textContent=(kmode?'KERNEL · ':'')+t;if(t!=='RUNNING')$('#inw').hidden=true};
 async function runFile(n,o){kmode=!!(o&&o.k);
 if(R&&R.on){R.stop=1;Object.values(R.tasks||{}).forEach(t=>t.stop=1);R.fin&&R.fin();R.pj&&R.pj('STOP');await new Promise(f=>R.dn=f)}
-OL.innerHTML='';G3.o={};Con.on=0;Con.sus=0;CV.style.imageRendering='';MEM.fill(0);for(const k in SURF)delete SURF[k];$('#dev').hidden=true;$('#vk').hidden=true;$('#pad').hidden=true;$('#cur').hidden=true;held=0;$('#ph').textContent='Hold';CV.style.touchAction='';$('#ui').innerHTML='';$('#ui').hidden=true;$('#inw').hidden=true;$('#app').classList.add('o');OUT.hidden=false;$('#on').textContent=n;res=null;$('#cw').hidden=true;$('#pins').hidden=true;hd();
+OL.innerHTML='';G3reset();Con.on=0;Con.sus=0;CV.style.imageRendering='';MEM.fill(0);for(const k in SURF)delete SURF[k];$('#dev').hidden=true;$('#vk').hidden=true;$('#pad').hidden=true;$('#cur').hidden=true;held=0;$('#ph').textContent='Hold';CV.style.touchAction='';$('#ui').innerHTML='';$('#ui').hidden=true;$('#inw').hidden=true;$('#app').classList.add('o');OUT.hidden=false;$('#on').textContent=n;res=null;$('#cw').hidden=true;$('#pins').hidden=true;hd();
 PIN.fill(0);[...$('#pins').children].forEach(e=>e.className='');V={};TY={};
 SL=files[n].split('\n');const p=parse(files[n],n);if(p.nodes){chk(p.nodes,p.E,p.W,{});chkx(p.nodes,p.E,p.W,{ids:new Set(ids(p.nodes)),fns:new Set(fnn(p.nodes))},0)}
 p.E.sort((a,b)=>a[0]-b[0]);p.W.forEach(w=>show('WARNING',w,'wrn'));p.E.forEach(e=>show('ERROR',e,'err'));
@@ -563,8 +626,8 @@ function runCur(){files[cur]=EA.value;runFile(cur)}
 function cmd(s){pr(PS()+s,'p');s=s.trim();if(!s)return;
 const m=s.match(/^start\s+<?\s*(log\+\+|log\+-|log\+|log-|logall|log\*)\s*>?\s*(\S+)?/i);
 if(m){const k=norm(m[1]);let n=rp(m[2]||'main.'+k);if(!n.includes('.'))n+='.'+k;if(!files[n]){files[n]=TPL[k];fresh=n;pr('file created: '+n,'ok')}return openEd(n)}
-const tk=s.split(/\s+/);if(tk[1]==='#'&&tk[0]!=='run')tk.splice(1,1);let[c,a,b]=tk;if(['cat','edit','run','rm','cp','mv'].includes(c)){if(a&&a!=='#'&&a!=='-r')a=rp(a);if(c==='run'&&a==='#'&&b)b=rp(b);if(c==='rm'&&a==='-r'&&b)b=rp(b);if((c==='cp'||c==='mv')&&b)b=rp(b)}
-if(c==='help')return['Commands:','  Start <Log-> | <Log+> | <Log++> | <LogAll> [file]  create and open the editor','  edit <file>   open     run <file>   run','  ls   cat <a>   rm <a>   cp <a> <b>   mv <a> <b>   echo text   stop   clear   reboot','  circ   open the circuit designer (also the Circuits button)','  upload   load files from your device (saved automatically)','  connect [baud]   link a real microcontroller over USB   disconnect','  pkg list | install <name> | remove <name> | info <name>   extensions (UIVisuals, Storage, Graphics3D)','  run # <file>   run as kernel (privileged mode)    boot <file> | boot off   boot kernel','  vd ls | cat f | rm f | import <file> [name] | export <name> [file] | format | reset   kernel virtual disk','  mkdir d | cd d | pwd | ls [d] | find | rm -r d   folders (d/file); Import("d/lib.log+") links files','  In code: Use("file")  Sound("Freq;440","ms;200")  Serial("Write;hello")'].forEach(l=>pr(l));
+const tk=s.split(/\s+/);if(tk[1]==='#'&&tk[0]!=='run')tk.splice(1,1);let[c,a,b]=tk;if(['cat','edit','run','rm','cp','mv','download'].includes(c)){if(a&&a!=='#'&&a!=='-r')a=rp(a);if(c==='run'&&a==='#'&&b)b=rp(b);if(c==='rm'&&a==='-r'&&b)b=rp(b);if((c==='cp'||c==='mv')&&b)b=rp(b)}
+if(c==='help')return['Commands:','  Start <Log-> | <Log+> | <Log++> | <LogAll> [file]  create and open the editor','  edit <file>   open     run <file>   run','  ls   cat <a>   rm <a>   cp <a> <b>   mv <a> <b>   echo text   stop   clear   reboot','  circ   open the circuit designer (also the Circuits button)','  upload   load files from your device (saved automatically)','  download <file>   save a simulator file to your device (.log+, .obj, .json...)','  connect [baud]   link a real microcontroller over USB   disconnect','  pkg list | install <name> | remove <name> | info <name>   extensions (UIVisuals, Storage, Graphics3D)','  run # <file>   run as kernel (privileged mode)    boot <file> | boot off   boot kernel','  vd ls | cat f | rm f | import <file> [name] | export <name> [file] | format | reset   kernel virtual disk','  mkdir d | cd d | pwd | ls [d] | find | rm -r d   folders (d/file); Import("d/lib.log+") links files','  In code: Use("file")  Sound("Freq;440","ms;200")  Serial("Write;hello")'].forEach(l=>pr(l));
 if(c==='ls'){const d=a?rp(a):CWD;const ch=childrenOf(files,d);if(!ch.length&&d&&!isDirIn(files,d))return pr('ls: does not exist '+a,'err');return pr(ch.join('   ')||'(empty)')}
 if(c==='pwd')return pr('/'+CWD.replace(/\/$/,''));
 if(c==='mkdir'){if(!a)return pr('usage: mkdir <folder>','err');const d=rp(a);if(files[d]!==undefined)return pr('mkdir: a file with that name already exists','err');files[d+'/.dir']='';sv();return pr('folder created: '+d+'/','ok')}
@@ -575,7 +638,7 @@ if((c==='rm'||c==='cat'||c==='edit')&&a&&files[a]===undefined&&isDirIn(files,a))
 if(c==='mv'&&a&&b&&files[a]===undefined&&isDirIn(files,a)){const e=b.replace(/\/+$/,'');for(const k of Object.keys(files))if(k.startsWith(a+'/')){files[e+k.slice(a.length)]=files[k];delete files[k]}sv();return pr('folder moved: '+e+'/','ok')}
 if(c==='echo')return pr(s.slice(5));
 if(c==='cp'||c==='mv'){if(!files[a]||!b)return pr(`usage: ${c} <source> <destination>`,'err');files[b]=files[a];if(c==='mv')delete files[a];return pr('done: '+b,'ok')}
-if(c==='upload')return $('#upl').click();
+if(c==='download'){if(!a||files[a]===undefined)return pr('usage: download <file>  (saves a file of the simulator to your device)','err');const bl=new Blob([files[a]],{type:'text/plain'}),u=URL.createObjectURL(bl),el=document.createElement('a');el.href=u;el.download=a.split('/').pop();document.body.appendChild(el);el.click();el.remove();setTimeout(()=>URL.revokeObjectURL(u),2000);return pr('downloaded '+a,'ok')} if(c==='upload')return $('#upl').click();
 if(c==='connect')return connect(+a||115200);
 if(c==='disconnect')return disc();
 if(c==='pkg')return pkg(a,b);
@@ -628,7 +691,7 @@ function sug(w,L){L=L||KN;w=w.toLowerCase();let b='',d=9;for(const c of L){const
 function diag(t){if(/^[A-Za-z_][\w:]*:\s+\S/.test(t))return'There is a space after ":". Write it attached: '+t.replace(/^([A-Za-z_][\w:]*:)\s+/,'$1');
 if((t.match(/"/g)||[]).length%2)return'A quote is not closed (")';const a=(t.match(/\(/g)||[]).length,b=(t.match(/\)/g)||[]).length;if(a>b)return'A parenthesis is not closed ")"';if(b>a)return'Extra parenthesis ")"';return'There cannot be loose text after the parentheses'}
 const ids=ns=>ns.flatMap(x=>[...(x.h[0].toLowerCase()==='ui'&&x.o?x.o.filter(q=>q[0].toLowerCase()==='id').map(q=>q[1].toLowerCase()):[]),...ids(x.body||[]),...ids(x.alt||[])]);
-const OA=(()=>{const S=['w','h','bits','set','color','write','text','target','style','size','src','into'];return{var:['value','text','list','size','fill','index','dict','key'],set:['value','text','index','key'],push:['value','text'],insert:['index','value','text'],remove:['index','key'],pop:['into'],sort:['order'],call:['into'],return:['value','text'],wait:['ms','us','press','until'],pin:['set','output','input','mode'],screen:S,display:S,reg:S,sound:['freq','ms'],i2c:['addr','byte','bytes','text','into'],expect:['equals'],input:['prompt'],ui:['id','label','text','min','max','value'],store:['key','value','into','default'],g3d:['id','x','y','z','size','color','rx','ry','rz','s','tx','ty','tz','fov','mode','bg'],console:['cols','rows','color','bg','text','col','row','into','prompt'],mem:['addr','value','size','len','from','to','text','into','type'],disk:['file','into','text','value','prefix','to'],import:['as','from'],host:['file','into','text','value'],exec:['file','args','into','from','bg','id'],surface:['id','w','h'],proc:['id','into'],recv:['into','timeout','ok'],send:['value','text'],sys:['into'],ram:['addr','size','len','from','to','mode','value','lo','hi','into'],cpu:['leaf','sub','eax','ebx','ecx','edx','vendor','text','into','addr','arg','core','reg','value','lo','hi'],irq:['n','call','ms','sig'],pci:['seg','bus','dev','fn','off','size','value','lo','hi','into'],dev:['id','path','mode','off','addr','len','into','req','arg'],admin:['uid','euid','gid','egid','root','pid','cmd','into','code','sig','level','file','mode'],assert:['cond','text'],kill:['id'],join:['id'],panic:['text'],spawn:['id']}})();
+const OA=(()=>{const S=['w','h','bits','set','color','write','text','target','style','size','src','into'];return{var:['value','text','list','size','fill','index','dict','key'],set:['value','text','index','key'],push:['value','text'],insert:['index','value','text'],remove:['index','key'],pop:['into'],sort:['order'],call:['into'],return:['value','text'],wait:['ms','us','press','until'],pin:['set','output','input','mode'],screen:S,display:S,reg:S,sound:['freq','ms'],i2c:['addr','byte','bytes','text','into'],expect:['equals'],input:['prompt'],ui:['id','label','text','min','max','value','options','rows','cols','syntax','goto','what','into'],store:['key','value','into','default'],g3d:['id','x','y','z','size','color','rx','ry','rz','s','sx','sy','sz','visible','mesh','name','file','fit','twosided','into','tx','ty','tz','fov','mode','bg','ambient','grid','yaw','pitch','dist','dyaw','dpitch','zoom'],console:['cols','rows','color','bg','text','col','row','into','prompt'],mem:['addr','value','size','len','from','to','text','into','type','a','b','bit'],disk:['file','into','text','value','prefix','to'],import:['as','from'],host:['file','into','text','value','to','raw','mark','filter','hidden','prefix'],exec:['file','args','into','from','bg','id'],surface:['id','w','h'],proc:['id','into'],recv:['into','timeout','ok'],send:['value','text'],sys:['into'],ram:['addr','size','len','from','to','mode','value','lo','hi','into'],cpu:['leaf','sub','eax','ebx','ecx','edx','vendor','text','into','addr','arg','core','reg','value','lo','hi'],irq:['n','call','ms','sig'],pci:['seg','bus','dev','fn','off','size','value','lo','hi','into'],dev:['id','path','mode','off','addr','len','into','req','arg'],admin:['uid','euid','gid','egid','root','pid','cmd','into','code','sig','level','file','mode'],assert:['cond','text'],kill:['id'],join:['id'],panic:['text'],spawn:['id']}})();
 const ARG={blit:[2],get:[2],text:[2],each:[1],pixel:[2],rect:[4],line:[4],circle:[3],repeat:[1],if:[1],while:[1],for:[2,3]};
 function chkx(ns,E,W,s,lp){s.ids=s.ids||new Set();for(const x of ns){if(x.bad||!KN.includes(x.h[0].toLowerCase()))continue;const k=x.h[0].toLowerCase(),l=x.lg,n=x.n;
 if(!['print','serial','use','import'].includes(k))x.o.forEach(q=>{const a=q[0];if(/[:\s]/.test(a))E.push([n,`The command "${q.join(';')}" is not properly separated`,`Use ";" to separate: "${a.split(/[:\s]+/).filter(Boolean).join(';')}"`]);else if(OA[k]&&!OA[k].includes(a.toLowerCase()))W.push([n,`Unknown command "${a}" in ${x.h[0]}`,sug(a,OA[k])||'Valid: '+OA[k].join(', ')])});
@@ -642,10 +705,10 @@ if(k==='g3d'){const o=(x.h[1]||'').toLowerCase();if(!EXT.has('graphics3d')&&!s.w
 if(k==='on'){const m=(x.h[1]||'').toLowerCase();if(m!=='start_button'&&m!=='key'&&m!=='canvas'&&m!=='timer'&&m!=='mouse'&&!s.ids.has(m))W.push([n,`On:${x.h[1]}: that event does not exist, nor a widget with that Id`,'Events: START_BUTTON or the Id of a UI widget'])}
 if(k==='var'&&x.o[0]&&x.o[0][0].toLowerCase()==='text'&&l==='log-'&&x.h.length>2&&x.h[1].toLowerCase()!=='str')E.push([n,'Log- requires type STR for text','Write Var:STR:name("Text;Hello")']);
 if(k==='console'){const o=(x.h[1]||'').toLowerCase(),CO=['init','clear','print','put','at','read','refresh'];if(l==='log++')E.push([n,'Log++ has no screen: Console cannot be used here','Use Log+ or Log-']);else if(o==='init')s.res=1;else if(l==='log-'&&!s.res)E.push([n,'Log- requires Console:Init (or Screen:Resolution) before using the console','Add Console:Init("Cols;53","Rows;20") above']);if(!CO.includes(o))E.push([n,'Unknown Console operation: '+(x.h[1]||''),sug(o,CO)||'Valid: '+CO.join(', ')])}
-if(k==='mem'&&!['write','read','fill','copy','writetext'].includes((x.h[1]||'').toLowerCase()))E.push([n,'Unknown Mem operation: '+(x.h[1]||''),'Valid: write, read, fill, copy, writetext']);
+if(k==='mem'&&!['write','read','fill','copy','writetext','find','cmp','hash','swap','readtext','setbit','clearbit','togglebit','testbit','xor','and','or','not'].includes((x.h[1]||'').toLowerCase()))E.push([n,'Unknown Mem operation: '+(x.h[1]||''),'Valid: write, read, fill, copy, writetext, find, cmp, hash, swap, readtext, setbit, clearbit, togglebit, testbit, xor, and, or, not']);
 if(k==='i2c'&&!['write','scan'].includes((x.h[1]||'').toLowerCase()))E.push([n,'Unknown I2C operation: '+(x.h[1]||''),'Valid: write, scan']);
 if(k==='disk'&&!['list','listdir','read','exists','isdir','size','usage','write','append','mkdir','rmdir','delete','rename','copy','format'].includes((x.h[1]||'').toLowerCase()))E.push([n,'Unknown Disk operation: '+(x.h[1]||''),'Valid: list, listdir, read, exists, isdir, size, usage, write, append, mkdir, rmdir, delete, rename, copy, format']);
-if(k==='host'&&!['list','listdir','read','exists','isdir','mkdir','write','delete'].includes((x.h[1]||'').toLowerCase()))E.push([n,'Unknown Host operation: '+(x.h[1]||''),'Valid: list, read, exists, write, delete']);
+if(k==='host'&&!['list','listdir','read','exists','size','isdir','mkdir','write','append','delete','copy','move','lines','writelines','stat','rmdir','cwd','savejson','loadjson'].includes((x.h[1]||'').toLowerCase()))E.push([n,'Unknown Host operation: '+(x.h[1]||''),'Valid: list, listdir, read, exists, size, isdir, mkdir, write, append, delete, copy, move, lines, writelines, stat, rmdir, cwd, savejson, loadjson']);
 if(k==='surface'&&!['new','free'].includes((x.h[1]||'').toLowerCase()))E.push([n,'Unknown Surface operation: '+(x.h[1]||''),'Valid: new, free']);
 if(k==='surface'&&l==='log++')E.push([n,'Log++ has no screen: Surface cannot be used here','Use Log+ or Log-']);
 if(k==='proc'&&!['list','alive'].includes((x.h[1]||'').toLowerCase()))E.push([n,'Unknown Proc operation: '+(x.h[1]||''),'Valid: list, alive']);
@@ -653,7 +716,7 @@ if(k==='import'&&!x.q[0])E.push([n,'Import needs the file','Import("lib/util.log
 if(k==='try'&&!x.cat)E.push([n,'Try needs its Catch block','Write Catch:error { ... } right after the } of the Try']);
 if(['if','while','for','repeat','each','def','loop','setup','on','task','try'].includes(k)&&!x.body)E.push([n,'Missing the { } block of '+x.h[0],'Write { on the next line (or at the end of this one) and close it with } further down']);
 if(k==='return'&&!s.fn)E.push([n,'Return can only be used inside a function (Def)','Move the Return inside Def:name(...){ ... }']);if((k==='call'||k==='spawn')&&x.h.length===2&&s.fns&&!s.fns.has(x.h[1]))W.push([n,'Function not defined in this file: '+x.h[1],'If it comes from another file with Use("...") ignore this warning']);if(k==='def'||k==='task')s.fn=(s.fn||0)+1;if(x.body)chkx(x.body,E,W,s,lp||['repeat','for','while','loop','each'].includes(k));if(k==='def'||k==='task')s.fn--;if(x.alt)chkx(x.alt,E,W,s,lp)}}
-const CAT={uivisuals:{n:'UIVisuals',d:'Buttons, labels, sliders, checkboxes and text boxes. Log+ and #+ lines of mixed files only.',kb:14},storage:{n:'Storage',d:'Save and load data between runs with Store:Save and Store:Load. All variants.',kb:6},graphics3d:{n:'Graphics3D',d:'Software 3D engine: cube, sphere, torus and pyramid, camera with lookAt, light with shininess, hidden faces and depth sorting. Log+ and Log- (Log++ has no screen).',kb:22}};
+const CAT={uivisuals:{n:'UIVisuals',d:'Buttons, labels, sliders, checkboxes, text boxes, TextArea code editor, Dropdown, List, Progress, Title, Separator and Break. Log+ and #+ lines of mixed files only.',kb:14},storage:{n:'Storage',d:'Save and load data between runs with Store:Save and Store:Load. All variants.',kb:6},graphics3d:{n:'Graphics3D',d:'Software 3D engine v2: cube, sphere, torus, pyramid, cylinder, cone, plane and diamond, OBJ Load/Save, z-buffer, Pick, Project, Orbit, grid, camera with lookAt and light with shininess. Log+ and Log- (Log++ has no screen).',kb:22}};
 const EXT=new Set((()=>{try{return JSON.parse(localStorage.getItem('logpkgs')||'[]')}catch(_){return[]}})());
 const svp=()=>{try{localStorage.setItem('logpkgs',JSON.stringify([...EXT]))}catch(_){}};
 async function pkg(a,b){const k=(b||'').toLowerCase(),p=CAT[k];
@@ -668,34 +731,89 @@ function flash(t){const f=$('#ef');f.textContent=t;clearTimeout(flash.h);flash.h
 function save(){if(fresh===cur)fresh=null;files[cur]=EA.value;sv();flash('Saved: '+cur)}
 function saveAs(){$('#sa').hidden=false;const i=$('#san');i.value=cur;i.focus();i.select&&i.select()}
 function doSaveAs(){let n=$('#san').value.trim().replace(/\s+/g,'_');if(!n)return flash('Type a name for the file');if(!n.includes('.'))n+='.'+cur.split('.').pop();if(!n.includes('/'))n=rp(n);const ow=files[n]!==undefined&&n!==cur;files[n]=EA.value;if(fresh===cur&&n!==cur)delete files[cur];fresh=null;cur=n;$('#en').textContent=n;$('#sa').hidden=true;sv();EA.focus();flash((ow?'Overwritten: ':'Saved as: ')+n)}
-/* ---- Graphics3D ---- */
-const G3={o:{},c:{p:[0,2,6],t:[0,0,0],fov:60},l:[3,5,4],bg:[5,7,22],mode:'solid'};
-const G3O=['cube','sphere','torus','pyramid','set','render','clear','scene','camera','light'];
+/* ---- Graphics3D v2: z-buffer, more meshes, OBJ load/save, Pick, Project, Orbit (same commands as logl.c 2.0) ---- */
+const G3={o:[],c:{p:[0,2,6],t:[0,0,0],fov:60},l:[3,5,4],bg:[5,7,22],mode:'solid',amb:.18,grid:0,last:[],cm:{},bc:{}};
+function G3reset(){G3.o=[];G3.c={p:[0,2,6],t:[0,0,0],fov:60};G3.l=[3,5,4];G3.bg=[5,7,22];G3.mode='solid';G3.amb=.18;G3.grid=0;G3.last=[];G3.cm={}}
+const G3B=['cube','sphere','torus','pyramid','cylinder','cone','plane','diamond'];
+const G3O=[...G3B,'object','set','remove','info','list','meshes','load','save','pick','project','render','clear','scene','camera','orbit','light'];
 const v3={sub:(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]],dot:(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2],cr:(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]],nm:a=>{const l=Math.hypot(...a)||1;return[a[0]/l,a[1]/l,a[2]/l]}};
 function rgbOf(p,d){p=p.map(s=>s.trim());if(p[0]==='hsl'){const h=((ev(p[1])%360)+360)%360,l=(p[2]?ev(p[2]):55)/100,a=.9*Math.min(l,1-l),f=n=>{const k=(n+h/30)%12;return Math.round(255*(l-a*Math.max(-1,Math.min(k-3,9-k,1))))};return[f(0),f(8),f(4)]}
-if(p[0]==='rgb')p=p.slice(1);if(p.length>=3)return p.slice(0,3).map(e=>ev(e)&255);const m=/^#?([0-9a-f]{6})$/i.exec(p[0]);return m?[0,2,4].map(i=>parseInt(m[1].substr(i,2),16)):d}
-function mesh(t,s){const V=[],F=[],h=s/2,P=Math.PI;let rf=c=>c;
-if(t==='cube'){for(let i=0;i<8;i++)V.push([i&1?h:-h,i&2?h:-h,i&4?h:-h]);[[0,1,3,2],[4,5,7,6],[0,1,5,4],[2,3,7,6],[0,2,6,4],[1,3,7,5]].forEach(q=>F.push([q[0],q[1],q[2]],[q[0],q[2],q[3]]))}
-else if(t==='pyramid'){V.push([-h,-h,-h],[h,-h,-h],[h,-h,h],[-h,-h,h],[0,h,0]);F.push([0,1,4],[1,2,4],[2,3,4],[3,0,4],[0,1,2],[0,2,3]);rf=c=>[c[0],c[1]+s/4,c[2]]}
-else if(t==='sphere'){const a=10,b=16;for(let i=0;i<=a;i++)for(let j=0;j<=b;j++){const p=P*i/a,q=2*P*j/b;V.push([h*Math.sin(p)*Math.cos(q),h*Math.cos(p),h*Math.sin(p)*Math.sin(q)])}for(let i=0;i<a;i++)for(let j=0;j<b;j++){const k=i*(b+1)+j;F.push([k,k+b+1,k+1],[k+1,k+b+1,k+b+2])}}
-else{const R_=s*.35,r_=s*.15,a=20,b=10;for(let i=0;i<=a;i++)for(let j=0;j<=b;j++){const u=2*P*i/a,v=2*P*j/b;V.push([(R_+r_*Math.cos(v))*Math.cos(u),r_*Math.sin(v),(R_+r_*Math.cos(v))*Math.sin(u)])}for(let i=0;i<a;i++)for(let j=0;j<b;j++){const k=i*(b+1)+j;F.push([k,k+b+1,k+1],[k+1,k+b+1,k+b+2])}rf=c=>{const l=Math.hypot(c[0],c[2])||1;return[c[0]-R_*c[0]/l,c[1],c[2]-R_*c[2]/l]}}
-F.forEach(f=>{const[A,B,C]=f.map(i=>V[i]),n=v3.cr(v3.sub(B,A),v3.sub(C,A)),m=[(A[0]+B[0]+C[0])/3,(A[1]+B[1]+C[1])/3,(A[2]+B[2]+C[2])/3];if(v3.dot(n,rf(m))<0){const t=f[1];f[1]=f[2];f[2]=t}});return{V,F}}
-function g3(x){const o=(x.h[1]||'').toLowerCase(),n=k=>{const v=og(x,k);return v===null?undefined:+ev(v)},id=og(x,'id'),cq=x.o.find(q=>q[0].toLowerCase()==='color');
-if(o==='render')return g3r();if(o==='clear'){G3.o={};return}
-if(o==='scene'){const b=x.o.find(q=>q[0].toLowerCase()==='bg');if(b)G3.bg=rgbOf(b.slice(1),G3.bg);const m=og(x,'mode');if(m)G3.mode=m.toLowerCase();const f=n('fov');if(f)G3.c.fov=f;if(!res)setRes(320,180);return}
+if(p[0]==='rgb')p=p.slice(1);if(p.length>=3)return p.slice(0,3).map(e=>ev(e)&255);const NC={white:[255,255,255],black:[0,0,0],red:[255,0,0],green:[0,255,0],blue:[0,0,255],yellow:[255,255,0],cyan:[0,255,255],magenta:[255,0,255],gray:[128,128,128],orange:[255,165,0]};if(NC[(p[0]||'').toLowerCase()])return NC[p[0].toLowerCase()].slice();const m=/^#?([0-9a-f]{6})$/i.exec(p[0]);return m?[0,2,4].map(i=>parseInt(m[1].substr(i,2),16)):d}
+function g3build(t){const V=[],F=[],h=.5,P=Math.PI,pv=(a,b,c)=>V.push([a,b,c]),pf=(a,b,c)=>F.push([a,b,c]);
+if(t===0){for(let i=0;i<8;i++)pv(i&1?h:-h,i&2?h:-h,i&4?h:-h);[[0,1,3,2],[4,5,7,6],[0,1,5,4],[2,3,7,6],[0,2,6,4],[1,3,7,5]].forEach(q=>{pf(q[0],q[1],q[2]);pf(q[0],q[2],q[3])})}
+else if(t===3){pv(-h,-h,-h);pv(h,-h,-h);pv(h,-h,h);pv(-h,-h,h);pv(0,h,0);[[0,1,4],[1,2,4],[2,3,4],[3,0,4],[0,1,2],[0,2,3]].forEach(f=>pf(...f))}
+else if(t===1){const a=10,b=16;for(let i=0;i<=a;i++)for(let j=0;j<=b;j++){const p=P*i/a,q=2*P*j/b;pv(h*Math.sin(p)*Math.cos(q),h*Math.cos(p),h*Math.sin(p)*Math.sin(q))}for(let i=0;i<a;i++)for(let j=0;j<b;j++){const k=i*(b+1)+j;pf(k,k+b+1,k+1);pf(k+1,k+b+1,k+b+2)}}
+else if(t===2){const R_=.35,r_=.15,a=20,b=10;for(let i=0;i<=a;i++)for(let j=0;j<=b;j++){const u=2*P*i/a,v=2*P*j/b;pv((R_+r_*Math.cos(v))*Math.cos(u),r_*Math.sin(v),(R_+r_*Math.cos(v))*Math.sin(u))}for(let i=0;i<a;i++)for(let j=0;j<b;j++){const k=i*(b+1)+j;pf(k,k+b+1,k+1);pf(k+1,k+b+1,k+b+2)}}
+else if(t===4||t===5){const n=24;for(let i=0;i<n;i++){const a=2*P*i/n;pv(h*Math.cos(a),-h,h*Math.sin(a))}
+if(t===4){for(let i=0;i<n;i++){const a=2*P*i/n;pv(h*Math.cos(a),h,h*Math.sin(a))}pv(0,-h,0);pv(0,h,0);for(let i=0;i<n;i++){const j=(i+1)%n;pf(i,j,n+i);pf(j,n+j,n+i);pf(2*n,i,j);pf(2*n+1,n+i,n+j)}}
+else{pv(0,h,0);pv(0,-h,0);for(let i=0;i<n;i++){const j=(i+1)%n;pf(i,j,n);pf(n+1,i,j)}}}
+else if(t===6){pv(-h,0,-h);pv(h,0,-h);pv(h,0,h);pv(-h,0,h);pf(0,2,1);pf(0,3,2)}
+else{pv(h,0,0);pv(-h,0,0);pv(0,h,0);pv(0,-h,0);pv(0,0,h);pv(0,0,-h);for(let a=0;a<2;a++)for(let b=2;b<4;b++)for(let c=4;c<6;c++)pf(a,b,c)}
+if(t!==6)F.forEach(f=>{const[A,B,C]=f.map(i=>V[i]),n=v3.cr(v3.sub(B,A),v3.sub(C,A)),c=[(A[0]+B[0]+C[0])/3,(A[1]+B[1]+C[1])/3,(A[2]+B[2]+C[2])/3];let rf=[c[0],c[1],c[2]];
+if(t===3||t===5)rf[1]+=.25;else if(t===2){const l=Math.hypot(c[0],c[2])||1;rf=[c[0]-.35*c[0]/l,c[1],c[2]-.35*c[2]/l]}
+if(v3.dot(n,rf)<0){const k=f[1];f[1]=f[2];f[2]=k}});
+return{V,F,two:t===6,name:G3B[t]}}
+function g3mesh(name){const k=String(name).toLowerCase(),ti=G3B.indexOf(k);if(ti>=0)return G3.bc[k]||(G3.bc[k]=g3build(ti));return G3.cm[k]||null}
+function g3obj(name,text,fit,two){const V=[],F=[];for(const ln of text.split('\n')){if(/^v[ \t]/.test(ln)){const p=ln.slice(2).trim().split(/\s+/).map(Number);V.push([p[0]||0,p[1]||0,p[2]||0])}
+else if(/^f[ \t]/.test(ln)){const idx=[];for(const tk of ln.slice(2).trim().split(/\s+/)){let k=parseInt(tk,10);if(k<0)k=V.length+k+1;if(k>=1&&k<=V.length)idx.push(k-1);if(idx.length>=64)break}for(let i=1;i+1<idx.length;i++)F.push([idx[0],idx[i],idx[i+1]])}
+if(V.length>400000||F.length>800000)break}
+if(!V.length||!F.length)return -1;
+if(fit){const mn=[1e300,1e300,1e300],mx=[-1e300,-1e300,-1e300];V.forEach(v=>{for(let k=0;k<3;k++){if(v[k]<mn[k])mn[k]=v[k];if(v[k]>mx[k])mx[k]=v[k]}});const ext=Math.max(mx[0]-mn[0],mx[1]-mn[1],mx[2]-mn[2])||1;V.forEach(v=>{for(let k=0;k<3;k++)v[k]=(v[k]-(mn[k]+mx[k])/2)/ext})}
+const key=String(name).toLowerCase();if(G3B.includes(key)||(!G3.cm[key]&&Object.keys(G3.cm).length>=16))return -2;
+G3.cm[key]={V,F,two,name:String(name)};G3.last=[];return 1}
+function g3x(o){const m=o.m,sc=o.size*o.s,a=Math.cos(o.rx),b=Math.sin(o.rx),c=Math.cos(o.ry),d=Math.sin(o.ry),e=Math.cos(o.rz),f=Math.sin(o.rz);
+return m.V.map(v=>{let x=v[0]*sc*o.sx,y=v[1]*sc*o.sy,z=v[2]*sc*o.sz,t;t=y*a-z*b;z=y*b+z*a;y=t;t=x*c+z*d;z=-x*d+z*c;x=t;t=x*e-y*f;y=x*f+y*e;x=t;return[x+o.x,y+o.y,z+o.z]})}
+const GV={};
+function g3basis(W,H){const c=G3.c;let f=v3.sub(c.t,c.p);if(f[0]*f[0]+f[1]*f[1]+f[2]*f[2]<1e-18)f=[0,0,-1];f=v3.nm(f);let r=v3.cr(f,[0,1,0]);if(r[0]*r[0]+r[1]*r[1]+r[2]*r[2]<1e-12)r=[1,0,0];r=v3.nm(r);GV.f=f;GV.r=r;GV.u=v3.cr(r,f);GV.W=W;GV.H=H;GV.F=H/2/Math.tan(c.fov*Math.PI/360)}
+function g3proj(P){const q=v3.sub(P,G3.c.p),z=v3.dot(q,GV.f);if(z<.1)return null;return[GV.W/2+GV.F*v3.dot(q,GV.r)/z,GV.H/2-GV.F*v3.dot(q,GV.u)/z,z]}
+function g3r(){if(!res)setRes(320,180);Con.sus=1;const{w:W,h:H}=res;g3basis(W,H);const c=G3.c,{sub,dot,cr,nm}=v3,L=nm(G3.l),TR=[],img=cx.createImageData(W,H),d=img.data;
+for(let i=0;i<W*H;i++){d[i*4]=G3.bg[0];d[i*4+1]=G3.bg[1];d[i*4+2]=G3.bg[2];d[i*4+3]=255}
+const put=(x,y,k)=>{if(x>=0&&x<W&&y>=0&&y<H){const i=(y*W+x)*4;d[i]=k[0];d[i+1]=k[1];d[i+2]=k[2]}};
+const line=(x0,y0,x1,y1,k)=>{x0=Math.round(x0);y0=Math.round(y0);x1=Math.round(x1);y1=Math.round(y1);const dx=Math.abs(x1-x0),dy=-Math.abs(y1-y0),sx=x0<x1?1:-1,sy=y0<y1?1:-1;let e=dx+dy,n=0;for(;;){put(x0,y0,k);if((x0===x1&&y0===y1)||++n>20000)break;const e2=2*e;if(e2>=dy){e+=dy;x0+=sx}if(e2<=dx){e+=dx;y0+=sy}}};
+G3.o.forEach((b,oi)=>{if(!b.vis)return;const P=g3x(b),m=b.m;for(const[i,j,k]of m.F){const A=P[i],B=P[j],C=P[k];let N=nm(cr(sub(B,A),sub(C,A)));const M=[(A[0]+B[0]+C[0])/3,(A[1]+B[1]+C[1])/3,(A[2]+B[2]+C[2])/3],E=nm(sub(c.p,M));
+if(dot(N,E)<=0){if(!m.two)continue;N=[-N[0],-N[1],-N[2]]}
+const S=[A,B,C].map(g3proj);if(S.some(s=>!s))continue;const Hh=nm([L[0]+E[0],L[1]+E[1],L[2]+E[2]]);
+TR.push({x:S.map(s=>s[0]),y:S.map(s=>s[1]),iw:S.map(s=>1/s[2]),d:G3.amb+(1-G3.amb)*Math.max(0,dot(N,L)),sp:.5*Math.pow(Math.max(0,dot(N,Hh)),30),col:b.col,obj:oi})}});
+if(G3.grid){const gc=[42,52,74],ax=[200,60,60],az=[60,90,220],l3=(A,B,k)=>{let a=A.slice(),b=B.slice();const za=dot(sub(a,c.p),GV.f),zb=dot(sub(b,c.p),GV.f);if(za<.1&&zb<.1)return;
+if(za<.1){const t=(.1-za)/(zb-za);for(let q=0;q<3;q++)a[q]+=(b[q]-a[q])*t}else if(zb<.1){const t=(.1-zb)/(za-zb);for(let q=0;q<3;q++)b[q]+=(a[q]-b[q])*t}
+const p0=g3proj(a),p1=g3proj(b);if(!p0||!p1)return;if([p0[0],p0[1],p1[0],p1[1]].some(v=>Math.abs(v)>1e6))return;line(p0[0],p0[1],p1[0],p1[1],k)};
+for(let i=-10;i<=10;i++){l3([i,0,-10],[i,0,10],i===0?az:gc);l3([-10,0,i],[10,0,i],i===0?ax:gc)}}
+const zb=new Float32Array(W*H);
+for(const t of TR){const k=t.col.map(v=>Math.max(0,Math.min(255,Math.floor(v*t.d+255*t.sp))));
+if(G3.mode==='wire'){for(let q=0;q<3;q++){const q2=(q+1)%3;line(t.x[q],t.y[q],t.x[q2],t.y[q2],k)}continue}
+const x=t.x,y=t.y,area=(x[1]-x[0])*(y[2]-y[0])-(y[1]-y[0])*(x[2]-x[0]);if(Math.abs(area)<1e-12)continue;
+const x0=Math.max(0,Math.floor(Math.min(...x))),x1=Math.min(W-1,Math.ceil(Math.max(...x))),y0=Math.max(0,Math.floor(Math.min(...y))),y1=Math.min(H-1,Math.ceil(Math.max(...y)));
+for(let j=y0;j<=y1;j++)for(let i=x0;i<=x1;i++){const px=i+.5,py=j+.5,w0=((x[1]-px)*(y[2]-py)-(y[1]-py)*(x[2]-px))/area,w1=((x[2]-px)*(y[0]-py)-(y[2]-py)*(x[0]-px))/area,w2=1-w0-w1;
+if(w0>=-1e-9&&w1>=-1e-9&&w2>=-1e-9){const iz=w0*t.iw[0]+w1*t.iw[1]+w2*t.iw[2],q=j*W+i;if(iz>zb[q]){zb[q]=iz;const o=q*4;d[o]=k[0];d[o+1]=k[1];d[o+2]=k[2]}}}}
+cx.putImageData(img,0,0);G3.last=TR}
+function g3pick(px,py){let best=-1,bz=0;for(const t of G3.last){const x=t.x,y=t.y,area=(x[1]-x[0])*(y[2]-y[0])-(y[1]-y[0])*(x[2]-x[0]);if(Math.abs(area)<1e-12)continue;
+const w0=((x[1]-px)*(y[2]-py)-(y[1]-py)*(x[2]-px))/area,w1=((x[2]-px)*(y[0]-py)-(y[2]-py)*(x[0]-px))/area,w2=1-w0-w1;if(w0>=0&&w1>=0&&w2>=0){const iz=w0*t.iw[0]+w1*t.iw[1]+w2*t.iw[2];if(iz>bz){bz=iz;best=t.obj}}}return best}
+function g3save(){let s='# exported by logl\n',off=1;for(const o of G3.o){const P=g3x(o);s+='o '+o.id+'\n';P.forEach(p=>{s+='v '+p.map(v=>v.toFixed(6)).join(' ')+'\n'});o.m.F.forEach(f=>{s+='f '+f.map(i=>i+off).join(' ')+'\n'});off+=P.length}return s}
+function g3(x){const o=(x.h[1]||'').toLowerCase(),n=k=>{const v=og(x,k);return v===null?undefined:+ev(v)},idr=og(x,'id'),id=idr===null?null:fm(idr),cq=x.o.find(q=>q[0].toLowerCase()==='color'),
+into=v=>{const to=og(x,'into');if(to!==null){if(!(to in V))throw'Undeclared variable: '+to;V[to]=cv(TY[to],v)}};
+if(o==='render')return g3r();if(o==='clear'){G3.o=[];G3.last=[];return}
+if(o==='scene'){const b=x.o.find(q=>q[0].toLowerCase()==='bg');if(b)G3.bg=rgbOf(b.slice(1),G3.bg);const m=og(x,'mode');if(m)G3.mode=m.toLowerCase();const f=n('fov');if(f)G3.c.fov=f;G3.amb=Math.max(0,Math.min(1,n('ambient')??G3.amb));G3.grid=(n('grid')??G3.grid)?1:0;if(!res)setRes(320,180);return}
 if(o==='camera'){const c=G3.c;c.p=[n('x')??c.p[0],n('y')??c.p[1],n('z')??c.p[2]];c.t=[n('tx')??c.t[0],n('ty')??c.t[1],n('tz')??c.t[2]];c.fov=n('fov')??c.fov;return}
+if(o==='orbit'){const c=G3.c;c.t=[n('tx')??c.t[0],n('ty')??c.t[1],n('tz')??c.t[2]];let d=v3.sub(c.p,c.t),dist=Math.hypot(...d);if(dist<1e-6){dist=6;d=[0,0,6]}
+let yaw=Math.atan2(d[0],d[2])*180/Math.PI,pit=Math.asin(Math.max(-1,Math.min(1,d[1]/dist)))*180/Math.PI;yaw=(n('yaw')??yaw)+(n('dyaw')??0);pit=Math.max(-89,Math.min(89,(n('pitch')??pit)+(n('dpitch')??0)));
+dist=Math.max(.2,Math.min(1000,(n('dist')??dist)*(n('zoom')??1)));const ya=yaw*Math.PI/180,pa=pit*Math.PI/180;c.p=[c.t[0]+dist*Math.cos(pa)*Math.sin(ya),c.t[1]+dist*Math.sin(pa),c.t[2]+dist*Math.cos(pa)*Math.cos(ya)];return}
 if(o==='light'){G3.l=[n('x')??G3.l[0],n('y')??G3.l[1],n('z')??G3.l[2]];return}
+if(o==='load'){const nm=og(x,'name'),fo=og(x,'file');if(!nm||!fo)throw'G3D:Load needs Name and File, for example "Name;ship","File;ship.obj"';const fn=fm(fo),tx=files[fn];if(tx===undefined)throw'G3D:Load: could not read '+fn;
+const r=g3obj(fm(nm),tx,(n('fit')??1)!==0,(n('twosided')??1)!==0);if(r===-1)throw'G3D:Load: the file has no vertices or faces (only OBJ with v and f lines)';if(r===-2)throw'G3D:Load: too many meshes, or that name is a built-in shape';return}
+if(o==='save'){const fo=og(x,'file');if(!fo)throw'G3D:Save needs File, for example "File;scene.obj"';if(!R.k)throw'Privileged operation: G3D:Save only works with run # file (kernel mode)';const fn=fm(fo);files[fn]=g3save();FMT[fn]=Math.floor(Date.now()/1000);sv();return}
+if(o==='list')return into(G3.o.map(b=>b.id));
+if(o==='meshes')return into([...G3B,...Object.values(G3.cm).map(m=>m.name)]);
+if(o==='pick'){const b=g3pick(n('x')??-1,n('y')??-1);return into(b>=0&&b<G3.o.length?G3.o[b].id:'')}
+if(o==='project'){if(!res)setRes(320,180);g3basis(res.w,res.h);let P;if(id){const b=G3.o.find(q=>q.id===id);if(!b)throw'G3D: object does not exist '+id;P=[b.x,b.y,b.z]}else P=[n('x')??0,n('y')??0,n('z')??0];const p=g3proj(P);return into(p?[Math.floor(p[0]),Math.floor(p[1]),p[2]]:[])}
 if(!id)throw'G3D: Id is missing, for example "Id;box"';
-if(o==='set'){const b=G3.o[id];if(!b)throw'G3D: object does not exist '+id;for(const k of['x','y','z','rx','ry','rz','s']){const v=n(k);if(v!==undefined)b[k]=v}if(cq)b.col=rgbOf(cq.slice(1),b.col);return}
-G3.o[id]={m:mesh(o,n('size')??1),x:n('x')??0,y:n('y')??0,z:n('z')??0,rx:n('rx')??0,ry:n('ry')??0,rz:n('rz')??0,s:1,col:cq?rgbOf(cq.slice(1),[74,163,255]):[74,163,255]}}
-function g3r(){if(!res)setRes(320,180);Con.sus=1;const{w:W,h:H}=res,c=G3.c,{sub,dot,cr,nm}=v3,f=nm(sub(c.t,c.p)),r=nm(cr(f,[0,1,0])),u=cr(r,f),F=H/2/Math.tan(c.fov*Math.PI/360),L=nm(G3.l),TR=[],cs=Math.cos,sn=Math.sin;
-for(const b of Object.values(G3.o)){const P=b.m.V.map(v=>{let[x,y,z]=[v[0]*b.s,v[1]*b.s,v[2]*b.s],t;t=y*cs(b.rx)-z*sn(b.rx);z=y*sn(b.rx)+z*cs(b.rx);y=t;t=x*cs(b.ry)+z*sn(b.ry);z=-x*sn(b.ry)+z*cs(b.ry);x=t;t=x*cs(b.rz)-y*sn(b.rz);y=x*sn(b.rz)+y*cs(b.rz);x=t;return[x+b.x,y+b.y,z+b.z]});
-for(const[i,j,k]of b.m.F){const A=P[i],B=P[j],C=P[k],N=nm(cr(sub(B,A),sub(C,A))),M=[(A[0]+B[0]+C[0])/3,(A[1]+B[1]+C[1])/3,(A[2]+B[2]+C[2])/3],E=nm(sub(c.p,M));if(dot(N,E)<=0)continue;
-const S=[A,B,C].map(p=>{const q=sub(p,c.p),z=dot(q,f);return[W/2+F*dot(q,r)/z,H/2-F*dot(q,u)/z,z]});if(S.some(s=>s[2]<.1))continue;
-const Hh=nm([L[0]+E[0],L[1]+E[1],L[2]+E[2]]);TR.push({S,z:(S[0][2]+S[1][2]+S[2][2])/3,d:.18+.82*Math.max(0,dot(N,L)),sp:.5*Math.pow(Math.max(0,dot(N,Hh)),30),col:b.col})}}
-TR.sort((a,b)=>b.z-a.z);cx.fillStyle=`rgb(${G3.bg})`;cx.fillRect(0,0,W,H);
-for(const t of TR){const s=`rgb(${t.col.map(v=>Math.min(255,v*t.d+255*t.sp|0))})`;cx.beginPath();cx.moveTo(t.S[0][0],t.S[0][1]);cx.lineTo(t.S[1][0],t.S[1][1]);cx.lineTo(t.S[2][0],t.S[2][1]);cx.closePath();
-if(G3.mode==='wire'){cx.strokeStyle=s;cx.stroke()}else{cx.fillStyle=cx.strokeStyle=s;cx.fill();cx.stroke()}}}
+const find=()=>{const b=G3.o.find(q=>q.id===id);if(!b)throw'G3D: object does not exist '+id;return b};
+if(o==='remove'){const i=G3.o.findIndex(q=>q.id===id);if(i>=0){G3.o.splice(i,1);G3.last=[]}return}
+if(o==='info'){const b=find();return into({x:b.x,y:b.y,z:b.z,rx:b.rx,ry:b.ry,rz:b.rz,s:b.s,sx:b.sx,sy:b.sy,sz:b.sz,size:b.size,mesh:b.m.name,visible:b.vis?1:0,color:b.col.slice()})}
+if(o==='set'){const b=find();for(const k of['x','y','z','rx','ry','rz','s','sx','sy','sz','size']){const v=n(k);if(v!==undefined)b[k]=v}const vs=n('visible');if(vs!==undefined)b.vis=vs!==0;if(cq)b.col=rgbOf(cq.slice(1),b.col);const mn=og(x,'mesh');if(mn!==null){const m=g3mesh(fm(mn));if(!m)throw'G3D: unknown mesh: '+mn;b.m=m}return}
+let m;if(o==='object'){const mn=og(x,'mesh');if(mn===null)throw'G3D:Object needs Mesh, for example "Mesh;ship" (a built-in shape or one loaded with G3D:Load)';m=g3mesh(fm(mn));if(!m)throw'G3D: unknown mesh: '+mn}else if(G3B.includes(o))m=g3mesh(o);
+if(!m)throw'Unknown G3D operation: '+(x.h[1]||'')+'\n  -> Valid: '+G3O.join(', ');
+const nb={id,m,x:n('x')??0,y:n('y')??0,z:n('z')??0,rx:n('rx')??0,ry:n('ry')??0,rz:n('rz')??0,s:n('s')??1,sx:n('sx')??1,sy:n('sy')??1,sz:n('sz')??1,size:n('size')??1,vis:(n('visible')??1)!==0,col:cq?rgbOf(cq.slice(1),[74,163,255]):[74,163,255]};
+const i=G3.o.findIndex(q=>q.id===id);if(i>=0)G3.o[i]=nb;else G3.o.push(nb);G3.last=[]}
 class Ret{constructor(v){this.v=v}}
 const cv=(t,v)=>t?Array.isArray(v)?v.map(CAST[t]):(v&&typeof v==='object')?v:CAST[t](v):v;
 const valOf=x=>{const i=x.q.findIndex(s=>/^(value|text);/i.test(s));if(i<0)throw'Missing the Value or Text command';return/^text;/i.test(x.q[i])?fm(x.q[i].slice(5)):ev(x.o[i][1])};
@@ -710,6 +828,11 @@ let kmode=false,BOOT=(()=>{try{return localStorage.getItem('logboot')||''}catch(
 const lsB=()=>{try{localStorage.setItem('logboot',BOOT)}catch(_){}};
 const MEM=new Uint8Array(1<<20);
 const mc=a=>{a=+a|0;if(a<0||a>=MEM.length)throw'Address out of memory: '+a;return a};
+const FMT={};let UIA=0;
+const crc32=(b,s,n)=>{if(!crc32.t){crc32.t=new Uint32Array(256);for(let i=0;i<256;i++){let k=i;for(let j=0;j<8;j++)k=k&1?0xEDB88320^(k>>>1):k>>>1;crc32.t[i]=k>>>0}}let c=0xFFFFFFFF;for(let i=0;i<n;i++)c=crc32.t[(c^b[s+i])&255]^(c>>>8);return(c^0xFFFFFFFF)>>>0};
+const uiEsc=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+function uiHilite(t){return t.split('\n').map(l=>{const re=/(\/\/.*$)|("(?:[^"\\]|\\.)*"?)|(^\s*<[^>]*>)|(^\s*(?:#(?:\+\+|\+|-)\s*)?[A-Za-z_][\w:]*)|(\b\d+(?:\.\d+)?\b)|([{}()])/g;let o='',i=0,m;
+while((m=re.exec(l))){if(m[0]===''){re.lastIndex++;continue}o+=uiEsc(l.slice(i,m.index));const c=m[1]?'c':m[2]?'s':m[3]?'h':m[4]?'k':m[5]?'n':'p';o+='<span class="t'+c+'">'+uiEsc(m[0])+'</span>';i=m.index+m[0].length}return o+uiEsc(l.slice(i))}).join('\n')}
 const pk=a=>MEM[mc(a)],pk16=a=>pk(a)|pk(a+1)<<8,pk32=a=>(pk(a)|pk(a+1)<<8|pk(a+2)<<16|pk(a+3)<<24)>>>0;
 const pks=a=>{let s='';for(a=mc(a);a<MEM.length&&MEM[a];a++)s+=String.fromCharCode(MEM[a]);return s};
 const MC=new MessageChannel(),MQ=[];MC.port1.onmessage=()=>{const f=MQ.shift();f&&f()};MC.port1.unref&&MC.port1.unref();
@@ -1197,7 +1320,7 @@ function killProc(p,r){r=r||R;if(!r)return;r.hd=r.hd.filter(h=>!(h.sc&&h.sc.proc
 const HF={pin:n=>PIN[n]|0,rnd:(a,b)=>a+Math.floor(Math.random()*(b-a+1)),peek:pk,peek16:pk16,peek32:pk32,peekstr:pks,peekf:a=>{a=mc(a);mc(a+3);return DV.getFloat32(a,true)},peekd:a=>{a=mc(a);mc(a+7);return DV.getFloat64(a,true)},fix:(v,n)=>(+v).toFixed(n===undefined?2:n)};
 {const U=v=>BigInt.asUintN(64,BigInt(Math.trunc(+v))),U32=v=>(+v)>>>0;
 Object.assign(HF,{hex:(v,w)=>'0x'+U(v).toString(16).toUpperCase().padStart(Math.max(1,Math.min(16,w===undefined?1:+w)),'0'),bit:(v,n)=>Number((U(v)>>BigInt(+n&63))&1n),lo32:v=>Number(U(v)&0xFFFFFFFFn),hi32:v=>Number(U(v)>>32n),
-rol:(v,n)=>{n&=31;v=U32(v);return((v<<n)|(v>>>((32-n)&31)))>>>0},ror:(v,n)=>{n&=31;v=U32(v);return((v>>>n)|(v<<((32-n)&31)))>>>0},bswap:v=>{v=U32(v);return(((v&255)<<24)|(((v>>8)&255)<<16)|(((v>>16)&255)<<8)|(v>>>24))>>>0}})}
+rol:(v,n)=>{n&=31;v=U32(v);return((v<<n)|(v>>>((32-n)&31)))>>>0},ror:(v,n)=>{n&=31;v=U32(v);return((v>>>n)|(v<<((32-n)&31)))>>>0},bswap:v=>{v=U32(v);return(((v&255)<<24)|(((v>>8)&255)<<16)|(((v>>16)&255)<<8)|(v>>>24))>>>0}});Object.assign(HF,{popcount:v=>{let n=0,b=U(v);while(b){n+=Number(b&1n);b>>=1n}return n},clz:v=>{v=U32(v);return v?Math.clz32(v):32},ctz:v=>{v=U32(v);if(!v)return 32;let n=0;while(!(v&1)){v>>>=1;n++}return n},wrap8:v=>Number(U(v)&255n),wrap16:v=>Number(U(v)&65535n),wrap32:v=>Number(U(v)&0xFFFFFFFFn),sext8:v=>Number(BigInt.asIntN(8,U(v))),sext16:v=>Number(BigInt.asIntN(16,U(v))),sext32:v=>Number(BigInt.asIntN(32,U(v))),bswap16:v=>{v=U32(v)&65535;return((v&255)<<8)|(v>>8)},clamp:(v,lo,hi)=>v<lo?lo:v>hi?hi:+v,lerp:(a,b,t)=>+a+(b-a)*t})}
 Object.defineProperty(HF,'t',{get:()=>Date.now()-R.t0});
 let CWD='';
 const normP=p=>{const o=[];for(const s of String(p).split('/')){if(!s||s==='.')continue;if(s==='..')o.pop();else o.push(s)}return o.join('/')};
