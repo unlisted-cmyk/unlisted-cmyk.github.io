@@ -1,0 +1,27 @@
+<log+>
+Var:rx("List;")
+Try
+{
+ SPI:Transfer("Bytes;1,2","Into;rx")
+}
+Catch:e
+{
+ Print("{e}")
+}
+SPI:Open("Bus;0","Cs;0","Speed;500000","Mode;1")
+SPI:Transfer("Bytes;1,2,3,255","Into;rx")
+Print("rx={rx.join(',')}")
+SPI:Transfer("Text;AB","Into;rx")
+Print("txt={rx.join(',')}")
+SPI:Read("Count;3","Into;rx")
+Print("read={rx.join(',')}")
+SPI:Write("Byte;7")
+Try
+{
+ SPI:Open("Bus;0")
+}
+Catch:e2
+{
+ Print("{e2}")
+}
+SPI:Close

@@ -1,0 +1,5 @@
+<log+>
+I2C:Blink("Addr;1")
+SPI:Send("Byte;1")
+UART:Flush
+I2C:Write("Byte;1")

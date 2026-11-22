@@ -1,0 +1,22 @@
+<log+>
+Var:ack("Value;9")
+I2C:Write("Addr;0x27","Byte;1","Bytes;2,3,0x10","Text;hi","Into;ack")
+Print("ack={ack}")
+Var:found("List;")
+I2C:Scan("Into;found")
+Print("found={found.length}")
+Var:r("List;")
+Try
+{
+ I2C:Read("Addr;0x48","Count;2","Into;r")
+ Print("ERROR: no debio responder")
+}
+Catch:e
+{
+ Print("sin respuesta: {e}")
+}
+I2C:Close
+Var:a("Value;0x27")
+Var:h("Text;")
+Set:h("Value;a.toString(16)")
+Print("hex={h}")

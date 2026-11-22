@@ -1,0 +1,21 @@
+<log+>
+UART:Open("Port;/dev/ttyS0","Baud;115200","Id;gps")
+UART:Write("Id;gps","Text;hola\r\n")
+UART:Write("Id;gps","Bytes;65,66")
+Var:t("Text;")
+UART:Read("Id;gps","Count;4","As;Text","Into;t")
+Print("[{t}]")
+Var:l("List;")
+UART:Read("Id;gps","Count;10","Into;l")
+Print("resto={l.join(',')}")
+UART:Read("Id;gps","Count;5","Into;l")
+Print("vacio={l.length}")
+UART:Close("Id;gps")
+Try
+{
+ UART:Read("Id;gps","Count;1","Into;l")
+}
+Catch:e
+{
+ Print("{e}")
+}

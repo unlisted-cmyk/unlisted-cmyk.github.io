@@ -1,0 +1,5 @@
+ERROR l.2: Unknown I2C operation: Blink (valid: write read scan close)
+ERROR l.3: Unknown SPI operation: Send (valid: open transfer write read close)
+ERROR l.4: Unknown UART operation: Flush (valid: open write read close)
+Compilation aborted: 3 error(s)
+rc=1

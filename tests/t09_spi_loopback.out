@@ -1,0 +1,8 @@
+Compiled with no errors (0 warning(s)).
+SPI: not open (use SPI:Open first)
+rx=1,2,3,255
+txt=65,66
+read=0,0,0
+SPI: already open (use SPI:Close first)
+FINISHED
+rc=0

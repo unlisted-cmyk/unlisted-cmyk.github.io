@@ -1,0 +1,7 @@
+Compiled with no errors (0 warning(s)).
+[hola]
+resto=13,10,65,66
+vacio=0
+UART: 'gps' is not open (use UART:Open first)
+FINISHED
+rc=0

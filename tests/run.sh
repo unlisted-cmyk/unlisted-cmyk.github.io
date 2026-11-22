@@ -28,12 +28,17 @@ run_case t06_disk_inside    t06_disk_inside.log+
 run_case t07_juego3d        t07_juego3d.log+
 run_case e01_case_outside   e01_case_outside.log+ --check
 run_case e02_undeclared_aug e02_undeclared_aug.log+
+run_case t08_i2c_virtual    t08_i2c_virtual.log+
+run_case t09_spi_loopback   t09_spi_loopback.log+
+run_case t10_uart_loopback  t10_uart_loopback.log+
+run_case e06_bus_badop      e06_bus_badop.log+ --check
 run_case e03_disk_escape    e03_disk_escape.log+
 run_case e03_disk_allowed   e03_disk_escape.log+ --allow-disk
 # Pin virtual (no --hw) works everywhere; --hw tests only make sense where real GPIO code exists (Linux/macOS builds).
 run_case e04_pin_virtual    e04_pin_noperm.log+
 if [ "$HOST" = unix ]; then
   run_case e04_pin_denied    e04_pin_noperm.log+ --hw
+  run_case e07_bus_noperm    e07_bus_noperm.log+ --hw
   run_case e05_admin_denied  e05_admin_run.log-  --hw
   run_case e05_admin_allowed e05_admin_run.log-  --hw --allow-raw
 fi
