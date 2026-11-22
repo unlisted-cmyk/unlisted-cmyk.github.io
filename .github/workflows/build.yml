@@ -23,6 +23,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Tests folder present?
+        shell: bash
+        run: test -f tests/run.sh || { echo "::error::tests/run.sh not found. Commit the whole tests/ folder (and logl.c) at the repository root."; exit 1; }
       - name: Build (musl, static)
         run: |
           docker run --rm -v "$PWD":/src -w /src alpine:3.20 sh -c \
@@ -33,6 +36,8 @@ jobs:
       - run: ./logl-linux --version
       - name: Test programs
         run: bash tests/run.sh ./logl-linux
+      - name: Real UART test (pseudo-terminal)
+        run: python3 tests/uart_pty.py ./logl-linux
       - uses: actions/upload-artifact@v4
         with:
           name: linux-x86_64
@@ -46,6 +51,9 @@ jobs:
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
+      - name: Tests folder present?
+        shell: bash
+        run: test -f tests/run.sh || { echo "::error::tests/run.sh not found. Commit the whole tests/ folder (and logl.c) at the repository root."; exit 1; }
       - name: Build (musl, static)
         run: |
           docker run --rm -v "$PWD":/src -w /src alpine:3.20 sh -c \
@@ -56,6 +64,8 @@ jobs:
       - run: ./logl-linux-arm64 --version
       - name: Test programs
         run: bash tests/run.sh ./logl-linux-arm64
+      - name: Real UART test (pseudo-terminal)
+        run: python3 tests/uart_pty.py ./logl-linux-arm64
       - uses: actions/upload-artifact@v4
         with:
           name: linux-arm64
@@ -72,6 +82,9 @@ jobs:
         shell: msys2 {0}
     steps:
       - uses: actions/checkout@v4
+      - name: Tests folder present?
+        shell: bash
+        run: test -f tests/run.sh || { echo "::error::tests/run.sh not found. Commit the whole tests/ folder (and logl.c) at the repository root."; exit 1; }
       - uses: msys2/setup-msys2@v2
         with:
           msystem: UCRT64
@@ -92,12 +105,18 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Tests folder present?
+        shell: bash
+        run: test -f tests/run.sh || { echo "::error::tests/run.sh not found. Commit the whole tests/ folder (and logl.c) at the repository root."; exit 1; }
       - run: clang -O2 -arch arm64 -arch x86_64 -o logl-macos logl.c -lm -lpthread
       - run: strip -x logl-macos
       - run: lipo -info logl-macos
       - run: ./logl-macos --version
       - name: Test programs
         run: bash tests/run.sh ./logl-macos
+      - name: Real UART test (pseudo-terminal) - informative only on macOS
+        continue-on-error: true
+        run: python3 tests/uart_pty.py ./logl-macos
       - uses: actions/upload-artifact@v4
         with:
           name: macos
