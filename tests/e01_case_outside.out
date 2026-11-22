@@ -1,0 +1,6 @@
+ERROR l.2: Case is only valid directly inside a Switch
+ERROR l.8: Only Case(...) and Default are allowed directly inside a Switch
+ERROR l.13: Switch has more than one Default
+ERROR l.18: Switch needs a block { ... } with Case(...) and Default
+Compilation aborted: 4 error(s)
+rc=1

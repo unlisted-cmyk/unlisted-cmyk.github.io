@@ -1,0 +1,4 @@
+<log->
+Var:STR:o("Text;")
+Admin:Run("Cmd;echo hola","Into;o")
+Print("salida={o}")

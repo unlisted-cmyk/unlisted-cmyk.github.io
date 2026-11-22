@@ -1,0 +1,18 @@
+<log+>
+Var:x("Value;10")
+x += 5
+Print("a={x}")
+x -= 3
+Print("b={x}")
+x *= 4
+Print("c={x}")
+x /= 6
+Print("d={x}")
+x += 1 + 2
+Print("e={x}")
+Var:n("Value;0")
+For:k(1,6)
+{
+ n += k
+}
+Print("n={n}")

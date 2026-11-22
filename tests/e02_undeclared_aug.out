@@ -1,0 +1,4 @@
+Compiled with no errors (0 warning(s)).
+a=2
+ERROR l.5: Undeclared variable: zzz
+rc=2

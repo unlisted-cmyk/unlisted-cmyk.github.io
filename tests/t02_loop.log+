@@ -1,0 +1,9 @@
+<log+>
+Var:i("Value;0")
+Var:s("Value;0")
+While(i<1000)
+{
+ Set:s("Value;s+i*2")
+ Set:i("Value;i+1")
+}
+Print("s={s}")

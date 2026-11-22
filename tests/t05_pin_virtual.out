@@ -1,0 +1,7 @@
+Compiled with no errors (0 warning(s)).
+[pin 13] = 1
+pin13=1 lectura=1
+[pin 13] = 0
+pin13=0
+FINISHED
+rc=0

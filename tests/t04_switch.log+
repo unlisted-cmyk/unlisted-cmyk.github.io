@@ -1,0 +1,50 @@
+<log+>
+Def:nombre(d)
+{
+ Var:r("Text;?")
+ Switch(d)
+ {
+  Case(1)
+  {
+   Set:r("Value;'lunes'")
+  }
+  Case(2,3)
+  {
+   Set:r("Value;'martes o miercoles'")
+  }
+  Default
+  {
+   Set:r("Value;'otro'")
+  }
+ }
+ Return("Value;r")
+}
+Var:q("Text;")
+For:i(1,6)
+{
+ Call:nombre(i)("Into;q")
+ Print("{i} -> {q}")
+}
+Var:cmd("Text;go")
+Switch(cmd=='go')
+{
+ Case(1)
+ {
+  Print("verdadero")
+ }
+ Default
+ {
+  Print("falso")
+ }
+}
+Switch(cmd)
+{
+ Case('stop')
+ {
+  Print("no")
+ }
+ Case('go','run')
+ {
+  Print("texto ok")
+ }
+}

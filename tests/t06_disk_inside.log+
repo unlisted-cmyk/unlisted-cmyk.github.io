@@ -1,0 +1,9 @@
+<log+>
+Var:ok("Value;0")
+Host:Write("File;_tmp_t06.txt","Value;'hola disco'")
+Var:t("Text;")
+Host:Read("File;_tmp_t06.txt","Into;t")
+Print("leido: {t}")
+Host:Delete("File;_tmp_t06.txt")
+Host:Exists("File;_tmp_t06.txt","Into;ok")
+Print("existe tras borrar: {ok}")

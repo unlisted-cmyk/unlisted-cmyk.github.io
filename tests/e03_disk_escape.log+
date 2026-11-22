@@ -1,0 +1,21 @@
+<log+>
+Var:t("Text;")
+Try
+{
+ Host:Read("File;../logl.c","Into;t")
+ Print("LEIDO FUERA DE LA CARPETA")
+}
+Catch:err
+{
+ Print("bloqueado: {err}")
+}
+Try
+{
+ Host:Write("File;../_escape_test.txt","Value;'x'")
+ Print("ESCRITO FUERA DE LA CARPETA")
+ Host:Delete("File;../_escape_test.txt")
+}
+Catch:err2
+{
+ Print("bloqueado: {err2}")
+}

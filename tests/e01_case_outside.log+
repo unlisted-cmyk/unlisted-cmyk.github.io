@@ -1,0 +1,18 @@
+<log+>
+Case(1)
+{
+ Print("x")
+}
+Switch(3)
+{
+ Print("suelto")
+ Default
+ {
+  Print("a")
+ }
+ Default
+ {
+  Print("b")
+ }
+}
+Switch(2)

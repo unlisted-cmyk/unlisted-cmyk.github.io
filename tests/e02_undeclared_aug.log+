@@ -1,0 +1,6 @@
+<log+>
+Var:a("Value;1")
+a += 1
+Print("a={a}")
+zzz += 1
+Print("no llega")

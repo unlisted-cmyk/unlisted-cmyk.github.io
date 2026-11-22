@@ -1,0 +1,25 @@
+<log+>
+G3D:Scene("Bg;#070b16","Fov;60","Mode;solid")
+G3D:Camera("X;0","Y;3","Z;8","TX;0","TY;0","TZ;0")
+G3D:Light("X;3","Y;5","Z;4")
+G3D:Plane("Id;suelo","Y;-1","Size;10","Color;#224422")
+G3D:Cube("Id;jugador","X;-2","Y;0","Z;0","Size;1","Color;#4aa3ff")
+G3D:Sphere("Id;enemigo","X;2","Y;0","Z;0","Size;1","Color;#ff5c5c")
+G3D:Torus("Id;aro","X;0","Y;1.5","Z;-2","Size;1.2","Color;hsl;40")
+G3D:Cone("Id;cono","X;0","Y;0","Z;2","Size;1","Color;#ffcc00")
+Var:t("Value;0")
+Var:vida("Value;3")
+While(t<30)
+{
+ G3D:Set("Id;jugador","RY;t*5","X;-2+t*0.05")
+ G3D:Set("Id;enemigo","Y;sin(t/5)")
+ G3D:Set("Id;aro","RX;t*7")
+ If(t>=15)
+ {
+  Set:vida("Value;vida-1")
+ }
+ Set:t("Value;t+1")
+}
+G3D:Render
+Print("vida={vida} t={t}")
+

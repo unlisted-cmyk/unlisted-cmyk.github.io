@@ -1,0 +1,8 @@
+<log+>
+Pin:13("Output")
+Pin:13("Set;High")
+Var:v("Value;0")
+Pin:13("Read","Into;v")
+Print("pin13={v} lectura={pin(13)}")
+Pin:13("Toggle")
+Print("pin13={pin(13)}")
