@@ -34,6 +34,7 @@
 #include <errno.h>
 #include <signal.h>
 #include <setjmp.h>
+#include <sys/time.h>
 /* v2.1: on Windows (MinGW) the C runtime's longjmp crashes with a segmentation fault (it tries to unwind the stack),
  * which killed every program that raised an error. Use GCC's own setjmp/longjmp there: they do not go through the runtime.
  * LG_BUILTIN_JMP lets the same code be tested on Linux (gcc -DLG_BUILTIN_JMP). */
@@ -775,7 +776,7 @@ static Val eval(Node *n, Scope *sc){
 }
 
 /* ---------------------------------------------------------------- sentencias */
-#define KWLIST X(use) X(print) X(var) X(set) X(repeat) X(for) X(if) X(wait) X(screen) X(display) X(reg) X(pin) X(on) X(loop) X(setup) X(expect) X(sound) X(serial) X(else) X(while) X(break) X(continue) X(input) X(ui) X(store) X(g3d) X(push) X(pop) X(remove) X(insert) X(sort) X(shuffle) X(split) X(each) X(def) X(call) X(return) X(elseif) X(console) X(mem) X(disk) X(exec) X(panic) X(stop) X(task) X(spawn) X(kill) X(join) X(import) X(try) X(lock) X(unlock) X(send) X(recv) X(yield) X(assert) X(sys) X(proc) X(surface) X(host) X(port) X(graphics3d) X(dyn2d) X(ram) X(cpu) X(irq) X(pci) X(dev) X(admin) X(catch) X(switch) X(case) X(default) X(i2c) X(spi) X(uart)
+#define KWLIST X(use) X(print) X(var) X(set) X(repeat) X(for) X(if) X(wait) X(screen) X(display) X(reg) X(pin) X(on) X(loop) X(setup) X(expect) X(sound) X(serial) X(else) X(while) X(break) X(continue) X(input) X(ui) X(store) X(g3d) X(push) X(pop) X(remove) X(insert) X(sort) X(shuffle) X(split) X(each) X(def) X(call) X(return) X(elseif) X(console) X(mem) X(disk) X(exec) X(panic) X(stop) X(task) X(spawn) X(kill) X(join) X(import) X(try) X(lock) X(unlock) X(send) X(recv) X(yield) X(assert) X(sys) X(proc) X(surface) X(host) X(port) X(graphics3d) X(dyn2d) X(ram) X(cpu) X(irq) X(pci) X(dev) X(admin) X(catch) X(switch) X(case) X(default) X(i2c) X(spi) X(uart) X(watchdog)
 enum {
 #define X(n) K_##n,
 KWLIST
@@ -1049,7 +1050,11 @@ static void chk(SL *ns, DV *E, DV *W, ChkSt *s){
     }
     if(k == K_dyn2d && l == 2) dpush(E, n, "Log++ has no screen: Dyn2D cannot be used here\n  -> Use Log+ or Log-");
     if(k == K_on){
-      const char *m = x->h.n > 1 ? x->h.v[1] : ""; int ok = !strcasecmp(m, "start_button") || !strcasecmp(m, "key") || !strcasecmp(m, "canvas") || !strcasecmp(m, "timer") || !strcasecmp(m, "mouse");
+      const char *m = x->h.n > 1 ? x->h.v[1] : ""; int ok = !strcasecmp(m, "start_button") || !strcasecmp(m, "key") || !strcasecmp(m, "canvas") || !strcasecmp(m, "timer") || !strcasecmp(m, "mouse") || !strcasecmp(m, "pin");
+      if(!strcasecmp(m, "pin")){   /* v2.1: On:Pin(N)("Rising"|"Falling"|"Change") */
+        if(x->a.n < 1) dpush(E, n, "On:Pin needs a pin number: On:Pin(5)(\"Rising\")");
+        else if(x->no){ const char *e0 = x->o[0].v[0]; if(strcasecmp(e0, "rising") && strcasecmp(e0, "falling") && strcasecmp(e0, "change")) dpushf(E, n, "On:Pin: use Rising, Falling or Change (not %s)", e0); }
+      }
       for(int j = 0; j < s->ids.n && !ok; j++) if(!strcasecmp(s->ids.v[j], m)) ok = 1;
       if(!ok) dpushf(W, n, "On:%s: that event does not exist, nor a widget with that Id\n  -> Events: START_BUTTON or the Id of a UI widget", m);
     }
@@ -1203,13 +1208,13 @@ enum { ST_OK, ST_BRK, ST_CNT, ST_RET, ST_STOP };
 struct Task { char *name; volatile int on, stop; int proc, every; SL *body; Scope *sc; };
 typedef struct { char *file; Scope *sc; } Mod;
 typedef struct { unsigned char *base; size_t len, maplen; char *id; int fd; void *map; } RMap;
-enum { EV_KEY, EV_MOUSE, EV_CANVAS, EV_START, EV_UI };
+enum { EV_KEY, EV_MOUSE, EV_CANVAS, EV_START, EV_UI, EV_PIN };
 typedef struct { int kind; char sub[16]; char id[64]; SL *body; Scope *sc; } EvH;
 typedef struct { int kind; char sub[16]; char id[64]; char key[64]; char val[256]; double mx, my; int btn, isnum; } Ev;
 static struct {
   char *root_dir, *png, *path; char *argv0; int nowin, nobrowser, forcewin, port, nstdin; int nowait, show_end, autowin, ansi, hw, showfirst, tid, pid;
   volatile int stop; volatile sig_atomic_t gotint;
-  FB *fb; Scope *root; unsigned char *MEM; size_t memsz; int allowraw, allow_disk, allow_pins, allow_net; int pins[64];
+  FB *fb; Scope *root; unsigned char *MEM; size_t memsz; int allowraw, allow_disk, allow_pins, allow_net, fakegpio, npinh, evthread; int pins[64];
   Val vd; char *vdpath, *stpath; double t0;
   struct { char *id; FB *fb; } surf[64]; int nsurf;
   Val queues, locks;
@@ -1239,8 +1244,11 @@ static void present_maybe(void);
 static int win_ensure(void);
 static void win_sound(double f, double ms);
 static const char *esc(const char *c){ return S.ansi ? c : ""; }
-static void gil_yield(void){ pthread_mutex_unlock(&GIL); sched_yield(); pthread_mutex_lock(&GIL); }
-static void nap(int us){ pthread_mutex_unlock(&GIL); usleep(us); pthread_mutex_lock(&GIL); }
+/* v2.1: gil_want counts threads waiting for the GIL, so a busy loop hands the lock over when an event is waiting (low latency) */
+static volatile int gil_want;
+static void gil_lock(void){ __sync_fetch_and_add(&gil_want, 1); pthread_mutex_lock(&GIL); __sync_fetch_and_sub(&gil_want, 1); }
+static void gil_yield(void){ pthread_mutex_unlock(&GIL); if(gil_want){ for(int i = 0; i < 400 && gil_want; i++) sched_yield(); } else sched_yield(); pthread_mutex_lock(&GIL); }
+static void nap(int us){ pthread_mutex_unlock(&GIL); usleep(us); gil_lock(); }
 static int chk_stop(void){ return S.stop || (T->task && T->task->stop); }
 static double elapsed_ms(void){ return floor((now() - S.t0) * 1000); }
 static int sleep_ms(double ms, int force){
@@ -1381,8 +1389,26 @@ static char *fpath(const char *f, const char *who){
   if(!inside){ free(rp); lerr("%s: access outside the program folder is not allowed (run logl with --allow-disk)", who); }
   return rp;
 }
+/* ---- v2.1: per-pin state shared by the virtual and the real pins ---- */
+typedef struct { int pwm, safe; double freq, duty, analog; } PinSt;   /* safe: 0 none, 1 low, 2 high */
+static PinSt PST[64];
+static int pin_watch[64];                 /* number of On:Pin handlers per pin */
+static volatile int pwm_run[64];          /* real software-PWM thread running for this pin */
+static void eq_push(const Ev *e);
+static void do_watchdog(Stmt *x);
+static void pinpoll_start(void);
+static void pinpoll_watch(int n);
+static void install_crash_handlers(void);
+
 #ifdef _WIN32
 /* En Windows no hay /dev/mem, /dev/gpiomem ni iopl: se dejan stubs que avisan. */
+static int gpio_rd(int n){ (void)n; return 0; }
+static void gpio_wr(int n, int v){ (void)n; (void)v; }
+static void pwm_hw_start(int n){ (void)n; lerr("Pin: real PWM is not available on Windows"); }
+static void pwm_hw_stop(int n){ (void)n; }
+static void pinpoll_start(void){ lerr("Pin: real GPIO is not available on Windows"); }
+static void pinpoll_watch(int n){ (void)n; }
+static double adc_hw(int ch, int dev){ (void)ch; (void)dev; lerr("Pin: real ADC is not available on Windows"); }
 static void do_reg(Stmt *x, const char *w){ (void)x; (void)w; lerr("Reg: real register access is not available on Windows"); }
 static void pin_hw(int n, const char *c, const char *a1, int *res){ (void)n; (void)c; (void)a1; (void)res; lerr("Pin: real GPIO is not available on Windows"); }
 static void do_port(Stmt *x, const char *w){ (void)x; (void)w; lerr("Port: I/O ports are not available on Windows"); }
@@ -1456,21 +1482,73 @@ static volatile uint32_t *gpio_map(void){
   if(m == MAP_FAILED) lerr("Pin: mmap failed: %s", strerror(errno));
   return S.gpio = (volatile uint32_t *)m;
 }
+/* Level read/write used by pin_hw, the PWM threads, the edge poller and the watchdog. They never call lerr (safe in any thread).
+ * --fake-gpio replaces the registers with an array in RAM so the whole real-hardware path can be tested without a board. */
+static uint8_t fake_lv[64];
+static int gpio_rd(int n){ if(S.fakegpio) return fake_lv[n]; volatile uint32_t *g = S.gpio; return g ? (int)((g[0x34 / 4 + n / 32] >> (n % 32)) & 1) : 0; }
+static void gpio_wr(int n, int v){ if(S.fakegpio){ fake_lv[n] = (uint8_t)v; return; } volatile uint32_t *g = S.gpio; if(g) g[(v ? 0x1C : 0x28) / 4 + n / 32] = 1u << (n % 32); }
 static void pin_hw(int n, const char *c, const char *a1, int *res){
   need_perm(S.allow_pins, "Pin", "--allow-pins");
   if(n > 53) lerr("Pin: real GPIO supports 0-53");
-  volatile uint32_t *g = gpio_map(); int sh = (n % 10) * 3, bank = n / 32, bit = n % 32;
-  if(!strcmp(c, "mode")){ uint32_t f = g[n / 10] & ~(7u << sh); if(a1 && !strcasecmp(a1, "out")) f |= 1u << sh; g[n / 10] = f; }
-  else if(!strcmp(c, "set")){ int hi = a1 && (!strcasecmp(a1, "high") || !strcmp(a1, "1")); g[(hi ? 0x1C : 0x28) / 4 + bank] = 1u << bit; }
-  else if(!strcmp(c, "toggle")){ int lv = (g[0x34 / 4 + bank] >> bit) & 1; g[(lv ? 0x28 : 0x1C) / 4 + bank] = 1u << bit; }
-  else if(!strcmp(c, "read")) *res = (g[0x34 / 4 + bank] >> bit) & 1;
+  volatile uint32_t *g = S.fakegpio ? NULL : gpio_map(); int sh = (n % 10) * 3;
+  if(!strcmp(c, "mode")){ if(g){ uint32_t f = g[n / 10] & ~(7u << sh); if(a1 && !strcasecmp(a1, "out")) f |= 1u << sh; g[n / 10] = f; } }
+  else if(!strcmp(c, "set")){ int hi = a1 && (!strcasecmp(a1, "high") || !strcmp(a1, "1")); gpio_wr(n, hi); }
+  else if(!strcmp(c, "toggle")) gpio_wr(n, !gpio_rd(n));
+  else if(!strcmp(c, "read")) *res = gpio_rd(n);
+}
+/* software PWM: one thread per pin toggles the output. Jitter is typically 50-500 us on a normal Linux kernel (not hard real time),
+ * so it is fine for LEDs, servos (50 Hz) and slow motors, not for audio or precise timing. Limited to 1000 Hz. */
+static pthread_t pwm_th[64];
+static void pwm_sleep(int n, double sec){
+  while(sec > 0 && pwm_run[n]){
+    double c = sec > 0.005 ? 0.005 : sec; struct timespec ts; ts.tv_sec = 0; ts.tv_nsec = (long)(c * 1e9); nanosleep(&ts, NULL); sec -= c;
+  }
+}
+static void *pwm_main(void *a){
+  int n = (int)(intptr_t)a;
+  while(pwm_run[n]){
+    double f = PST[n].freq > 0 ? PST[n].freq : 1, d = PST[n].duty, per = 1.0 / f;
+    if(d <= 0){ gpio_wr(n, 0); pwm_sleep(n, per < 0.02 ? per : 0.02); }
+    else if(d >= 100){ gpio_wr(n, 1); pwm_sleep(n, per < 0.02 ? per : 0.02); }
+    else { gpio_wr(n, 1); pwm_sleep(n, per * d / 100.0); gpio_wr(n, 0); pwm_sleep(n, per * (100.0 - d) / 100.0); }
+  }
+  return NULL;
+}
+static void pwm_hw_start(int n){ if(pwm_run[n]) return; pwm_run[n] = 1; if(pthread_create(&pwm_th[n], NULL, pwm_main, (void *)(intptr_t)n)){ pwm_run[n] = 0; lerr("Pin: could not start the PWM thread"); } }
+static void pwm_hw_stop(int n){ if(pwm_run[n]){ pwm_run[n] = 0; pthread_join(pwm_th[n], NULL); } gpio_wr(n, 0); }
+/* edge detection on real pins: a thread polls the watched pins every ~50 us. Edges shorter than that are missed, and it uses a little CPU.
+ * (A kernel GPIO-event interface would be better; this one needs no extra libraries and works with the same register access.) */
+static volatile int poll_run; static pthread_t poll_th; static int poll_last[64];
+static void push_edge(int n, int v);
+static void *pinpoll_main(void *a){
+  (void)a;
+  while(poll_run){
+    for(int n = 0; n < 54; n++) if(pin_watch[n]){ int v = gpio_rd(n); if(poll_last[n] < 0) poll_last[n] = v; else if(v != poll_last[n]){ poll_last[n] = v; push_edge(n, v); } }
+    usleep(50);
+  }
+  return NULL;
+}
+static void pinpoll_watch(int n){ poll_last[n] = gpio_rd(n); }   /* reference level read synchronously, so the first edge is never lost */
+static void pinpoll_start(void){ static int init; if(!init){ for(int i = 0; i < 64; i++) poll_last[i] = -1; init = 1; } if(poll_run) return; poll_run = 1; if(pthread_create(&poll_th, NULL, pinpoll_main, NULL)){ poll_run = 0; lerr("Pin: could not start edge detection"); } }
+/* real ADC through the Linux IIO subsystem: /sys/bus/iio/devices/iio:deviceD/in_voltageC_raw (boards with an ADC or an ADS1115/MCP3008 driver) */
+static double adc_hw(int ch, int dev){
+  if(S.fakegpio) return floor(PST[ch].analog / 3.3 * 1023.0 + 0.5);
+#ifdef __linux__
+  char path[160]; snprintf(path, sizeof path, "/sys/bus/iio/devices/iio:device%d/in_voltage%d_raw", dev, ch);
+  FILE *f = fopen(path, "r"); if(!f) lerr("Pin: ADC: could not open %s: %s (is an IIO ADC driver loaded?)", path, strerror(errno));
+  long v = 0; int ok = fscanf(f, "%ld", &v) == 1; fclose(f); if(!ok) lerr("Pin: ADC: could not read %s", path);
+  return (double)v;
+#else
+  (void)ch; (void)dev; lerr("Pin: real ADC is only available on Linux");
+#endif
 }
 #endif
 
 /* pin(n) in expressions: virtual state, or the real GPIO level with --hw (needs --allow-pins) */
 static int pin_level(int n){
   if(n < 0 || n >= 64) lerr("Pin out of range (0-63)");
-  if(S.hw){ int res = -1; pin_hw(n, "read", NULL, &res); S.pins[n] = res; }
+  if(S.hw){ int res = -1; pin_hw(n, "read", NULL, &res); S.pins[n] = res; return res; }
+  if(PST[n].pwm){ double ph = fmod((now() - S.t0) * PST[n].freq, 1.0); return ph * 100.0 < PST[n].duty; }   /* virtual PWM: level follows the clock */
   return S.pins[n];
 }
 
@@ -2512,12 +2590,22 @@ static void do_scr(Stmt *x){
 static pthread_mutex_t WM = PTHREAD_MUTEX_INITIALIZER;   /* protects front buffer, UI state and the event queue */
 static struct { Ev q[256]; int h, t; } EQ;
 static sock_t WLS = SOCK_BAD;
+static pthread_cond_t EQC = PTHREAD_COND_INITIALIZER;   /* v2.1: wakes the event thread at once */
 static void eq_push(const Ev *e){
   pthread_mutex_lock(&WM);
   if(e->kind == EV_MOUSE && !strcasecmp(e->sub, "move") && EQ.h != EQ.t){
     Ev *l = &EQ.q[(EQ.t + 255) % 256]; if(l->kind == EV_MOUSE && !strcasecmp(l->sub, "move")){ *l = *e; pthread_mutex_unlock(&WM); return; }
   }
-  int n = (EQ.t + 1) % 256; if(n != EQ.h){ EQ.q[EQ.t] = *e; EQ.t = n; } pthread_mutex_unlock(&WM); }
+  int n = (EQ.t + 1) % 256; if(n != EQ.h){ EQ.q[EQ.t] = *e; EQ.t = n; pthread_cond_signal(&EQC); } pthread_mutex_unlock(&WM); }
+/* the event thread sleeps here (without the GIL) until an event arrives or 3 ms pass */
+static void ev_wait(void){
+  pthread_mutex_unlock(&GIL);
+  pthread_mutex_lock(&WM);
+  if(EQ.h == EQ.t){ struct timeval tv; gettimeofday(&tv, NULL); struct timespec ts; ts.tv_sec = tv.tv_sec; ts.tv_nsec = tv.tv_usec * 1000L + 3000000L; if(ts.tv_nsec >= 1000000000L){ ts.tv_sec++; ts.tv_nsec -= 1000000000L; } pthread_cond_timedwait(&EQC, &WM, &ts); }
+  pthread_mutex_unlock(&WM);
+  gil_lock();
+}
+static void push_edge(int n, int v){ Ev e; memset(&e, 0, sizeof e); e.kind = EV_PIN; snprintf(e.id, sizeof e.id, "%d", n); snprintf(e.sub, sizeof e.sub, "%s", v ? "rising" : "falling"); e.mx = now(); eq_push(&e); }
 static int eq_pop(Ev *e){ int r = 0; pthread_mutex_lock(&WM); if(EQ.h != EQ.t){ *e = EQ.q[EQ.h]; EQ.h = (EQ.h + 1) % 256; r = 1; } pthread_mutex_unlock(&WM); return r; }
 
 static void present(void){
@@ -2951,10 +3039,14 @@ static int evmatch(EvH *h, const Ev *e){
   if(e->kind == EV_KEY){ int up = !strcasecmp(h->sub, "up"); return up ? !strcasecmp(e->sub, "up") : !strcasecmp(e->sub, "down"); }
   if(e->kind == EV_MOUSE) return !strcasecmp(h->sub[0] ? h->sub : "move", e->sub);
   if(e->kind == EV_UI) return !strcasecmp(h->id, e->id);
+  if(e->kind == EV_PIN) return !strcmp(h->id, e->id) && (!strcmp(h->sub, "change") || !strcmp(h->sub, e->sub));
   return 1;
 }
 static void setg(const char *n, Val v){ Val *p = dget(S.root->v, n); if(p){ vdrop(*p); *p = v; } else dset(S.root->v, n, v); }
 static void fire_ev(const Ev *e){
+#ifdef LG_LATENCY
+  if(e->kind == EV_PIN) fprintf(stderr, "LAT %.1f\n", (now() - e->mx) * 1e6);   /* microseconds from the edge to the handler (measurement build only) */
+#endif
   if(e->kind == EV_CANVAS || e->kind == EV_MOUSE){
     setg("mx", Vn(e->mx)); setg("my", Vn(e->my));
     if(e->kind == EV_MOUSE && strcasecmp(e->sub, "move")) setg("mb", Vn(!strcasecmp(e->sub, "down") ? (e->btn == 2 ? 2 : 1) : 0));
@@ -2974,9 +3066,9 @@ static void fire_ev(const Ev *e){
   }
 }
 static void *ev_main(void *a_){
-  (void)a_; pthread_mutex_lock(&GIL);
+  (void)a_; gil_lock();   /* gil_lock (not a plain lock): announces that a thread is waiting, so a busy main program yields */
   Th th; memset(&th, 0, sizeof th); th.retv = Vu(); T = &th; jmp_buf jb; th.jb = &jb; nthreads++;
-  while(!S.stop){ Ev e; if(eq_pop(&e)) fire_ev(&e); else nap(3000); }
+  while(!S.stop){ Ev e; if(eq_pop(&e)) fire_ev(&e); else ev_wait(); }
   nthreads--; pthread_mutex_unlock(&GIL); return NULL;
 }
 /* bare On:Key (no window): one line typed in the terminal = one key press */
@@ -2995,6 +3087,10 @@ static void start_keys(void){
   if(S.keythread) return; S.keythread = 1; S.nstdin = 1;
   pthread_t th; pthread_attr_t at; pthread_attr_init(&at); pthread_attr_setdetachstate(&at, PTHREAD_CREATE_DETACHED);
   pthread_create(&th, &at, key_main, NULL);
+}
+static void start_evthread(void){
+  if(S.evthread) return; S.evthread = 1;
+  pthread_t th; pthread_attr_t at; pthread_attr_init(&at); pthread_attr_setdetachstate(&at, PTHREAD_CREATE_DETACHED); pthread_create(&th, &at, ev_main, NULL);
 }
 static void open_url(const char *u){
   char c[700];
@@ -3024,7 +3120,7 @@ static int win_ensure(void){
   snprintf(S.win.token, sizeof S.win.token, "%08llx%08llx", (ull)(rnd() * 4294967296.0), (ull)(rnd() * 4294967296.0));
   WLS = s; S.win.uver = 1; S.win.last = now(); S.win.on = 1;
   pthread_t th; pthread_attr_t at; pthread_attr_init(&at); pthread_attr_setdetachstate(&at, PTHREAD_CREATE_DETACHED);
-  pthread_create(&th, &at, srv_accept, NULL); pthread_create(&th, &at, win_watch, NULL); pthread_create(&th, &at, ev_main, NULL);
+  pthread_create(&th, &at, srv_accept, NULL); pthread_create(&th, &at, win_watch, NULL); start_evthread();
   char url[160]; snprintf(url, sizeof url, "http://127.0.0.1:%d/?k=%s", S.win.port, S.win.token);
   char m[220]; snprintf(m, sizeof m, "Window: %s", url); out(m);
   if(!S.nobrowser) open_url(url);
@@ -3662,7 +3758,7 @@ static int ex(SL *ns, Scope *sc){
     Stmt *x = ns->v[i];
     if(IRQ.any && IRQ.on) irq_deliver();
     if(chk_stop()) return ST_STOP;
-    if(nthreads && ((++T->tick) & 127) == 0){ if(S.win.on) present_maybe(); gil_yield(); }
+    if((nthreads || gil_want) && ((++T->tick) & 127) == 0){ if(S.win.on) present_maybe(); gil_yield(); }
     T->cur = sc;
     jmp_buf jb, *old = T->jb; T->jb = &jb; int st;
     if(!setjmp(jb)){ st = one(x, sc); T->jb = old; }
@@ -3828,6 +3924,7 @@ static int one(Stmt *x, Scope *sc){
   case K_i2c: do_i2c(x); break;
   case K_spi: do_spi(x); break;
   case K_uart: do_uart(x); break;
+  case K_watchdog: do_watchdog(x); break;
   case K_store: {
     const char *w = hw_(x, 1); const char *ko = og(x, "key"); Buf kb = {0}; bs(&kb, "logdata:"); bs(&kb, ko ? ko : ""); char *key = btake(&kb);
     int err; size_t n; char *tx = readfile(S.stpath, &n); Val d = tx ? jparse(tx, &err) : Vu(); if(!tx || err || d.t != T_DICT){ vdrop(d); d = Vd(); } free(tx);
@@ -3904,6 +4001,20 @@ static int one(Stmt *x, Scope *sc){
   case K_on: {
     const char *nm = hw_(x, 1);
     if(!strcasecmp(nm, "timer")){ const char *ev_ = og(x, "every"); ll ms = evi(ev_ && *ev_ ? ev_ : "1000"); if(ms < 10) ms = 10; S.tid++; char id[64]; snprintf(id, sizeof id, "timer#%d", S.tid); scope_ref(sc); start_task(id, &x->body, sc, 0, (int)ms); }
+    else if(!strcasecmp(nm, "pin")){
+      /* v2.1: On:Pin(5)("Rising") / ("Falling") / ("Change"): runs the block when the pin changes level */
+      ll pn = x->a.n ? evi(x->a.v[0]) : -1; if(pn < 0 || pn >= 64) lerr("On:Pin needs a pin number 0-63, for example On:Pin(5)(\"Rising\")");
+      const char *ed = x->no ? x->o[0].v[0] : "Change"; char edl[16];
+      if(!strcasecmp(ed, "rising")) strcpy(edl, "rising"); else if(!strcasecmp(ed, "falling")) strcpy(edl, "falling"); else if(!strcasecmp(ed, "change")) strcpy(edl, "change");
+      else lerr("On:Pin: use Rising, Falling or Change");
+      if(S.nevh >= 64) lerr("Too many event handlers");
+      if(S.hw){ int dm = -1; pin_hw((int)pn, "read", NULL, &dm); }   /* permission check + maps the GPIO */
+      EvH *eh = &S.evh[S.nevh]; memset(eh, 0, sizeof *eh); eh->kind = EV_PIN; eh->body = &x->body; eh->sc = sc;
+      snprintf(eh->id, sizeof eh->id, "%lld", pn); snprintf(eh->sub, sizeof eh->sub, "%s", edl);
+      scope_ref(sc); S.nevh++; S.npinh++;
+      start_evthread(); if(S.hw){ pinpoll_start(); pinpoll_watch((int)pn); }
+      pin_watch[pn]++;
+    }
     else {
       const char *a0 = x->no && x->o[0].n == 1 ? x->o[0].v[0] : "";
       int kind; char hid[64] = "";
@@ -3928,17 +4039,50 @@ static int one(Stmt *x, Scope *sc){
   }
   case K_pin: {
     ll n = h->n > 1 ? atoll(h->v[1]) : -1; if(n < 0 || n >= 64) lerr("Pin out of range (0-63)");
-    if(!x->no) lerr("Pin: use Mode, Set, Toggle or Read");
-    SV *a = &x->o[0]; const char *c = a->v[0], *a1 = a->n > 1 ? a->v[1] : ""; char t[64]; int res = -1;
-    if(!strcasecmp(c, "set")){ int hi = !strcasecmp(a1, "high") || !strcmp(a1, "1"); S.pins[n] = hi; if(S.hw) pin_hw((int)n, "set", a1, &res); snprintf(t, sizeof t, "[pin %lld] = %d", n, S.pins[n]); out(t); }
-    else if(!strcasecmp(c, "toggle")){ S.pins[n] ^= 1; if(S.hw) pin_hw((int)n, "toggle", a1, &res); snprintf(t, sizeof t, "[pin %lld] = %d", n, S.pins[n]); out(t); }
-    else if(!strcasecmp(c, "read")){ if(S.hw){ pin_hw((int)n, "read", a1, &res); S.pins[n] = res; } into(x, Vn(S.pins[n])); }
-    else if(!strcasecmp(c, "mode")){ if(S.hw) pin_hw((int)n, "mode", a1, &res); }
-    /* v2.1: Pin:N("Output") / Pin:N("Input[;PullUp|PullDown]") are in the manual (ch. 6) and the simulator accepts them; logl 2.0 rejected them.
-     * Pull-up/down is accepted but NOT applied to the real GPIO yet (needs the GPPUD sequence): NOT IMPLEMENTED. */
-    else if(!strcasecmp(c, "output")){ if(S.hw) pin_hw((int)n, "mode", "out", &res); }
-    else if(!strcasecmp(c, "input")){ if(S.hw) pin_hw((int)n, "mode", "in", &res); }
-    else lerr("Pin: use Mode, Set, Toggle or Read");
+    if(!x->no) lerr("Pin: use Mode, Set, Toggle, Read, PWM, Duty, ADC, Analog or Safe");
+    char t[96]; int res = -1;
+    for(int oi_ = 0; oi_ < x->no; oi_++){   /* v2.1: several options in one statement, e.g. Pin:13("PWM;500","Duty;25") */
+      SV *a = &x->o[oi_]; const char *c = a->v[0], *a1 = a->n > 1 ? a->v[1] : "";
+      if(!strcasecmp(c, "set")){ int hi = !strcasecmp(a1, "high") || !strcmp(a1, "1"); int old = S.pins[n]; S.pins[n] = hi; if(S.hw) pin_hw((int)n, "set", a1, &res); else if(old != hi && pin_watch[n]) push_edge((int)n, hi); snprintf(t, sizeof t, "[pin %lld] = %d", n, S.pins[n]); out(t); }
+      else if(!strcasecmp(c, "toggle")){ int old = S.pins[n]; S.pins[n] ^= 1; if(S.hw) pin_hw((int)n, "toggle", a1, &res); else if(pin_watch[n]) push_edge((int)n, S.pins[n]); (void)old; snprintf(t, sizeof t, "[pin %lld] = %d", n, S.pins[n]); out(t); }
+      else if(!strcasecmp(c, "read")){ if(S.hw){ pin_hw((int)n, "read", a1, &res); S.pins[n] = res; } into(x, Vn(pin_level((int)n))); }
+      else if(!strcasecmp(c, "mode")){ if(S.hw) pin_hw((int)n, "mode", a1, &res); }
+      /* v2.1: Pin:N("Output") / Pin:N("Input[;PullUp|PullDown]") are in the manual (ch. 6) and the simulator accepts them; logl 2.0 rejected them.
+       * Pull-up/down is accepted but NOT applied to the real GPIO yet (needs the GPPUD sequence): NOT IMPLEMENTED. */
+      else if(!strcasecmp(c, "output")){ if(S.hw) pin_hw((int)n, "mode", "out", &res); }
+      else if(!strcasecmp(c, "input")){ if(S.hw) pin_hw((int)n, "mode", "in", &res); }
+      else if(!strcasecmp(c, "pwm")){
+        double f = evd(a1);
+        if(f == 0){ PST[n].pwm = 0; if(S.hw) pwm_hw_stop((int)n); snprintf(t, sizeof t, "[pin %lld] PWM off", n); out(t); }
+        else {
+          if(f < 1 || f > 100000) lerr("Pin: PWM frequency must be between 1 and 100000 Hz");
+          if(S.hw){ need_perm(S.allow_pins, "Pin", "--allow-pins"); if(f > 1000) lerr("Pin: PWM on real pins is software PWM and goes up to 1000 Hz"); }
+          PST[n].freq = f; PST[n].pwm = 1;
+          if(S.hw){ pin_hw((int)n, "mode", "out", &res); pwm_hw_start((int)n); }
+          snprintf(t, sizeof t, "[pin %lld] PWM %g Hz, duty %g%%", n, PST[n].freq, PST[n].duty); out(t);
+        }
+      }
+      else if(!strcasecmp(c, "duty")){
+        if(!PST[n].pwm) lerr("Pin: set PWM;frequency before Duty");
+        double d = evd(a1); if(d < 0 || d > 100) lerr("Pin: Duty must be between 0 and 100");
+        PST[n].duty = d; snprintf(t, sizeof t, "[pin %lld] PWM %g Hz, duty %g%%", n, PST[n].freq, PST[n].duty); out(t);
+      }
+      else if(!strcasecmp(c, "analog")){ double v = evd(a1); if(v < 0 || v > 3.3) lerr("Pin: Analog must be between 0 and 3.3 (volts)"); PST[n].analog = v; }
+      else if(!strcasecmp(c, "adc")){
+        into_need(x); int bits = *a1 ? (int)evi(a1) : 10; if(bits < 2 || bits > 16) lerr("Pin: ADC bits must be between 2 and 16");
+        double v;
+        if(S.hw){ need_perm(S.allow_pins, "Pin", "--allow-pins"); const char *dv = og(x, "dev"); v = adc_hw((int)n, dv ? (int)evi(dv) : 0); }   /* real: raw driver counts */
+        else v = floor(PST[n].analog / 3.3 * (double)((1 << bits) - 1) + 0.5);                                                         /* virtual: Analog volts -> counts */
+        into(x, Vn(v));
+      }
+      else if(!strcasecmp(c, "safe")){
+        if(!strcasecmp(a1, "low")) PST[n].safe = 1; else if(!strcasecmp(a1, "high")) PST[n].safe = 2; else if(!strcasecmp(a1, "off")) PST[n].safe = 0;
+        else lerr("Pin: Safe must be Low, High or Off");
+        if(PST[n].safe) install_crash_handlers();
+      }
+      else if(oi_ == 0) lerr("Pin: use Mode, Set, Toggle, Read, PWM, Duty, ADC, Analog or Safe");
+      /* later options (Into, Dev ...) belong to the first one */
+    }
     break;
   }
   case K_surface: {
@@ -3972,13 +4116,61 @@ static int one(Stmt *x, Scope *sc){
 }
 
 /* ---------------------------------------------------------------- arranque */
-static int alive_events(void){ if(S.win.on && !S.win.closed) return 1; if(S.nstdin) return 1; for(int i = 0; i < S.ntasks; i++) if(S.tasks[i]->on) return 1; return 0; }
+static int alive_events(void){ if(S.win.on && !S.win.closed) return 1; if(S.nstdin) return 1; if(S.npinh) return 1; for(int i = 0; i < S.ntasks; i++) if(S.tasks[i]->on) return 1; return 0; }
 static void halt_all(void){ S.stop = 1; for(int i = 0; i < S.ntasks; i++) S.tasks[i]->stop = 1; }
 static void wait_events(void){
   present();
   if(alive_events() && !S.stop){ out(S.win.on ? "Window open: close the browser tab or press Ctrl+C to exit" : "Waiting for events (Ctrl+C to exit)"); while(alive_events() && !S.stop){ present_maybe(); nap(50000); } }
 }
+/* ---- v2.1: safe outputs + watchdog ----
+ * Pin:N("Safe;Low") marks an output as "safe when something goes wrong". Those pins are driven to their safe level when the watchdog
+ * expires, when the program ends (normally or with an error), on Ctrl+C / kill, and on a crash (segmentation fault). */
+static void apply_safe(int from_signal){
+  for(int n = 0; n < 64; n++) if(PST[n].safe){
+    int v = PST[n].safe == 2, cur = S.hw ? gpio_rd(n) : S.pins[n];
+    if(PST[n].pwm){ PST[n].pwm = 0; pwm_run[n] = 0; }
+    S.pins[n] = v; if(S.hw) gpio_wr(n, v);
+    if(!from_signal && cur != v){ char t[80]; snprintf(t, sizeof t, "[safe] pin %d = %d", n, v); out(t); }
+  }
+}
+static void pwm_stop_all(void){ for(int n = 0; n < 64; n++){ if(pwm_run[n]) pwm_hw_stop(n); PST[n].pwm = 0; } }
+static int crash_inst;
+static void crash_h(int sg){ apply_safe(1); signal(sg, SIG_DFL); raise(sg); }
+static void install_crash_handlers(void){
+  if(crash_inst) return; crash_inst = 1;
+  signal(SIGSEGV, crash_h); signal(SIGFPE, crash_h); signal(SIGABRT, crash_h);
+#ifdef SIGBUS
+  signal(SIGBUS, crash_h);
+#endif
+}
+/* Watchdog("Ms;500") arms it; the program must call Watchdog("Feed") more often than that. If it does not (a hang, an endless loop
+ * that forgot to feed), the safe outputs are applied once. Watchdog("Off") disarms; Watchdog("Status","Into;n") = times it fired. */
+static struct { volatile int armed, fired; volatile double ms, last; int started; } WD;
+static void *wd_main(void *a){
+  (void)a;
+  for(;;){
+    usleep(1000);
+    if(WD.armed && (now() - WD.last) * 1000.0 > WD.ms){
+      WD.armed = 0; WD.fired++; apply_safe(0);
+      char t[100]; snprintf(t, sizeof t, "[WATCHDOG] no Feed in %.0f ms: safe outputs applied", WD.ms); out(t);
+    }
+  }
+  return NULL;
+}
+static void do_watchdog(Stmt *x){
+  const char *k = x->no ? x->o[0].v[0] : "";
+  if(!strcasecmp(k, "feed")){ WD.last = now(); }
+  else if(!strcasecmp(k, "off")){ WD.armed = 0; }
+  else if(!strcasecmp(k, "status")){ into_need(x); into(x, Vn(WD.fired)); }
+  else if(!strcasecmp(k, "ms")){
+    double ms = evd(x->ov[0]); if(ms < 10 || ms > 600000) lerr("Watchdog: Ms must be between 10 and 600000");
+    WD.ms = ms; WD.last = now(); WD.armed = 1; install_crash_handlers();
+    if(!WD.started){ WD.started = 1; pthread_t th; pthread_attr_t at; pthread_attr_init(&at); pthread_attr_setdetachstate(&at, PTHREAD_CREATE_DETACHED); pthread_create(&th, &at, wd_main, NULL); }
+  } else lerr("Watchdog: use Ms;n (arm), Feed, Off or Status");
+}
+
 static void finish_run(void){
+  pwm_stop_all(); apply_safe(0);
   present(); halt_all(); nap(50000);
   if(S.show_end && S.fb){ char *r = fb_render(S.fb, S.ansi); out(r); free(r); }
   if(S.png && S.fb){ fb_png(S.fb, S.png); char m[600]; snprintf(m, sizeof m, "[screen saved to %s]", S.png); out(m); }
@@ -4044,7 +4236,8 @@ static void usage(void){
        "  --hw  enables REAL hardware access (Reg, Port, Pin). Linux only; may need root.\n"
        "  Permissions (v2.1): files are confined to the program folder (--root) unless --allow-disk;\n"
        "  real Pin access needs --hw AND --allow-pins; --allow-net is reserved for the network layer;\n"
-       "  --allow-all = disk + pins + net + raw (it does not imply --hw).");
+       "  --allow-all = disk + pins + net + raw (it does not imply --hw).\n"
+       "  --fake-gpio runs the real-hardware pin code on a GPIO simulated in memory (for tests, no board needed).");
 }
 int main(int argc, char **argv){
   const char *file = NULL, *root = NULL, *lang = "log+"; int check = 0, strict = 0, repl_ = 0, ansi = -1;
@@ -4070,6 +4263,7 @@ int main(int argc, char **argv){
     else if(!strcmp(a, "--allow-disk")) S.allow_disk = 1;
     else if(!strcmp(a, "--allow-pins")) S.allow_pins = 1;
     else if(!strcmp(a, "--allow-net")) S.allow_net = 1;   /* reserved: used by Net:/Http: (part 1C) */
+    else if(!strcmp(a, "--fake-gpio")){ S.hw = 1; S.fakegpio = 1; }   /* real-hardware code path on a GPIO simulated in RAM: for tests */
     else if(!strcmp(a, "--allow-all")) S.allow_disk = S.allow_pins = S.allow_net = S.allowraw = 1;
     else if(!strcmp(a, "--ram") && i + 1 < argc){ long kb = atol(argv[++i]); if(kb < 1) kb = 1; if(kb > 1048576) kb = 1048576; S.memsz = (size_t)kb * 1024; }
     else if(!strcmp(a, "--window")) S.forcewin = 1;
@@ -4088,6 +4282,12 @@ int main(int argc, char **argv){
 #endif
   Th th0; memset(&th0, 0, sizeof th0); th0.retv = Vu(); T = &th0; jmp_buf jb0; th0.jb = &jb0;
   pthread_mutex_lock(&GIL); signal(SIGINT, sigint);
+#ifdef SIGTERM
+  signal(SIGTERM, sigint);   /* v2.1: kill / systemd stop also end the program cleanly, so safe outputs are applied */
+#endif
+#ifdef SIGHUP
+  signal(SIGHUP, sigint);
+#endif
 #ifdef SIGPIPE
   signal(SIGPIPE, SIG_IGN);
 #endif
