@@ -93,6 +93,11 @@ jobs:
       - run: ./logl-windows.exe --version
       - name: Test programs
         run: bash tests/run.sh ./logl-windows.exe
+      - name: Diagnostics if the tests failed (a program that raises an error)
+        if: failure()
+        run: |
+          ./logl-windows.exe tests/e02_undeclared_aug.log+ --no-window --plain --no-wait; echo "exit code: $?"
+          ./logl-windows.exe --version
       - uses: actions/upload-artifact@v4
         with:
           name: windows
