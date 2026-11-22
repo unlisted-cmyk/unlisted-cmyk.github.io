@@ -677,7 +677,20 @@ static Val methods(Val o, const char *name, Val *a, int na){
       free(sep); char *s = btake(&b); Val r = Vsn(s, b.n); free(s); return r;
     }
   }
-  if(!strcmp(name, "toString")){ char *s = jstr(o); Val r = Vs(s); free(s); return r; }
+  if(!strcmp(name, "toString")){
+    /* v2.1: n.toString(radix) for whole numbers, like the simulator (JavaScript): 39.toString(16) = "27". Used by the official i2c_scan example. */
+    if(o.t == T_NUM && na >= 1){
+      int rx = (int)numarg(a[0]); double d = o.u.n;
+      if(rx >= 2 && rx <= 36 && rx != 10 && d == floor(d) && fabs(d) < 9.2e18){
+        long long v = (long long)d; int neg = v < 0; unsigned long long u = neg ? 0ULL - (unsigned long long)v : (unsigned long long)v;
+        char tmp[80]; int n = 0; do { int dg = (int)(u % (unsigned)rx); tmp[n++] = (char)(dg < 10 ? '0' + dg : 'a' + dg - 10); u /= (unsigned)rx; } while(u);
+        if(neg) tmp[n++] = '-';
+        for(int i = 0; i < n / 2; i++){ char c = tmp[i]; tmp[i] = tmp[n - 1 - i]; tmp[n - 1 - i] = c; }
+        return Vsn(tmp, n);
+      }
+    }
+    char *s = jstr(o); Val r = Vs(s); free(s); return r;
+  }
   lerr("Unknown method: %s", name);
 }
 static Val eval(Node *n, Scope *sc){
@@ -752,7 +765,7 @@ static Val eval(Node *n, Scope *sc){
 }
 
 /* ---------------------------------------------------------------- sentencias */
-#define KWLIST X(use) X(print) X(var) X(set) X(repeat) X(for) X(if) X(wait) X(screen) X(display) X(reg) X(pin) X(on) X(loop) X(setup) X(expect) X(sound) X(serial) X(else) X(while) X(break) X(continue) X(input) X(ui) X(store) X(g3d) X(push) X(pop) X(remove) X(insert) X(sort) X(shuffle) X(split) X(each) X(def) X(call) X(return) X(elseif) X(console) X(mem) X(disk) X(exec) X(panic) X(stop) X(task) X(spawn) X(kill) X(join) X(import) X(try) X(lock) X(unlock) X(send) X(recv) X(yield) X(assert) X(sys) X(proc) X(surface) X(host) X(port) X(graphics3d) X(dyn2d) X(ram) X(cpu) X(irq) X(pci) X(dev) X(admin) X(catch) X(switch) X(case) X(default)
+#define KWLIST X(use) X(print) X(var) X(set) X(repeat) X(for) X(if) X(wait) X(screen) X(display) X(reg) X(pin) X(on) X(loop) X(setup) X(expect) X(sound) X(serial) X(else) X(while) X(break) X(continue) X(input) X(ui) X(store) X(g3d) X(push) X(pop) X(remove) X(insert) X(sort) X(shuffle) X(split) X(each) X(def) X(call) X(return) X(elseif) X(console) X(mem) X(disk) X(exec) X(panic) X(stop) X(task) X(spawn) X(kill) X(join) X(import) X(try) X(lock) X(unlock) X(send) X(recv) X(yield) X(assert) X(sys) X(proc) X(surface) X(host) X(port) X(graphics3d) X(dyn2d) X(ram) X(cpu) X(irq) X(pci) X(dev) X(admin) X(catch) X(switch) X(case) X(default) X(i2c) X(spi) X(uart)
 enum {
 #define X(n) K_##n,
 KWLIST
@@ -1044,6 +1057,12 @@ static void chk(SL *ns, DV *E, DV *W, ChkSt *s){
         chk(&c->body, E, W, s);
       }
       continue;
+    }
+    if(k == K_i2c || k == K_spi || k == K_uart){   /* v2.1: unknown operation = compile error, like the simulator */
+      const char *op = x->h.n > 1 ? x->h.v[1] : "", *okl = k == K_i2c ? "write read scan close" : k == K_spi ? "open transfer write read close" : "open write read close";
+      int found = 0; size_t ol = strlen(op); const char *q = okl;
+      while(*q){ const char *e = strchr(q, ' '); size_t l2 = e ? (size_t)(e - q) : strlen(q); if(l2 == ol && !strncasecmp(q, op, l2)) found = 1; q += l2; if(*q == ' ') q++; }
+      if(!found) dpushf(E, n, "Unknown %s operation: %s (valid: %s)", x->h.v[0], op, okl);
     }
     if(k == K_expect && l != 0) dpush(E, n, "Expect is exclusive to Log-");
     if(k == K_loop && (x->h.n == 1 || !strcasecmp(x->h.v[1], "forever")) && !has_wait(&x->body))
@@ -2158,6 +2177,278 @@ static void do_host(Stmt *x){
   }
   else lerr("Host: use List, Read, Exists, Size, Write, Append, Delete, Mkdir, Copy, Move, Lines, WriteLines, Stat, IsDir, Rmdir, Cwd, SaveJson or LoadJson");
   free(f); free(p);
+}
+
+/* ======================================================================================================
+ * v2.1: I2C, SPI and UART
+ *   I2C:Write("Addr;0x27", "Byte;n" | "Bytes;1,2,3" | "Text;..", ["Bus;1"], ["Into;ack"])   ack = 1 if the device answered
+ *   I2C:Read("Addr;0x48","Count;2",["Bus;1"],"Into;list")      error if the device does not answer
+ *   I2C:Scan("Into;list",["Bus;1"])      I2C:Close
+ *   SPI:Open("Bus;0","Cs;0",["Speed;1000000"],["Mode;0"])   SPI:Transfer(bytes.. ,"Into;list")   SPI:Write(bytes..)
+ *   SPI:Read("Count;n","Into;list")   SPI:Close
+ *   UART:Open("Port;/dev/ttyS0","Baud;115200",["Id;gps"])   UART:Write(["Id;gps"], bytes..)
+ *   UART:Read(["Id;gps"],"Count;n",["Timeout;100"],["As;Text"],"Into;x")   UART:Close(["Id;gps"])
+ * Without --hw they are VIRTUAL like the simulator: I2C has no devices (ack 0, empty scan), SPI and UART are loopbacks
+ * (what you send comes back). With --hw --allow-pins they use the real /dev/i2c-N, /dev/spidevB.C and serial ports.
+ * Real I2C/SPI: Linux only. Real UART: Linux and macOS. NOT TESTED ON REAL HARDWARE (UART was tested against a pty).
+ * The kernel headers are not needed: the few ioctl numbers are written here (valid on x86, ARM, ARM64 and RISC-V).
+ * ====================================================================================================== */
+#ifndef _WIN32
+#include <termios.h>
+#include <sys/select.h>
+#include <sys/ioctl.h>
+#endif
+#define BUSMAX 4096
+
+/* bytes from the options Byte; Bytes; Text; in the order written (same rules as the simulator) */
+static int collect_bytes(Stmt *x, unsigned char *buf, int cap){
+  int n = 0;
+  for(int i = 0; i < x->no; i++){
+    const char *k = x->o[i].v[0], *v = x->ov[i];
+    if(!strcasecmp(k, "byte")){ if(n >= cap) lerr("Too many bytes (max %d)", cap); buf[n++] = (unsigned char)((long long)evd(v) & 255); }
+    else if(!strcasecmp(k, "bytes")){
+      Buf b = {0}; bc(&b, '['); bs(&b, v); bc(&b, ']'); char *e = btake(&b); Val l = ev(e); free(e);
+      if(l.t != T_LIST){ vdrop(l); lerr("Bytes needs numbers separated by commas"); }
+      for(int j = 0; j < LP(l)->n; j++){ if(n >= cap){ vdrop(l); lerr("Too many bytes (max %d)", cap); } buf[n++] = (unsigned char)((long long)numarg(LP(l)->a[j]) & 255); }
+      vdrop(l);
+    } else if(!strcasecmp(k, "text")){
+      char *t = fm(v);
+      for(char *p = t; *p; p++){
+        int c = (unsigned char)*p;
+        if(p[0] == '\\' && p[1]){ char q = p[1]; if(q == 'n') { c = '\n'; p++; } else if(q == 'r'){ c = '\r'; p++; } else if(q == 'f'){ c = '\f'; p++; } else if(q == 't'){ c = '\t'; p++; } else if(q == '0'){ c = 0; p++; } }
+        if(n >= cap){ free(t); lerr("Too many bytes (max %d)", cap); }
+        buf[n++] = (unsigned char)c;
+      }
+      free(t);
+    }
+  }
+  return n;
+}
+static Val bytes_list(const unsigned char *b, int n){ Val l = Vl(); for(int i = 0; i < n; i++) lpush(LP(l), Vn(b[i])); return l; }
+/* 1 = use the real device (needs --hw and --allow-pins), 0 = virtual */
+static int bus_real(const char *who){ if(!S.hw) return 0; need_perm(S.allow_pins, who, "--allow-pins"); return 1; }
+static int opt_int(Stmt *x, const char *k, int d){ const char *s = og(x, k); return s && *s ? (int)evd(s) : d; }
+
+/* ---------------------------------------------------------------- I2C */
+#ifdef __linux__
+#define LG_I2C_SLAVE 0x0703
+#define LG_I2C_SMBUS 0x0720
+struct lg_smbus { unsigned char rw, cmd; unsigned int size; void *data; };   /* = struct i2c_smbus_ioctl_data */
+static int i2c_fd[16] = {0}, i2c_have[16] = {0};
+static int i2c_bus_fd(int bus){
+  if(bus < 0 || bus > 15) lerr("I2C: Bus must be 0-15");
+  if(!i2c_have[bus]){
+    char path[64]; snprintf(path, sizeof path, "/dev/i2c-%d", bus);
+    int fd = open(path, O_RDWR); if(fd < 0) lerr("I2C: could not open %s: %s (is I2C enabled, and are you root or in the i2c group?)", path, strerror(errno));
+    i2c_fd[bus] = fd; i2c_have[bus] = 1;
+  }
+  return i2c_fd[bus];
+}
+static int i2c_probe(int fd, int addr){   /* same method as i2cdetect: read a byte in EEPROM ranges, "quick write" elsewhere */
+  if(ioctl(fd, LG_I2C_SLAVE, addr) < 0) return 0;
+  struct lg_smbus a; unsigned char d[34]; memset(&a, 0, sizeof a); memset(d, 0, sizeof d);
+  if((addr >= 0x30 && addr <= 0x37) || (addr >= 0x50 && addr <= 0x5f)){ a.rw = 1; a.size = 1; a.data = d; }
+  else { a.rw = 0; a.size = 0; a.data = NULL; }
+  return ioctl(fd, LG_I2C_SMBUS, &a) >= 0;
+}
+#endif
+static void do_i2c(Stmt *x){
+  const char *w = hw_(x, 1); int real = bus_real("I2C"); int bus = opt_int(x, "bus", 1);
+  if(!strcasecmp(w, "scan")){
+    into_need(x); Val l = Vl();
+#ifdef __linux__
+    if(real){ int fd = i2c_bus_fd(bus); for(int a = 8; a < 120; a++) if(i2c_probe(fd, a)) lpush(LP(l), Vn(a)); }
+#else
+    if(real) lerr("I2C: real I2C is only available on Linux");
+#endif
+    into(x, l); return;
+  }
+  if(!strcasecmp(w, "close")){
+#ifdef __linux__
+    for(int b = 0; b < 16; b++) if(i2c_have[b]){ close(i2c_fd[b]); i2c_have[b] = 0; }
+#endif
+    return;
+  }
+  int isw = !strcasecmp(w, "write"), isr = !strcasecmp(w, "read");
+  if(!isw && !isr) lerr("Unknown I2C operation: %s (valid: Write, Read, Scan, Close)", w);
+  const char *ad = og(x, "addr"); if(!ad) lerr("I2C: Addr is missing");
+  long long addr = (long long)evd(ad) & 127;
+  if(isw){
+    unsigned char buf[BUSMAX]; int n = collect_bytes(x, buf, BUSMAX); int ack = 0;
+#ifdef __linux__
+    if(real){ int fd = i2c_bus_fd(bus); if(n == 0) ack = i2c_probe(fd, (int)addr); else if(ioctl(fd, LG_I2C_SLAVE, (int)addr) >= 0) ack = write(fd, buf, n) == n; }
+#else
+    if(real) lerr("I2C: real I2C is only available on Linux");
+#endif
+    (void)n; if(og(x, "into")) into(x, Vn(ack)); return;
+  }
+  int cnt = opt_int(x, "count", 1); if(cnt < 1 || cnt > BUSMAX) lerr("I2C: Count must be 1-%d", BUSMAX);
+  into_need(x);
+#ifdef __linux__
+  if(real){
+    int fd = i2c_bus_fd(bus); unsigned char buf[BUSMAX];
+    if(ioctl(fd, LG_I2C_SLAVE, (int)addr) < 0 || read(fd, buf, cnt) != cnt) lerr("I2C: no answer from address 0x%02X", (unsigned)addr);
+    into(x, bytes_list(buf, cnt)); return;
+  }
+#else
+  if(real) lerr("I2C: real I2C is only available on Linux");
+#endif
+  lerr("I2C: no answer from address 0x%02X", (unsigned)addr);   /* virtual bus: there are no devices */
+}
+
+/* ---------------------------------------------------------------- SPI */
+static int spi_open_ = 0, spi_fd = -1, spi_speed = 1000000;
+#ifdef __linux__
+struct lg_spi_xfer { unsigned long long tx, rx; unsigned int len, speed; unsigned short delay; unsigned char bits, cs_change, tx_nbits, rx_nbits, word_delay, pad; };   /* = struct spi_ioc_transfer (32 bytes) */
+typedef char lg_spi_size_check[sizeof(struct lg_spi_xfer) == 32 ? 1 : -1];
+#define LG_SPI_MSG1      0x40206B00u   /* SPI_IOC_MESSAGE(1) */
+#define LG_SPI_WR_MODE   0x40016B01u
+#define LG_SPI_WR_BITS   0x40016B03u
+#define LG_SPI_WR_SPEED  0x40046B04u
+#endif
+static void spi_xfer(const unsigned char *tx, unsigned char *rx, int n){
+  if(!spi_open_) lerr("SPI: not open (use SPI:Open first)");
+  if(spi_fd < 0){ memcpy(rx, tx, n); return; }   /* virtual: loopback (MISO wired to MOSI) */
+#ifdef __linux__
+  struct lg_spi_xfer t; memset(&t, 0, sizeof t);
+  t.tx = (unsigned long long)(uintptr_t)tx; t.rx = (unsigned long long)(uintptr_t)rx; t.len = (unsigned)n; t.speed = (unsigned)spi_speed; t.bits = 8;
+  if(ioctl(spi_fd, LG_SPI_MSG1, &t) < 0) lerr("SPI: transfer failed: %s", strerror(errno));
+#endif
+}
+static void do_spi(Stmt *x){
+  const char *w = hw_(x, 1);
+  if(!strcasecmp(w, "open")){
+    int real = bus_real("SPI"); if(spi_open_) lerr("SPI: already open (use SPI:Close first)");
+    int bus = opt_int(x, "bus", 0), cs = opt_int(x, "cs", 0), mode = opt_int(x, "mode", 0), sp = opt_int(x, "speed", 1000000);
+    if(mode < 0 || mode > 3) lerr("SPI: Mode must be 0-3");
+    if(sp < 1) lerr("SPI: Speed must be positive");
+    spi_speed = sp; spi_fd = -1;
+    if(real){
+#ifdef __linux__
+      char path[64]; snprintf(path, sizeof path, "/dev/spidev%d.%d", bus, cs);
+      int fd = open(path, O_RDWR); if(fd < 0) lerr("SPI: could not open %s: %s (is SPI enabled, and are you root or in the spi group?)", path, strerror(errno));
+      unsigned char m = (unsigned char)mode, bits = 8; unsigned int spd = (unsigned)sp;
+      if(ioctl(fd, LG_SPI_WR_MODE, &m) < 0 || ioctl(fd, LG_SPI_WR_BITS, &bits) < 0 || ioctl(fd, LG_SPI_WR_SPEED, &spd) < 0){ int e = errno; close(fd); lerr("SPI: could not configure %s: %s", path, strerror(e)); }
+      spi_fd = fd;
+#else
+      (void)bus; (void)cs; lerr("SPI: real SPI is only available on Linux");
+#endif
+    }
+    spi_open_ = 1; return;
+  }
+  if(!strcasecmp(w, "close")){
+#ifndef _WIN32
+    if(spi_fd >= 0) close(spi_fd);
+#endif
+    spi_fd = -1; spi_open_ = 0; return;
+  }
+  unsigned char tx[BUSMAX], rx[BUSMAX]; int n;
+  if(!strcasecmp(w, "transfer") || !strcasecmp(w, "write")){
+    n = collect_bytes(x, tx, BUSMAX); if(n == 0) lerr("SPI:%s needs Byte, Bytes or Text", w);
+    spi_xfer(tx, rx, n);
+    if(!strcasecmp(w, "transfer")){ into_need(x); into(x, bytes_list(rx, n)); }
+    return;
+  }
+  if(!strcasecmp(w, "read")){
+    n = opt_int(x, "count", 0); if(n < 1 || n > BUSMAX) lerr("SPI:Read needs Count between 1 and %d", BUSMAX);
+    into_need(x); memset(tx, 0, (size_t)n); spi_xfer(tx, rx, n); into(x, bytes_list(rx, n)); return;
+  }
+  lerr("Unknown SPI operation: %s (valid: Open, Transfer, Write, Read, Close)", w);
+}
+
+/* ---------------------------------------------------------------- UART */
+typedef struct { char id[32]; int used, fd; unsigned char q[BUSMAX]; int head, cnt; } Uart;
+static Uart uarts[4];
+static Uart *uart_find(const char *id, int create){
+  for(int i = 0; i < 4; i++) if(uarts[i].used && !strcmp(uarts[i].id, id)) return &uarts[i];
+  if(!create) return NULL;
+  for(int i = 0; i < 4; i++) if(!uarts[i].used){ memset(&uarts[i], 0, sizeof uarts[i]); uarts[i].used = 1; uarts[i].fd = -1; snprintf(uarts[i].id, sizeof uarts[i].id, "%s", id); return &uarts[i]; }
+  lerr("UART: at most 4 ports can be open at the same time");
+}
+#ifndef _WIN32
+static speed_t uart_baud(int b){
+  switch(b){
+    case 1200: return B1200; case 2400: return B2400; case 4800: return B4800; case 9600: return B9600; case 19200: return B19200;
+    case 38400: return B38400; case 57600: return B57600; case 115200: return B115200; case 230400: return B230400;
+#ifdef B460800
+    case 460800: return B460800;
+#endif
+#ifdef B921600
+    case 921600: return B921600;
+#endif
+  }
+  lerr("UART: unsupported Baud %d (valid: 1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600)", b);
+}
+#endif
+static char *uart_id(Stmt *x){ const char *s = og(x, "id"); return s ? fm(s) : xs("uart0"); }
+static void do_uart(Stmt *x){
+  const char *w = hw_(x, 1); char *id = uart_id(x);
+  if(!strcasecmp(w, "open")){
+    int real = bus_real("UART"); if(uart_find(id, 0)) lerr("UART: '%s' is already open", id);
+    int baud = opt_int(x, "baud", 9600); Uart *u = uart_find(id, 1);
+    if(real){
+#ifndef _WIN32
+      const char *po = og(x, "port"); if(!po){ u->used = 0; lerr("UART:Open needs Port (for example Port;/dev/ttyS0)"); }
+      char *port = fm(po); speed_t sp;
+      { Uart *keep = u; keep->used = 0; sp = uart_baud(baud); keep->used = 1; }
+      int fd = open(port, O_RDWR | O_NOCTTY | O_NONBLOCK);
+      if(fd < 0){ u->used = 0; char *m = xs(strerror(errno)); lerr("UART: could not open %s: %s", port, m); }
+      struct termios t; if(tcgetattr(fd, &t) < 0){ close(fd); u->used = 0; lerr("UART: %s is not a serial port", port); }
+      cfmakeraw(&t); cfsetispeed(&t, sp); cfsetospeed(&t, sp); t.c_cflag |= CLOCAL | CREAD; t.c_cc[VMIN] = 0; t.c_cc[VTIME] = 0;
+      if(tcsetattr(fd, TCSANOW, &t) < 0){ close(fd); u->used = 0; lerr("UART: could not configure %s", port); }
+      u->fd = fd; free(port);
+#else
+      u->used = 0; lerr("UART: real serial ports are not available on Windows yet");
+#endif
+    }
+    return;
+  }
+  Uart *u = uart_find(id, 0); if(!u && strcasecmp(w, "close")) lerr("UART: '%s' is not open (use UART:Open first)", id);
+  if(!strcasecmp(w, "close")){
+    if(u){
+#ifndef _WIN32
+      if(u->fd >= 0) close(u->fd);
+#endif
+      u->used = 0; u->fd = -1;
+    }
+    return;
+  }
+  if(!strcasecmp(w, "write")){
+    unsigned char buf[BUSMAX]; int n = collect_bytes(x, buf, BUSMAX);
+    if(u->fd >= 0){
+#ifndef _WIN32
+      int off = 0; while(off < n){ ssize_t r = write(u->fd, buf + off, (size_t)(n - off)); if(r < 0){ if(errno == EAGAIN){ fd_set wf; FD_ZERO(&wf); FD_SET(u->fd, &wf); struct timeval tv = { 0, 100000 }; select(u->fd + 1, NULL, &wf, NULL, &tv); continue; } lerr("UART: write failed: %s", strerror(errno)); } off += (int)r; }
+#endif
+    } else {
+      if(u->cnt + n > BUSMAX) lerr("UART: virtual buffer full (%d bytes)", BUSMAX);
+      for(int i = 0; i < n; i++) u->q[(u->head + u->cnt++) % BUSMAX] = buf[i];
+    }
+    return;
+  }
+  if(!strcasecmp(w, "read")){
+    int cnt = opt_int(x, "count", 0), tmo = opt_int(x, "timeout", 100); unsigned char buf[BUSMAX]; int got = 0;
+    if(cnt < 1 || cnt > BUSMAX) lerr("UART:Read needs Count between 1 and %d", BUSMAX);
+    into_need(x);
+    if(u->fd >= 0){
+#ifndef _WIN32
+      struct timespec t0; clock_gettime(CLOCK_MONOTONIC, &t0);
+      while(got < cnt){
+        struct timespec t1; clock_gettime(CLOCK_MONOTONIC, &t1);
+        long el = (t1.tv_sec - t0.tv_sec) * 1000 + (t1.tv_nsec - t0.tv_nsec) / 1000000; long left = tmo - el; if(left < 0) left = 0;
+        fd_set rf; FD_ZERO(&rf); FD_SET(u->fd, &rf); struct timeval tv = { left / 1000, (left % 1000) * 1000 };
+        int pr = select(u->fd + 1, &rf, NULL, NULL, &tv);   /* select, not poll: poll() is unreliable with tty devices on macOS */
+        if(pr > 0){ ssize_t r = read(u->fd, buf + got, (size_t)(cnt - got)); if(r > 0) got += (int)r; else if(r == 0 || (r < 0 && errno != EAGAIN && errno != EINTR)) break; }
+        else if(pr == 0) break;
+      }
+#endif
+    } else {
+      while(got < cnt && u->cnt > 0){ buf[got++] = u->q[u->head]; u->head = (u->head + 1) % BUSMAX; u->cnt--; }
+    }
+    const char *as = og(x, "as");
+    if(as && !strcasecmp(as, "text")) into(x, Vsn((const char *)buf, got)); else into(x, bytes_list(buf, got));
+    return;
+  }
+  lerr("Unknown UART operation: %s (valid: Open, Write, Read, Close)", w);
 }
 static FB *surf_get(const char *id){ for(int i = 0; i < S.nsurf; i++) if(S.surf[i].id && !strcmp(S.surf[i].id, id)) return S.surf[i].fb; return NULL; }
 static void do_scr(Stmt *x){
@@ -3524,6 +3815,9 @@ static int one(Stmt *x, Scope *sc){
   case K_mem: do_mem(x); break;
   case K_disk: do_disk(x); break;
   case K_host: do_host(x); break;
+  case K_i2c: do_i2c(x); break;
+  case K_spi: do_spi(x); break;
+  case K_uart: do_uart(x); break;
   case K_store: {
     const char *w = hw_(x, 1); const char *ko = og(x, "key"); Buf kb = {0}; bs(&kb, "logdata:"); bs(&kb, ko ? ko : ""); char *key = btake(&kb);
     int err; size_t n; char *tx = readfile(S.stpath, &n); Val d = tx ? jparse(tx, &err) : Vu(); if(!tx || err || d.t != T_DICT){ vdrop(d); d = Vd(); } free(tx);
