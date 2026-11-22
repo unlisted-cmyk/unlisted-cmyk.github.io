@@ -1,0 +1,15 @@
+Compiled with no errors (0 warning(s)).
+[pin 13] PWM 70 Hz, duty 0%
+[pin 13] PWM 70 Hz, duty 100%
+duty100: 100/100
+[pin 13] PWM 70 Hz, duty 0%
+duty0: 0/100
+[pin 13] PWM 100 Hz, duty 0%
+[pin 13] PWM 100 Hz, duty 50%
+duty50 plausible: true
+[pin 13] PWM off
+Pin: set PWM;frequency before Duty
+[pin 13] PWM 5 Hz, duty 50%
+Pin: Duty must be between 0 and 100
+FINISHED
+rc=0

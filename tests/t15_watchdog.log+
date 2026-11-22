@@ -1,0 +1,35 @@
+<log+>
+Pin:7("Output")
+Pin:7("Safe;Low")
+Pin:7("Set;High")
+Watchdog("Ms;300")
+Var:i("Value;0")
+While(i<8)
+{
+ Wait("Ms;30")
+ Watchdog("Feed")
+ i += 1
+}
+Var:f("Value;9")
+Watchdog("Status","Into;f")
+Print("alimentado: pin={pin(7)} disparos={f}")
+Wait("Ms;700")
+Watchdog("Status","Into;f")
+Print("colgado: pin={pin(7)} disparos={f}")
+Try
+{
+ Watchdog("Ms;5")
+}
+Catch:e
+{
+ Print("{e}")
+}
+Try
+{
+ Watchdog("Bark")
+}
+Catch:e2
+{
+ Print("{e2}")
+}
+Stop

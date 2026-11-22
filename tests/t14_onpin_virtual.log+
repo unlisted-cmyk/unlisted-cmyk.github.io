@@ -1,0 +1,31 @@
+<log+>
+Var:n("Value;0")
+On:Pin(5)("Rising")
+{
+ n += 1
+ Print("rising #{n}")
+}
+On:Pin(5)("Falling")
+{
+ Print("falling")
+}
+On:Pin(6)("Change")
+{
+ Print("change on 6")
+}
+Pin:5("Set;High")
+Wait("Ms;50")
+Pin:5("Set;High")
+Wait("Ms;50")
+Pin:5("Set;Low")
+Wait("Ms;50")
+Pin:5("Toggle")
+Wait("Ms;50")
+Pin:6("Toggle")
+Wait("Ms;50")
+Pin:6("Toggle")
+Wait("Ms;50")
+Pin:7("Toggle")
+Wait("Ms;50")
+Print("n={n}")
+Stop

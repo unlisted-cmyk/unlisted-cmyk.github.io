@@ -1,0 +1,31 @@
+<log+>
+Var:a("Value;0")
+Pin:2("Analog;1.65")
+Pin:2("ADC;10","Into;a")
+Print("1.65V 10bit={a}")
+Pin:2("ADC;8","Into;a")
+Print("1.65V 8bit={a}")
+Pin:2("ADC","Into;a")
+Print("default={a}")
+Pin:2("Analog;0")
+Pin:2("ADC;12","Into;a")
+Print("0V={a}")
+Pin:2("Analog;3.3")
+Pin:2("ADC;12","Into;a")
+Print("3.3V 12bit={a}")
+Try
+{
+ Pin:2("Analog;5")
+}
+Catch:e
+{
+ Print("{e}")
+}
+Try
+{
+ Pin:2("ADC;1","Into;a")
+}
+Catch:e2
+{
+ Print("{e2}")
+}

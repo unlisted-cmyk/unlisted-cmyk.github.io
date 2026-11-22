@@ -1,0 +1,18 @@
+Compiled with no errors (0 warning(s)).
+[pin 9] = 1
+nivel real=1
+[pin 4] = 1
+flanco en 4
+[pin 4] = 0
+caida en 4
+[pin 4] = 0
+n=1
+[pin 11] PWM 100 Hz, duty 0%
+[pin 11] PWM 100 Hz, duty 50%
+pwm real plausible: true
+[pin 11] PWM off
+tras apagar pwm: 0
+Pin: PWM on real pins is software PWM and goes up to 1000 Hz
+adc=1023
+STOPPED
+rc=0

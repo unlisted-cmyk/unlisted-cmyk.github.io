@@ -1,0 +1,8 @@
+<log+>
+Pin:3("Safe;Low")
+Pin:4("Safe;High")
+Pin:3("Set;High")
+Pin:4("Set;Low")
+Print("antes del error")
+Var:x("Value;nada+1")
+Print("no llega")

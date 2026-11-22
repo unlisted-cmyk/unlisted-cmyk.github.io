@@ -1,0 +1,49 @@
+<log+>
+Pin:9("Output")
+Pin:9("Set;High")
+Print("nivel real={pin(9)}")
+Var:n("Value;0")
+On:Pin(4)("Rising")
+{
+ n += 1
+ Print("flanco en 4")
+}
+On:Pin(4)("Falling")
+{
+ Print("caida en 4")
+}
+Pin:4("Set;High")
+Wait("Ms;100")
+Pin:4("Set;Low")
+Wait("Ms;100")
+Pin:4("Set;Low")
+Wait("Ms;50")
+Print("n={n}")
+Pin:11("PWM;100","Duty;50")
+Var:hi("Value;0")
+Var:i("Value;0")
+While(i<200)
+{
+ If(pin(11)==1)
+ {
+  hi += 1
+ }
+ Wait("Ms;1")
+ i += 1
+}
+Print("pwm real plausible: {hi>50 && hi<150}")
+Pin:11("PWM;0")
+Print("tras apagar pwm: {pin(11)}")
+Try
+{
+ Pin:11("PWM;5000")
+}
+Catch:e
+{
+ Print("{e}")
+}
+Var:a("Value;0")
+Pin:2("Analog;3.3")
+Pin:2("ADC;10","Into;a")
+Print("adc={a}")
+Stop

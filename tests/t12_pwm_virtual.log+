@@ -1,0 +1,57 @@
+<log+>
+Pin:13("PWM;70")
+Var:hi("Value;0")
+Var:i("Value;0")
+Pin:13("Duty;100")
+While(i<100)
+{
+ If(pin(13)==1)
+ {
+  hi += 1
+ }
+ i += 1
+}
+Print("duty100: {hi}/100")
+Set:hi("Value;0")
+Set:i("Value;0")
+Pin:13("Duty;0")
+While(i<100)
+{
+ If(pin(13)==1)
+ {
+  hi += 1
+ }
+ i += 1
+}
+Print("duty0: {hi}/100")
+Pin:13("PWM;100","Duty;50")
+Set:hi("Value;0")
+Set:i("Value;0")
+While(i<200)
+{
+ If(pin(13)==1)
+ {
+  hi += 1
+ }
+ Wait("Ms;1")
+ i += 1
+}
+Print("duty50 plausible: {hi>50 && hi<150}")
+Pin:13("PWM;0")
+Try
+{
+ Pin:14("Duty;10")
+}
+Catch:e
+{
+ Print("{e}")
+}
+Try
+{
+ Pin:13("PWM;5")
+ Pin:13("Duty;150")
+}
+Catch:e2
+{
+ Print("{e2}")
+}

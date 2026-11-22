@@ -1,0 +1,16 @@
+Compiled with no errors (0 warning(s)).
+[pin 5] = 1
+rising #1
+[pin 5] = 1
+[pin 5] = 0
+falling
+[pin 5] = 1
+rising #2
+[pin 6] = 1
+change on 6
+[pin 6] = 0
+change on 6
+[pin 7] = 1
+n=2
+STOPPED
+rc=0

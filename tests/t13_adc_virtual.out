@@ -1,0 +1,10 @@
+Compiled with no errors (0 warning(s)).
+1.65V 10bit=512
+1.65V 8bit=128
+default=512
+0V=0
+3.3V 12bit=4095
+Pin: Analog must be between 0 and 3.3 (volts)
+Pin: ADC bits must be between 2 and 16
+FINISHED
+rc=0

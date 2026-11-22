@@ -1,0 +1,8 @@
+Compiled with no errors (0 warning(s)).
+[pin 3] = 1
+[pin 4] = 0
+antes del error
+[safe] pin 3 = 0
+[safe] pin 4 = 1
+ERROR l.7: Undeclared variable: nada
+rc=2

@@ -1,0 +1,10 @@
+Compiled with no errors (0 warning(s)).
+[pin 7] = 1
+alimentado: pin=1 disparos=0
+[safe] pin 7 = 0
+[WATCHDOG] no Feed in 300 ms: safe outputs applied
+colgado: pin=0 disparos=1
+Watchdog: Ms must be between 10 and 600000
+Watchdog: use Ms;n (arm), Feed, Off or Status
+STOPPED
+rc=0

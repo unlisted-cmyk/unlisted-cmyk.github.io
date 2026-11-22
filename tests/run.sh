@@ -9,11 +9,12 @@ cd "$(dirname "$0")/.." || exit 2
 pass=0; fail=0
 case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) HOST=windows;; *) HOST=unix;; esac
 
-# case NAME "file" extra-flags...
+# case NAME "file" extra-flags...      (run_rt = real time: the program really waits, needed for events / PWM / watchdog tests)
 run_case() {
+  local NW="--no-wait"; [ "${RT:-0}" = 1 ] && NW=""
   local name="$1" file="$2"; shift 2
   local got
-  got="$( { "$BIN" "tests/$file" --no-window --plain --no-wait "$@" 2>&1 </dev/null; echo "rc=$?"; } | tr -d '\r')"
+  got="$( { "$BIN" "tests/$file" --no-window --plain $NW "$@" 2>&1 </dev/null; echo "rc=$?"; } | tr -d '\r')"
   if [ "$UPDATE" = "--update" ]; then printf '%s\n' "$got" > "tests/$name.out"; echo "updated $name"; return; fi
   if [ "$got" = "$(cat "tests/$name.out")" ]; then echo "PASS  $name"; pass=$((pass+1))
   else
@@ -31,6 +32,11 @@ run_case t05_pin_virtual    t05_pin_virtual.log+
 run_case t06_disk_inside    t06_disk_inside.log+
 run_case t07_juego3d        t07_juego3d.log+
 run_case t11_errors_nested  t11_errors_nested.log+
+run_case t13_adc_virtual    t13_adc_virtual.log+
+run_case t16_safe_on_error  t16_safe_on_error.log+
+RT=1 run_case t12_pwm_virtual    t12_pwm_virtual.log+
+RT=1 run_case t14_onpin_virtual  t14_onpin_virtual.log+
+RT=1 run_case t15_watchdog       t15_watchdog.log+
 run_case e01_case_outside   e01_case_outside.log+ --check
 run_case e02_undeclared_aug e02_undeclared_aug.log+
 run_case t08_i2c_virtual    t08_i2c_virtual.log+
@@ -44,6 +50,8 @@ run_case e04_pin_virtual    e04_pin_noperm.log+
 if [ "$HOST" = unix ]; then
   run_case e04_pin_denied    e04_pin_noperm.log+ --hw
   run_case e07_bus_noperm    e07_bus_noperm.log+ --hw
+  RT=1 run_case t17_fakegpio_hw t17_fakegpio_hw.log+ --fake-gpio --allow-pins
+  run_case e08_fakegpio_noperm t17_fakegpio_hw.log+ --fake-gpio
   run_case e05_admin_denied  e05_admin_run.log-  --hw
   run_case e05_admin_allowed e05_admin_run.log-  --hw --allow-raw
 fi
