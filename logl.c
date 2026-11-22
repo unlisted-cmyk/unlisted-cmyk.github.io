@@ -34,6 +34,16 @@
 #include <errno.h>
 #include <signal.h>
 #include <setjmp.h>
+/* v2.1: on Windows (MinGW) the C runtime's longjmp crashes with a segmentation fault (it tries to unwind the stack),
+ * which killed every program that raised an error. Use GCC's own setjmp/longjmp there: they do not go through the runtime.
+ * LG_BUILTIN_JMP lets the same code be tested on Linux (gcc -DLG_BUILTIN_JMP). */
+#if (defined(_WIN32) || defined(LG_BUILTIN_JMP)) && defined(__GNUC__)
+  typedef void *lg_jmp_buf[5];
+  #define jmp_buf lg_jmp_buf
+  #undef setjmp
+  #define setjmp(b) __builtin_setjmp(b)
+  #define longjmp(b, v) __builtin_longjmp((b), 1)
+#endif
 #include <pthread.h>
 #include <sched.h>
 #include <fcntl.h>
