@@ -10,6 +10,8 @@
  *   G3D v2: cylinder/cone/plane/diamond, z-buffer, OBJ Load/Save, Pick, Project, Orbit, Grid ...
  *   UI v2: TextArea (code editor), Dropdown, List, Progress, Title, Separator, Break
  *   Mem v2: Find, Cmp, Hash, Swap, ReadText, bit ops;  Math: popcount, clz, ctz, wrap/sext, clamp, lerp
+ * v2.1 (part 1A): permissions (--allow-disk/--allow-pins/--allow-net/--allow-all), files confined to --root unless
+ *   --allow-disk, shortcuts x += 1 (-= *= /=), Switch/Case/Default.
  * Build Linux:    gcc -O2 -static -o logl logl.c -lm -lpthread
  * Build Windows:  gcc -O2 -static -o logl.exe logl.c -lm -lpthread -lws2_32   (MinGW-w64 / MSYS2)
  * Usage:     logl program.log+ [--check] [--hw] [--root DIR] [--png out.png] [--repl]
@@ -103,7 +105,7 @@
   #include <x86intrin.h>
 #endif
 
-#define LOGL_VERSION "2.0"
+#define LOGL_VERSION "2.1"
 
 typedef long long ll;
 typedef unsigned long long ull;
@@ -542,15 +544,17 @@ static Node *compile(const char *e){
 }
 
 /* ---------------------------------------------------------------- Math */
-enum { F_abs, F_floor, F_ceil, F_round, F_trunc, F_sqrt, F_pow, F_min, F_max, F_sin, F_cos, F_tan, F_asin, F_acos, F_atan, F_atan2, F_exp, F_log, F_log2, F_log10, F_hypot, F_random, F_fround, F_sign, F_cbrt, F_rnd, F_fix, F_hex, F_bit, F_lo32, F_hi32, F_rol, F_ror, F_bswap, F_popcount, F_clz, F_ctz, F_wrap8, F_wrap16, F_wrap32, F_sext8, F_sext16, F_sext32, F_bswap16, F_clamp, F_lerp, F_COUNT };
-static const char *FNN[] = {"abs","floor","ceil","round","trunc","sqrt","pow","min","max","sin","cos","tan","asin","acos","atan","atan2","exp","log","log2","log10","hypot","random","fround","sign","cbrt","rnd","fix","hex","bit","lo32","hi32","rol","ror","bswap","popcount","clz","ctz","wrap8","wrap16","wrap32","sext8","sext16","sext32","bswap16","clamp","lerp"};
+enum { F_abs, F_floor, F_ceil, F_round, F_trunc, F_sqrt, F_pow, F_min, F_max, F_sin, F_cos, F_tan, F_asin, F_acos, F_atan, F_atan2, F_exp, F_log, F_log2, F_log10, F_hypot, F_random, F_fround, F_sign, F_cbrt, F_rnd, F_fix, F_hex, F_bit, F_lo32, F_hi32, F_rol, F_ror, F_bswap, F_popcount, F_clz, F_ctz, F_wrap8, F_wrap16, F_wrap32, F_sext8, F_sext16, F_sext32, F_bswap16, F_clamp, F_lerp, F_pin, F_COUNT };
+static const char *FNN[] = {"abs","floor","ceil","round","trunc","sqrt","pow","min","max","sin","cos","tan","asin","acos","atan","atan2","exp","log","log2","log10","hypot","random","fround","sign","cbrt","rnd","fix","hex","bit","lo32","hi32","rol","ror","bswap","popcount","clz","ctz","wrap8","wrap16","wrap32","sext8","sext16","sext32","bswap16","clamp","lerp","pin"};
 static Val MATHV;
 static double elapsed_ms(void);
 static ull rngs = 88172645463325252ULL;
 static double rnd(void){ rngs ^= rngs << 13; rngs ^= rngs >> 7; rngs ^= rngs << 17; return (double)(rngs >> 11) / 9007199254740992.0; }
 static double numarg(Val v){ if(v.t == T_NUM || v.t == T_BOOL) return v.u.n; lerr("Math: expected a number"); }
+static int pin_level(int n);   /* defined after the global state S */
 static Val callfn(int f, Val *a, int na){
   if(f == F_random) return Vn(rnd());
+  if(f == F_pin){ if(na < 1) lerr("pin(n) needs a pin number"); return Vn(pin_level((int)numarg(a[0]))); }   /* v2.1: documented in ch. 6, missing in logl 2.0 */
   if(f >= F_hex && f <= F_bswap){   /* bit tools for low-level code */
     if(!na) lerr("Math: not enough arguments");
     double d0 = numarg(a[0]); ull v = (ull)(ll)dint(d0); uint32_t v32 = (uint32_t)v; int n = na > 1 ? (int)numarg(a[1]) : 0;
@@ -748,7 +752,7 @@ static Val eval(Node *n, Scope *sc){
 }
 
 /* ---------------------------------------------------------------- sentencias */
-#define KWLIST X(use) X(print) X(var) X(set) X(repeat) X(for) X(if) X(wait) X(screen) X(display) X(reg) X(pin) X(on) X(loop) X(setup) X(expect) X(sound) X(serial) X(else) X(while) X(break) X(continue) X(input) X(ui) X(store) X(g3d) X(push) X(pop) X(remove) X(insert) X(sort) X(shuffle) X(split) X(each) X(def) X(call) X(return) X(elseif) X(console) X(mem) X(disk) X(exec) X(panic) X(stop) X(task) X(spawn) X(kill) X(join) X(import) X(try) X(lock) X(unlock) X(send) X(recv) X(yield) X(assert) X(sys) X(proc) X(surface) X(host) X(port) X(graphics3d) X(dyn2d) X(ram) X(cpu) X(irq) X(pci) X(dev) X(admin) X(catch)
+#define KWLIST X(use) X(print) X(var) X(set) X(repeat) X(for) X(if) X(wait) X(screen) X(display) X(reg) X(pin) X(on) X(loop) X(setup) X(expect) X(sound) X(serial) X(else) X(while) X(break) X(continue) X(input) X(ui) X(store) X(g3d) X(push) X(pop) X(remove) X(insert) X(sort) X(shuffle) X(split) X(each) X(def) X(call) X(return) X(elseif) X(console) X(mem) X(disk) X(exec) X(panic) X(stop) X(task) X(spawn) X(kill) X(join) X(import) X(try) X(lock) X(unlock) X(send) X(recv) X(yield) X(assert) X(sys) X(proc) X(surface) X(host) X(port) X(graphics3d) X(dyn2d) X(ram) X(cpu) X(irq) X(pci) X(dev) X(admin) X(catch) X(switch) X(case) X(default)
 enum {
 #define X(n) K_##n,
 KWLIST
@@ -878,6 +882,25 @@ static void blk(PC *c, int lg, int ol, SL *o){
   if(ol >= 0) dpush(c->E, ol, "This brace { is never closed");
 }
 
+/* v2.1: "x += e" (also -= *= /=) -> Set:x("Value;x+(e)"). Only lines that used to be syntax errors match, so old programs are unaffected.
+ * Returns a new string, or NULL if the line is not of that form (a line with a quote or ';' in the expression is left alone). */
+static char *desugar_assign(const char *t){
+  const char *p = t, *pre = "";
+  if(p[0] == '#' && (p[1] == '+' || p[1] == '-')){ const char *q = p + 2; if(p[1] == '+' && *q == '+') q++; pre = p; p = q; while(*p == ' ' || *p == '\t') p++; }
+  if(!(isalpha((unsigned char)*p) || *p == '_')) return NULL;
+  const char *id = p; while(isalnum((unsigned char)*p) || *p == '_') p++;
+  size_t idl = (size_t)(p - id);
+  while(*p == ' ' || *p == '\t') p++;
+  char op = *p; if(op != '+' && op != '-' && op != '*' && op != '/') return NULL;
+  if(p[1] != '=' || p[2] == '=') return NULL;
+  const char *e = p + 2; while(*e == ' ' || *e == '\t') e++;
+  if(!*e || strchr(e, '"') || strchr(e, ';')) return NULL;
+  size_t prel = (size_t)(id - pre); if(!*pre) prel = 0;
+  Buf b = {0}; if(prel) bcat(&b, pre, (int)prel);
+  bs(&b, "Set:"); bcat(&b, id, (int)idl); bs(&b, "(\"Value;"); bcat(&b, id, (int)idl); bc(&b, op); bc(&b, '('); bs(&b, e); bs(&b, ")\")");
+  return btake(&b);
+}
+
 /* parse: devuelve 1 si hay cabecera valida (nodes relleno) */
 static int parse(const char *src, const char *name, DV *E, DV *W, SL *nodes){
   PC c = {0}; c.E = E; c.W = W;
@@ -894,6 +917,7 @@ static int parse(const char *src, const char *name, DV *E, DV *W, SL *nodes){
     n++;
     char *raw = xsn(p, len); char *cm = strstr(raw, "//"); if(cm) *cm = 0;
     char *t = strip_dup(raw); free(raw);
+    { char *ds = desugar_assign(t); if(ds){ free(t); t = ds; } }
     if(!*t) free(t);
     else if(!strcmp(t, "{")){ if(c.nL) c.L[c.nL - 1].o = 1; free(t); }
     else {
@@ -1005,6 +1029,21 @@ static void chk(SL *ns, DV *E, DV *W, ChkSt *s){
       const char *m = x->h.n > 1 ? x->h.v[1] : ""; int ok = !strcasecmp(m, "start_button") || !strcasecmp(m, "key") || !strcasecmp(m, "canvas") || !strcasecmp(m, "timer") || !strcasecmp(m, "mouse");
       for(int j = 0; j < s->ids.n && !ok; j++) if(!strcasecmp(s->ids.v[j], m)) ok = 1;
       if(!ok) dpushf(W, n, "On:%s: that event does not exist, nor a widget with that Id\n  -> Events: START_BUTTON or the Id of a UI widget", m);
+    }
+    if(k == K_case || k == K_default){ dpushf(E, n, "%s is only valid directly inside a Switch", x->h.v[0]); continue; }
+    if(k == K_switch){
+      if(x->a.n < 1) dpush(E, n, "Switch needs an expression: Switch(expr)");
+      if(!x->has_body) dpush(E, n, "Switch needs a block { ... } with Case(...) and Default");
+      int nd = 0;
+      for(int j = 0; j < x->body.n; j++){
+        Stmt *c = x->body.v[j];
+        if(c->bad){ dpushf(E, c->n, "Syntax error: %s", c->why); continue; }
+        if(c->kw == K_case){ if(c->a.n < 1) dpush(E, c->n, "Case needs at least one value: Case(1) or Case(1,2)"); }
+        else if(c->kw == K_default){ if(++nd > 1) dpush(E, c->n, "Switch has more than one Default"); }
+        else { dpush(E, c->n, "Only Case(...) and Default are allowed directly inside a Switch"); continue; }
+        chk(&c->body, E, W, s);
+      }
+      continue;
     }
     if(k == K_expect && l != 0) dpush(E, n, "Expect is exclusive to Log-");
     if(k == K_loop && (x->h.n == 1 || !strcasecmp(x->h.v[1], "forever")) && !has_wait(&x->body))
@@ -1141,7 +1180,7 @@ typedef struct { int kind; char sub[16]; char id[64]; char key[64]; char val[256
 static struct {
   char *root_dir, *png, *path; char *argv0; int nowin, nobrowser, forcewin, port, nstdin; int nowait, show_end, autowin, ansi, hw, showfirst, tid, pid;
   volatile int stop; volatile sig_atomic_t gotint;
-  FB *fb; Scope *root; unsigned char *MEM; size_t memsz; int allowraw; int pins[64];
+  FB *fb; Scope *root; unsigned char *MEM; size_t memsz; int allowraw, allow_disk, allow_pins, allow_net; int pins[64];
   Val vd; char *vdpath, *stpath; double t0;
   struct { char *id; FB *fb; } surf[64]; int nsurf;
   Val queues, locks;
@@ -1279,6 +1318,40 @@ static void start_task(const char *name, SL *body, Scope *sc, int proc, int ever
 static void killproc(int pid){ for(int i = 0; i < S.ntasks; i++) if(S.tasks[i]->proc == pid) S.tasks[i]->stop = 1; }
 /* ---------------------------------------------------------------- acceso real al hardware */
 static void need_hw(const char *w){ if(!S.hw) lerr("%s: real hardware access is disabled (run with --hw; usually needs root)", w); }
+/* ---- permissions (v2.1): a program cannot touch pins, network or files outside its folder without an explicit flag ---- */
+static void need_perm(int ok, const char *what, const char *flag){ if(!ok) lerr("%s: permission denied (run logl with %s)", what, flag); }
+static char *abs_lex(const char *p){   /* absolute path, lexically normalized */
+  if(p[0] == '/' || (isalpha((unsigned char)p[0]) && p[1] == ':')) return normpath(p);
+  char cwd[4096]; if(!getcwd(cwd, sizeof cwd)) strcpy(cwd, "/");
+  char *j = pjoin(cwd, p), *r = normpath(j); free(j); return r;
+}
+#ifdef _WIN32
+static char *real_prefix(const char *p){   /* Windows: _fullpath + lexical check (symlinks/junctions NOT resolved). NOT TESTED on Windows. */
+  char buf[4096]; if(!_fullpath(buf, p, sizeof buf)) return abs_lex(p);
+  fixslash(buf); return normpath(buf);
+}
+#else
+/* resolves symlinks in the part of the path that exists and appends the rest (a file that does not exist yet) */
+static char *real_prefix(const char *p){
+  char *cur = abs_lex(p), buf[4096], tail[4096], t2[4096]; tail[0] = 0;
+  for(;;){
+    if(realpath(cur, buf)){ Buf r = {0}; bs(&r, buf); bs(&r, tail); free(cur); return btake(&r); }
+    char *sl = strrchr(cur, '/'); if(!sl) return cur;
+    snprintf(t2, sizeof t2, "%s%s", sl, tail); snprintf(tail, sizeof tail, "%s", t2);
+    if(sl == cur) cur[1] = 0; else *sl = 0;
+  }
+}
+#endif
+/* real path for a file operation: confined to --root unless --allow-disk (then it is the legacy path, unchanged) */
+static char *fpath(const char *f, const char *who){
+  char *p = pjoin(S.root_dir, f);
+  if(S.allow_disk) return p;
+  char *rp = real_prefix(p), *rr = real_prefix(S.root_dir); size_t n = strlen(rr);
+  int inside = (n == 1 && rr[0] == '/') || (!strncasecmp(rp, rr, n) && (rp[n] == 0 || rp[n] == '/'));
+  free(p); free(rr);
+  if(!inside){ free(rp); lerr("%s: access outside the program folder is not allowed (run logl with --allow-disk)", who); }
+  return rp;
+}
 #ifdef _WIN32
 /* En Windows no hay /dev/mem, /dev/gpiomem ni iopl: se dejan stubs que avisan. */
 static void do_reg(Stmt *x, const char *w){ (void)x; (void)w; lerr("Reg: real register access is not available on Windows"); }
@@ -1355,6 +1428,7 @@ static volatile uint32_t *gpio_map(void){
   return S.gpio = (volatile uint32_t *)m;
 }
 static void pin_hw(int n, const char *c, const char *a1, int *res){
+  need_perm(S.allow_pins, "Pin", "--allow-pins");
   if(n > 53) lerr("Pin: real GPIO supports 0-53");
   volatile uint32_t *g = gpio_map(); int sh = (n % 10) * 3, bank = n / 32, bit = n % 32;
   if(!strcmp(c, "mode")){ uint32_t f = g[n / 10] & ~(7u << sh); if(a1 && !strcasecmp(a1, "out")) f |= 1u << sh; g[n / 10] = f; }
@@ -1363,6 +1437,13 @@ static void pin_hw(int n, const char *c, const char *a1, int *res){
   else if(!strcmp(c, "read")) *res = (g[0x34 / 4 + bank] >> bit) & 1;
 }
 #endif
+
+/* pin(n) in expressions: virtual state, or the real GPIO level with --hw (needs --allow-pins) */
+static int pin_level(int n){
+  if(n < 0 || n >= 64) lerr("Pin out of range (0-63)");
+  if(S.hw){ int res = -1; pin_hw(n, "read", NULL, &res); S.pins[n] = res; }
+  return S.pins[n];
+}
 
 /* informacion del sistema real (para Sys) */
 static void sys_host(Dict *D){
@@ -1691,6 +1772,7 @@ static void do_admin(Stmt *x){
     v[5] = getpid(); static const char *AN[] = {"uid", "euid", "gid", "egid", "root", "pid"};   /* Uid;u  Root;r ... -> variable names */
     for(int i = 0; i < 6; i++){ const char *nm = og(x, AN[i]); if(nm && *nm) setvar(nm, Vn(v[i])); }
   } else if(!strcmp(op, "run")){
+    need_perm(S.allowraw, "Admin:Run (runs system commands)", "--allow-raw");   /* v2.1 */
     char *cmd = os_(x, "cmd"); if(!cmd || !*cmd) lerr("Admin:Run needs Cmd");
     FILE *p = popen(cmd, "r"); free(cmd); if(!p) lerr("Admin:Run: could not start the command");
     Buf b = {0}; char t[4096]; size_t n; while((n = fread(t, 1, sizeof t, p)) > 0 && b.n < (1 << 20)) bcat(&b, t, (int)n);
@@ -1717,7 +1799,7 @@ static void do_admin(Stmt *x){
 #endif
   } else if(!strcmp(op, "chmod")){
     char *f = os_(x, "file"); const char *m = og(x, "mode"); if(!f || !m) lerr("Admin:Chmod needs File and Mode (octal, for example 0644)");
-    char *p = pjoin(S.root_dir, f); int r = chmod(p, (mode_t)strtol(m, NULL, 8)); int e = errno; free(p); free(f);
+    char *p = fpath(f, "Admin:Chmod"); int r = chmod(p, (mode_t)strtol(m, NULL, 8)); int e = errno; free(p); free(f);
     if(r) lerr("Admin:Chmod: %s", strerror(e));
   } else lerr("Admin: use Id, Run, Kill, Nice or Chmod");
 }
@@ -1944,13 +2026,13 @@ static void do_mem(Stmt *x){
     Val v = valof(x); char *tx = jstr(v); vdrop(v); size_t n = strlen(tx);
     for(size_t i = 0; i <= n; i++){ mc(a + (ll)i); S.MEM[a + i] = i < n ? (unsigned char)tx[i] : 0; } free(tx);
   } else if(!strcasecmp(w, "load")){      /* archivo real -> RAM emulada */
-    const char *f = og(x, "file"); if(!f) lerr("Mem:Load needs File"); char *fe = fm(f), *p = pjoin(S.root_dir, fe);
+    const char *f = og(x, "file"); if(!f) lerr("Mem:Load needs File"); char *fe = fm(f), *p = fpath(fe, "Mem:Load");
     size_t n; char *d = readfile(p, &n); if(!d) lerr("Mem:Load: could not read %s", fe);
     const char *ls = og(x, "len"); if(ls) { ll m = evi(ls); if((ll)n > m) n = m; }
     if(n){ mc(a); mc(a + (ll)n - 1); memcpy(S.MEM + a, d, n); } free(d); free(p); free(fe);
   } else if(!strcasecmp(w, "dump")){      /* RAM emulada -> archivo real */
     const char *f = og(x, "file"), *ls = og(x, "len"); if(!f) lerr("Mem:Dump needs File"); ll n = ls ? evi(ls) : 0; mc(a); if(n > 0) mc(a + n - 1);
-    char *fe = fm(f), *p = pjoin(S.root_dir, fe); if(writefile(p, (char *)S.MEM + a, n > 0 ? n : 0, "wb")) lerr("Mem:Dump: could not write %s", fe); free(p); free(fe);
+    char *fe = fm(f), *p = fpath(fe, "Mem:Dump"); if(writefile(p, (char *)S.MEM + a, n > 0 ? n : 0, "wb")) lerr("Mem:Dump: could not write %s", fe); free(p); free(fe);
   } else if(!strcasecmp(w, "find")){          /* Mem:Find Addr;a Len;n Text;"abc" (or Value;byte) Into;v -> address or -1 */
     Val pv = valof(x); char *pat; size_t pl;
     if(pv.t == T_NUM || pv.t == T_BOOL){ pat = xm(1); pat[0] = (char)((ll)dint(pv.u.n) & 255); pl = 1; } else { pat = jstr(pv); pl = strlen(pat); }
@@ -2006,7 +2088,7 @@ static void do_disk(Stmt *x){
   free(f);
 }
 static void do_host(Stmt *x){
-  const char *w = hw_(x, 1); const char *fo = og(x, "file"); char *f = fm(fo ? fo : ""); char *p = pjoin(S.root_dir, f);
+  const char *w = hw_(x, 1); const char *fo = og(x, "file"); char *f = fm(fo ? fo : ""); char *p = fpath(f, "Host");
   struct stat st; int ex_ = stat(p, &st) == 0;
   if(!strcasecmp(w, "list")){      /* Host:List [File;subfolder] [Mark;1: folders end in /] [Filter;.log+] [Hidden;1] */
     const char *base = *f ? p : S.root_dir; const char *mk = og(x, "mark"), *ft = og(x, "filter"), *hd = og(x, "hidden");
@@ -2036,7 +2118,7 @@ static void do_host(Stmt *x){
   else if(!strcasecmp(w, "copy") || !strcasecmp(w, "move")){
     const char *to = og(x, "to"); if(!to) lerr("Host:%s needs To", w);
     if(!ex_ || !S_ISREG(st.st_mode)) lerr("Host: not found: %s", f);
-    char *t = fm(to), *tp = pjoin(S.root_dir, t);
+    char *t = fm(to), *tp = fpath(t, "Host");
     if(!strcasecmp(w, "move")){
 #ifdef _WIN32
       remove(tp);
@@ -2906,13 +2988,13 @@ static void do_g3d(Stmt *x){
   if(!strcmp(op, "light")){ G3.lit[0] = od(x, "x", G3.lit[0]); G3.lit[1] = od(x, "y", G3.lit[1]); G3.lit[2] = od(x, "z", G3.lit[2]); return; }
   if(!strcmp(op, "load")){                                 /* G3D:Load Name;ship File;ship.obj [Fit;0] [Twosided;0] */
     const char *nm = og(x, "name"), *fo = og(x, "file"); if(!nm || !*nm || !fo) lerr("G3D:Load needs Name and File, for example \"Name;ship\",\"File;ship.obj\"");
-    char *fe = fm(fo), *p = pjoin(S.root_dir, fe); char *tx = readfile(p, NULL); if(!tx){ char tmp[200]; snprintf(tmp, sizeof tmp, "%s", fe); free(p); free(fe); lerr("G3D:Load: could not read %s", tmp); }
+    char *fe = fm(fo), *p = fpath(fe, "G3D:Load"); char *tx = readfile(p, NULL); if(!tx){ char tmp[200]; snprintf(tmp, sizeof tmp, "%s", fe); free(p); free(fe); lerr("G3D:Load: could not read %s", tmp); }
     int r = g3_load_obj(nm, tx, od(x, "fit", 1) != 0, od(x, "twosided", 1) != 0); free(tx); free(p); free(fe);
     if(r == -1) lerr("G3D:Load: the file has no vertices or faces (only OBJ with v and f lines)"); if(r == -2) lerr("G3D:Load: too many meshes, or that name is a built-in shape"); return;
   }
   if(!strcmp(op, "save")){
     const char *fo = og(x, "file"); if(!fo) lerr("G3D:Save needs File, for example \"File;scene.obj\"");
-    char *fe = fm(fo), *p = pjoin(S.root_dir, fe); int r = g3_save_obj(p); free(p); if(r){ char tmp[200]; snprintf(tmp, sizeof tmp, "%s", fe); free(fe); lerr("G3D:Save: could not write %s", tmp); } free(fe); return;
+    char *fe = fm(fo), *p = fpath(fe, "G3D:Save"); int r = g3_save_obj(p); free(p); if(r){ char tmp[200]; snprintf(tmp, sizeof tmp, "%s", fe); free(fe); lerr("G3D:Save: could not write %s", tmp); } free(fe); return;
   }
   if(!strcmp(op, "list")){ Val l = Vl(); for(int i = 0; i < G3.n; i++) lpush(LP(l), Vs(G3.o[i].id)); into(x, l); return; }
   if(!strcmp(op, "meshes")){ Val l = Vl(); for(int i = 0; i < G3.nm; i++) lpush(LP(l), Vs(G3.m[i].name)); into(x, l); return; }
@@ -3333,6 +3415,20 @@ static int one(Stmt *x, Scope *sc){
     Val c = ev(arg(x, 0)); int t = truthy(c); vdrop(c); T->cur = sc;
     if(t) return ex(&x->body, sc); else if(x->alt.n) return ex(&x->alt, sc); break;
   }
+  case K_switch: {
+    Val v = ev(arg(x, 0)); Stmt *hit = NULL, *dflt = NULL; T->cur = sc;
+    for(int i = 0; i < x->body.n && !hit; i++){
+      Stmt *c = x->body.v[i];
+      if(c->kw == K_default){ dflt = c; continue; }
+      if(c->kw != K_case) lerr("Only Case(...) and Default are allowed directly inside a Switch");
+      for(int j = 0; j < c->a.n && !hit; j++){ Val w = ev(c->a.v[j]); int eq = veq(v, w); vdrop(w); if(eq) hit = c; }
+    }
+    vdrop(v); T->cur = sc;
+    if(!hit) hit = dflt;
+    if(hit) return ex(&hit->body, sc);
+    break;
+  }
+  case K_case: case K_default: lerr("%s is only valid directly inside a Switch", h->v[0]);
   case K_while:
     for(;;){ T->cur = sc; Val c = ev(arg(x, 0)); int t = truthy(c); vdrop(c); if(!t) break; int r = lp(&x->body, sc); if(r < 0) break; if(r > 0) return r; }
     break;
@@ -3422,7 +3518,7 @@ static int one(Stmt *x, Scope *sc){
     dset(D, "uptime_ms", Vn((double)(long)((now() - S.t0) * 1000)));
     int nt = 0; for(int i = 0; i < S.ntasks; i++) nt += S.tasks[i]->on; dset(D, "tasks", Vn(nt)); dset(D, "version", Vs("1.0-c"));
     sys_host(D);
-    dset(D, "pid", Vn(getpid())); dset(D, "hw", Vb(S.hw));
+    dset(D, "pid", Vn(getpid())); dset(D, "hw", Vb(S.hw)); dset(D, "allow_disk", Vb(S.allow_disk)); dset(D, "allow_pins", Vb(S.allow_pins)); dset(D, "allow_net", Vb(S.allow_net));
     into(x, d); break;
   }
   case K_mem: do_mem(x); break;
@@ -3534,6 +3630,10 @@ static int one(Stmt *x, Scope *sc){
     else if(!strcasecmp(c, "toggle")){ S.pins[n] ^= 1; if(S.hw) pin_hw((int)n, "toggle", a1, &res); snprintf(t, sizeof t, "[pin %lld] = %d", n, S.pins[n]); out(t); }
     else if(!strcasecmp(c, "read")){ if(S.hw){ pin_hw((int)n, "read", a1, &res); S.pins[n] = res; } into(x, Vn(S.pins[n])); }
     else if(!strcasecmp(c, "mode")){ if(S.hw) pin_hw((int)n, "mode", a1, &res); }
+    /* v2.1: Pin:N("Output") / Pin:N("Input[;PullUp|PullDown]") are in the manual (ch. 6) and the simulator accepts them; logl 2.0 rejected them.
+     * Pull-up/down is accepted but NOT applied to the real GPIO yet (needs the GPPUD sequence): NOT IMPLEMENTED. */
+    else if(!strcasecmp(c, "output")){ if(S.hw) pin_hw((int)n, "mode", "out", &res); }
+    else if(!strcasecmp(c, "input")){ if(S.hw) pin_hw((int)n, "mode", "in", &res); }
     else lerr("Pin: use Mode, Set, Toggle or Read");
     break;
   }
@@ -3588,7 +3688,7 @@ static int run_nodes(SL *nodes){
   return r;
 }
 static void sigint(int s){ (void)s; S.gotint = 1; S.stop = 1; }
-static int dprint(DV *d, const char *pre, int off){ qsort(d->v, d->n, sizeof(Diag), dcmp); for(int i = 0; i < d->n; i++) printf("%s l.%d: %s\n", pre, d->v[i].n - off, d->v[i].m); return d->n; }
+static int dprint(DV *d, const char *pre, int off){ if(d->n > 1) qsort(d->v, d->n, sizeof(Diag), dcmp); for(int i = 0; i < d->n; i++) printf("%s l.%d: %s\n", pre, d->v[i].n - off, d->v[i].m); return d->n; }
 static void exec_src(const char *text, const char *name){
   DV E = {0}, W = {0}; SL *nodes = calloc(1, sizeof(SL));
   if(parse(text, name, &E, &W, nodes)) chk(nodes, &E, &W, &S.chkst);
@@ -3630,14 +3730,17 @@ static void usage(void){
        "usage: logl [file] [--png X] [--no-wait] [--check] [--root DIR] [--show] [--ansi] [--plain]\n"
        "             [--strict] [--repl] [--lang log+|log-|log++|logall] [--hw] [--version]\n"
        "             [--window] [--no-window] [--no-browser] [--port N]\n"
-       "             [--ram KB] [--allow-raw]\n"
+       "             [--ram KB] [--allow-raw] [--allow-disk] [--allow-pins] [--allow-net] [--allow-all]\n"
        "       logl pkg list | logl pkg install NAME\n"
        "  Graphics, events and UI programs open a window in your web browser (local only).\n"
        "  --no-window  never open a window (G3D/Screen still render, e.g. with --png)\n"
        "  --no-browser print the window address instead of opening the browser\n"
        "  with no file it opens the interactive REPL.\n"
        "  v2.0: Host file tools, G3D (OBJ, Pick, Orbit, z-buffer), UI TextArea/Dropdown/List, Mem/Math bit tools (see README_v2.md)\n"
-       "  --hw  enables REAL hardware access (Reg, Port, Pin). Linux only; may need root.");
+       "  --hw  enables REAL hardware access (Reg, Port, Pin). Linux only; may need root.\n"
+       "  Permissions (v2.1): files are confined to the program folder (--root) unless --allow-disk;\n"
+       "  real Pin access needs --hw AND --allow-pins; --allow-net is reserved for the network layer;\n"
+       "  --allow-all = disk + pins + net + raw (it does not imply --hw).");
 }
 int main(int argc, char **argv){
   const char *file = NULL, *root = NULL, *lang = "log+"; int check = 0, strict = 0, repl_ = 0, ansi = -1;
@@ -3660,6 +3763,10 @@ int main(int argc, char **argv){
     else if(!strcmp(a, "--lang") && i + 1 < argc) lang = argv[++i];
     else if(!strcmp(a, "--hw")) S.hw = 1;
     else if(!strcmp(a, "--allow-raw")) S.allowraw = 1;
+    else if(!strcmp(a, "--allow-disk")) S.allow_disk = 1;
+    else if(!strcmp(a, "--allow-pins")) S.allow_pins = 1;
+    else if(!strcmp(a, "--allow-net")) S.allow_net = 1;   /* reserved: used by Net:/Http: (part 1C) */
+    else if(!strcmp(a, "--allow-all")) S.allow_disk = S.allow_pins = S.allow_net = S.allowraw = 1;
     else if(!strcmp(a, "--ram") && i + 1 < argc){ long kb = atol(argv[++i]); if(kb < 1) kb = 1; if(kb > 1048576) kb = 1048576; S.memsz = (size_t)kb * 1024; }
     else if(!strcmp(a, "--window")) S.forcewin = 1;
     else if(!strcmp(a, "--no-window")) S.nowin = 1;
