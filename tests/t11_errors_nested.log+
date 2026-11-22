@@ -1,0 +1,63 @@
+<log+>
+Def:falla(n)
+{
+ If(n==0)
+ {
+  Var:z("Value;1/0+q")
+ }
+ Call:falla(n-1)
+}
+Def:nivel2()
+{
+ Try
+ {
+  Call:falla(5)
+ }
+ Catch:e
+ {
+  Print("nivel2 atrapo: {e}")
+ }
+ Var:u("Value;nada+1")
+}
+Try
+{
+ Try
+ {
+  Call:nivel2()
+ }
+ Catch:a
+ {
+  Print("interno: {a}")
+  Var:w("Value;otra+1")
+ }
+}
+Catch:b
+{
+ Print("externo: {b}")
+}
+Var:cuenta("Value;0")
+For:i(0,200)
+{
+ Try
+ {
+  Call:falla(3)
+ }
+ Catch:c
+ {
+  cuenta += 1
+ }
+}
+Print("capturados={cuenta}")
+Task:t1
+{
+ Try
+ {
+  Var:x("Value;no_existe+1")
+ }
+ Catch:ee
+ {
+  Print("tarea atrapo: {ee}")
+ }
+}
+Join:t1
+Print("fin")

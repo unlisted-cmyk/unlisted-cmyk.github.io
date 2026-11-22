@@ -1,0 +1,9 @@
+Compiled with no errors (0 warning(s)).
+nivel2 atrapo: Undeclared variable: q
+interno: Undeclared variable: nada
+externo: Undeclared variable: otra
+capturados=200
+tarea atrapo: Undeclared variable: no_existe
+fin
+FINISHED
+rc=0

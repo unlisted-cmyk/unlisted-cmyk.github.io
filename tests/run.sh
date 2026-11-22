@@ -16,7 +16,11 @@ run_case() {
   got="$( { "$BIN" "tests/$file" --no-window --plain --no-wait "$@" 2>&1 </dev/null; echo "rc=$?"; } | tr -d '\r')"
   if [ "$UPDATE" = "--update" ]; then printf '%s\n' "$got" > "tests/$name.out"; echo "updated $name"; return; fi
   if [ "$got" = "$(cat "tests/$name.out")" ]; then echo "PASS  $name"; pass=$((pass+1))
-  else echo "FAIL  $name"; fail=$((fail+1)); diff <(printf '%s\n' "$got") "tests/$name.out" | head -8; fi
+  else
+    echo "FAIL  $name"; fail=$((fail+1))
+    if command -v diff >/dev/null 2>&1; then diff <(printf '%s\n' "$got") "tests/$name.out" | head -8
+    else echo "--- got:"; printf '%s\n' "$got" | head -8; echo "--- expected:"; head -8 "tests/$name.out"; fi   # MSYS2 has no diff
+  fi
 }
 
 run_case t01_hello          t01_hello.log+
@@ -26,6 +30,7 @@ run_case t04_switch         t04_switch.log+
 run_case t05_pin_virtual    t05_pin_virtual.log+
 run_case t06_disk_inside    t06_disk_inside.log+
 run_case t07_juego3d        t07_juego3d.log+
+run_case t11_errors_nested  t11_errors_nested.log+
 run_case e01_case_outside   e01_case_outside.log+ --check
 run_case e02_undeclared_aug e02_undeclared_aug.log+
 run_case t08_i2c_virtual    t08_i2c_virtual.log+
