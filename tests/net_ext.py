@@ -5,7 +5,6 @@ binary = sys.argv[1]
 prog = '''<log+>
 Var:p("Value;0")
 Net:Http("Listen","Port;0","Into;p")
-Print("PORT {p}")
 Var:n("Value;0")
 On:Net("Request")
 {
@@ -19,6 +18,7 @@ On:Net("Request")
   Net:Respond("Status;404","Text;no")
  }
 }
+Print("PORT {p}")
 '''
 path = os.path.join(tempfile.gettempdir(), "net_ext_test.log+"); open(path, "w").write(prog)
 p = subprocess.Popen([binary, path, "--no-window", "--plain", "--allow-net"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
@@ -45,10 +45,14 @@ try:
     s, d = req("POST", "/eco?big", "x" * 200000)
     check("POST 200 KB body", s == 200 and d == "POST:200000:big")
     s, d = req("GET", "/nada"); check("404 path", s == 404 and d == "no")
+    # The server refuses the body (limit 1 MB) and closes while the client is still sending, so a correct client sees EITHER a 400
+    # answer OR a connection reset / broken pipe (which one depends on the OS timing). Both mean "rejected"; what must NOT happen is a 200.
     c = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
-    c.request("POST", "/eco", body="y" * 2000000)
-    try: r = c.getresponse(); check("2 MB body rejected", r.status == 400)
-    except Exception: check("2 MB body rejected", True)
+    try:
+        c.request("POST", "/eco", body="y" * 2000000); r = c.getresponse(); rejected = r.status in (400, 413)
+    except (ConnectionError, BrokenPipeError, OSError, http.client.HTTPException):
+        rejected = True
+    check("2 MB body rejected", rejected)
     c.close()
     g = socket.create_connection(("127.0.0.1", port)); g.sendall(b"\x00\xff\x01garbage\r\n\r\n"); g.settimeout(5)
     try: data = g.recv(200)
