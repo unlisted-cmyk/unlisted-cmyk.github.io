@@ -1,0 +1,9 @@
+Compiled with no errors (0 warning(s)).
+conexion nueva
+servidor recibio: ping
+cliente recibio: ECO:ping
+udp: hola udp desde-conocido=true
+Net:Tcp:Recv cannot be used while an On:Net("Data") handler is registered (the handler receives the data)
+cerrada srv.1
+STOPPED
+rc=0

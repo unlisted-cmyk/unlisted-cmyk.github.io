@@ -1,0 +1,9 @@
+Compiled with no errors (0 warning(s)).
+GET 201: hola GET /saludo q=x=1&y=2
+POST 200: eco:mensaje de prueba
+GET 404: no existe
+GET 204: []
+GET 201: hola GET /saludo q=z=3
+Http: could not connect to 127.0.0.1:1
+STOPPED
+rc=0

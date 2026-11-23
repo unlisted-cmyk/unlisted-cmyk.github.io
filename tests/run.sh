@@ -34,6 +34,13 @@ run_case t07_juego3d        t07_juego3d.log+
 run_case t11_errors_nested  t11_errors_nested.log+
 run_case t13_adc_virtual    t13_adc_virtual.log+
 run_case t16_safe_on_error  t16_safe_on_error.log+
+RT=1 run_case t18_tcp_loopback   t18_tcp_loopback.log+ --allow-net
+run_case t19_udp_loopback   t19_udp_loopback.log+ --allow-net
+RT=1 run_case t20_http_server_client t20_http_server_client.log+ --allow-net
+RT=1 run_case t21_onnet_events   t21_onnet_events.log+ --allow-net
+run_case e09_net_noperm     e09_net_noperm.log+
+run_case e10_http_noperm    e10_http_noperm.log+
+run_case e11_net_badops     e11_net_badops.log+ --check
 RT=1 run_case t12_pwm_virtual    t12_pwm_virtual.log+
 RT=1 run_case t14_onpin_virtual  t14_onpin_virtual.log+
 RT=1 run_case t15_watchdog       t15_watchdog.log+

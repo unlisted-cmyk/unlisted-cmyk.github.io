@@ -1,0 +1,7 @@
+<log+>
+On:Net("Banana")
+{
+ Print("x")
+}
+Net:Raw("Id;x")
+Http:Put("Url;x")

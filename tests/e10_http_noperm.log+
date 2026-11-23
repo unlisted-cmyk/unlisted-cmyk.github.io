@@ -1,0 +1,4 @@
+<log+>
+Var:b("Text;")
+Http:Get("Url;127.0.0.1:1/","Into;b")
+Print("no llega")

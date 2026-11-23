@@ -1,0 +1,3 @@
+Compiled with no errors (0 warning(s)).
+ERROR l.2: Net:Tcp: permission denied (run logl with --allow-net)
+rc=2

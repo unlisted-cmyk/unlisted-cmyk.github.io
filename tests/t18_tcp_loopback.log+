@@ -1,0 +1,46 @@
+<log+>
+Var:p("Value;0")
+Net:Tcp("Listen","Id;srv","Port;0","Into;p")
+Print("escuchando: {p>0}")
+Net:Tcp("Connect","Id;c","Host;127.0.0.1","Port;p")
+Var:s("Text;")
+Net:Tcp("Accept","Id;srv","Timeout;2000","Into;s")
+Print("aceptada: {s.length>0}")
+Net:Tcp("Send","Id;c","Text;hola servidor")
+Var:t("Text;")
+Net:Tcp("Recv","Id;{s}","Count;100","Timeout;2000","As;Text","Into;t")
+Print("servidor recibio: [{t}]")
+Net:Tcp("Send","Id;{s}","Text;hola cliente","Bytes;33,10")
+Net:Tcp("Recv","Id;c","Count;100","Timeout;2000","As;Text","Into;t")
+Print("cliente recibio: [{t}]")
+Var:l("List;")
+Net:Tcp("Send","Id;c","Bytes;1,2,255")
+Net:Tcp("Recv","Id;{s}","Count;10","Timeout;2000","Into;l")
+Print("bytes: {l.join(',')}")
+Net:Tcp("Recv","Id;c","Count;10","Timeout;50","As;Text","Into;t")
+Print("sin datos: [{t}]")
+Var:open("Value;9")
+Net:Tcp("Status","Id;c","Into;open")
+Print("abierto={open}")
+Net:Tcp("Close","Id;c")
+Net:Tcp("Recv","Id;{s}","Count;10","Timeout;2000","As;Text","Into;t")
+Net:Tcp("Status","Id;{s}","Into;open")
+Print("tras cerrar el otro lado: abierto={open}")
+Net:Tcp("Close","Id;{s}")
+Net:Tcp("Close","Id;srv")
+Try
+{
+ Net:Tcp("Send","Id;c","Text;x")
+}
+Catch:e
+{
+ Print("{e}")
+}
+Try
+{
+ Net:Tcp("Connect","Id;z","Host;127.0.0.1","Port;1","Timeout;1500")
+}
+Catch:e2
+{
+ Print("{e2}")
+}

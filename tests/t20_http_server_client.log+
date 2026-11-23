@@ -1,0 +1,42 @@
+<log+>
+Var:p("Value;0")
+Net:Http("Listen","Port;0","Into;p")
+On:Net("Request")
+{
+ If(req_path=='/saludo')
+ {
+  Net:Respond("Status;201","Type;text/plain","Header;X-Prueba: si","Text;hola {req_method} {req_path} q={req_query}")
+ }
+ ElseIf(req_path=='/eco')
+ {
+  Net:Respond("Text;eco:{req_body}")
+ }
+ ElseIf(req_path=='/vacio')
+ {
+ }
+ Else
+ {
+  Net:Respond("Status;404","Text;no existe")
+ }
+}
+Var:body("Text;")
+Var:code("Value;0")
+Http:Get("Url;127.0.0.1:{p}/saludo?x=1&y=2","Into;body","Status;code")
+Print("GET {code}: {body}")
+Http:Post("Url;127.0.0.1:{p}/eco","Text;mensaje de prueba","Type;text/plain","Into;body","Status;code")
+Print("POST {code}: {body}")
+Http:Get("Url;127.0.0.1:{p}/otra","Into;body","Status;code")
+Print("GET {code}: {body}")
+Http:Get("Url;127.0.0.1:{p}/vacio","Into;body","Status;code")
+Print("GET {code}: [{body}]")
+Http:Get("Host;127.0.0.1","Port;p","Path;/saludo?z=3","Into;body","Status;code")
+Print("GET {code}: {body}")
+Try
+{
+ Http:Get("Url;127.0.0.1:1/","Timeout;1500")
+}
+Catch:e2
+{
+ Print("{e2}")
+}
+Stop

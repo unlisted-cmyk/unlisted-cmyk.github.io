@@ -1,0 +1,48 @@
+<log+>
+Var:p("Value;0")
+Net:Tcp("Listen","Id;srv","Port;0","Into;p")
+Var:up("Value;0")
+Net:Udp("Open","Id;u","Port;0","Into;up")
+On:Net("Connection")
+{
+ Print("conexion nueva")
+}
+On:Net("Data")
+{
+ If(net_id=='c')
+ {
+  Print("cliente recibio: {net_data}")
+ }
+ Else
+ {
+  Print("servidor recibio: {net_data}")
+  Net:Tcp("Send","Id;{net_id}","Text;ECO:{net_data}")
+ }
+}
+On:Net("Closed")
+{
+ Print("cerrada {net_id}")
+}
+On:Net("Udp")
+{
+ Print("udp: {net_data} desde-conocido={net_from.length>8}")
+}
+Net:Tcp("Connect","Id;c","Host;127.0.0.1","Port;p")
+Wait("Ms;150")
+Net:Tcp("Send","Id;c","Text;ping")
+Wait("Ms;250")
+Net:Udp("Open","Id;u2")
+Net:Udp("Send","Id;u2","Host;127.0.0.1","Port;up","Text;hola udp")
+Wait("Ms;250")
+Var:t("Text;")
+Try
+{
+ Net:Tcp("Recv","Id;c","Into;t")
+}
+Catch:e
+{
+ Print("{e}")
+}
+Net:Tcp("Close","Id;c")
+Wait("Ms;250")
+Stop

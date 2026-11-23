@@ -1,0 +1,13 @@
+<log+>
+Var:pa("Value;0")
+Net:Udp("Open","Id;a","Port;0","Into;pa")
+Net:Udp("Open","Id;b")
+Net:Udp("Send","Id;b","Host;127.0.0.1","Port;pa","Text;datagrama","Byte;33")
+Var:d("Text;")
+Var:f("Text;")
+Net:Udp("Recv","Id;a","Timeout;2000","As;Text","Into;d","From;f")
+Print("recibido: [{d}] desde-conocido={f.length>8}")
+Net:Udp("Recv","Id;a","Timeout;50","As;Text","Into;d","From;f")
+Print("vacio: [{d}] [{f}]")
+Net:Udp("Close","Id;a")
+Net:Udp("Close","Id;b")

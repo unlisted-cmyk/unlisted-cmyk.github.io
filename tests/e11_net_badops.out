@@ -1,0 +1,5 @@
+ERROR l.2: On:Net: use Request, Connection, Data, Udp or Closed (not Banana)
+ERROR l.6: Unknown Net operation: Raw (valid: tcp udp http respond)
+ERROR l.7: Unknown Http operation: Put (valid: get post)
+Compilation aborted: 3 error(s)
+rc=1

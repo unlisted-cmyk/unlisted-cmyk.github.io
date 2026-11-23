@@ -1,0 +1,14 @@
+Compiled with no errors (0 warning(s)).
+escuchando: true
+aceptada: true
+servidor recibio: [hola servidor]
+cliente recibio: [hola cliente!
+]
+bytes: 1,2,255
+sin datos: []
+abierto=1
+tras cerrar el otro lado: abierto=0
+Net:Tcp: 'c' is not open
+Net:Tcp: could not connect to 127.0.0.1:1
+FINISHED
+rc=0
