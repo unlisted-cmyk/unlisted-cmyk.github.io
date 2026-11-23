@@ -38,6 +38,8 @@ jobs:
         run: bash tests/run.sh ./logl-linux
       - name: Real UART test (pseudo-terminal)
         run: python3 tests/uart_pty.py ./logl-linux
+      - name: Real HTTP clients against the logl server
+        run: python3 tests/net_ext.py ./logl-linux
       - uses: actions/upload-artifact@v4
         with:
           name: linux-x86_64
@@ -66,6 +68,8 @@ jobs:
         run: bash tests/run.sh ./logl-linux-arm64
       - name: Real UART test (pseudo-terminal)
         run: python3 tests/uart_pty.py ./logl-linux-arm64
+      - name: Real HTTP clients against the logl server
+        run: python3 tests/net_ext.py ./logl-linux-arm64
       - uses: actions/upload-artifact@v4
         with:
           name: linux-arm64
@@ -122,6 +126,9 @@ jobs:
       - name: Real UART test (pseudo-terminal) - informative only on macOS
         continue-on-error: true
         run: python3 tests/uart_pty.py ./logl-macos
+      - name: Real HTTP clients against the logl server - informative only on macOS
+        continue-on-error: true
+        run: python3 tests/net_ext.py ./logl-macos
       - uses: actions/upload-artifact@v4
         with:
           name: macos
