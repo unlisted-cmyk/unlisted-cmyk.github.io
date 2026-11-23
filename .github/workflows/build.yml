@@ -40,6 +40,10 @@ jobs:
         run: python3 tests/uart_pty.py ./logl-linux
       - name: Real HTTP clients against the logl server
         run: python3 tests/net_ext.py ./logl-linux
+      - name: WebSocket (RFC 6455 vectors) and MQTT (exact packet bytes)
+        run: |
+          python3 tests/ws_ext.py ./logl-linux
+          python3 tests/mqtt_ext.py ./logl-linux
       - uses: actions/upload-artifact@v4
         with:
           name: linux-x86_64
@@ -70,6 +74,10 @@ jobs:
         run: python3 tests/uart_pty.py ./logl-linux-arm64
       - name: Real HTTP clients against the logl server
         run: python3 tests/net_ext.py ./logl-linux-arm64
+      - name: WebSocket (RFC 6455 vectors) and MQTT (exact packet bytes)
+        run: |
+          python3 tests/ws_ext.py ./logl-linux-arm64
+          python3 tests/mqtt_ext.py ./logl-linux-arm64
       - uses: actions/upload-artifact@v4
         with:
           name: linux-arm64
@@ -129,6 +137,11 @@ jobs:
       - name: Real HTTP clients against the logl server - informative only on macOS
         continue-on-error: true
         run: python3 tests/net_ext.py ./logl-macos
+      - name: WebSocket and MQTT - informative only on macOS
+        continue-on-error: true
+        run: |
+          python3 tests/ws_ext.py ./logl-macos
+          python3 tests/mqtt_ext.py ./logl-macos
       - uses: actions/upload-artifact@v4
         with:
           name: macos
