@@ -777,7 +777,7 @@ static Val eval(Node *n, Scope *sc){
 }
 
 /* ---------------------------------------------------------------- sentencias */
-#define KWLIST X(use) X(print) X(var) X(set) X(repeat) X(for) X(if) X(wait) X(screen) X(display) X(reg) X(pin) X(on) X(loop) X(setup) X(expect) X(sound) X(serial) X(else) X(while) X(break) X(continue) X(input) X(ui) X(store) X(g3d) X(push) X(pop) X(remove) X(insert) X(sort) X(shuffle) X(split) X(each) X(def) X(call) X(return) X(elseif) X(console) X(mem) X(disk) X(exec) X(panic) X(stop) X(task) X(spawn) X(kill) X(join) X(import) X(try) X(lock) X(unlock) X(send) X(recv) X(yield) X(assert) X(sys) X(proc) X(surface) X(host) X(port) X(graphics3d) X(dyn2d) X(ram) X(cpu) X(irq) X(pci) X(dev) X(admin) X(catch) X(switch) X(case) X(default) X(i2c) X(spi) X(uart) X(watchdog) X(net) X(http)
+#define KWLIST X(use) X(print) X(var) X(set) X(repeat) X(for) X(if) X(wait) X(screen) X(display) X(reg) X(pin) X(on) X(loop) X(setup) X(expect) X(sound) X(serial) X(else) X(while) X(break) X(continue) X(input) X(ui) X(store) X(g3d) X(push) X(pop) X(remove) X(insert) X(sort) X(shuffle) X(split) X(each) X(def) X(call) X(return) X(elseif) X(console) X(mem) X(disk) X(exec) X(panic) X(stop) X(task) X(spawn) X(kill) X(join) X(import) X(try) X(lock) X(unlock) X(send) X(recv) X(yield) X(assert) X(sys) X(proc) X(surface) X(host) X(port) X(graphics3d) X(dyn2d) X(ram) X(cpu) X(irq) X(pci) X(dev) X(admin) X(catch) X(switch) X(case) X(default) X(i2c) X(spi) X(uart) X(watchdog) X(net) X(http) X(mqtt)
 enum {
 #define X(n) K_##n,
 KWLIST
@@ -1054,7 +1054,7 @@ static void chk(SL *ns, DV *E, DV *W, ChkSt *s){
       const char *m = x->h.n > 1 ? x->h.v[1] : ""; int ok = !strcasecmp(m, "start_button") || !strcasecmp(m, "key") || !strcasecmp(m, "canvas") || !strcasecmp(m, "timer") || !strcasecmp(m, "mouse") || !strcasecmp(m, "pin") || !strcasecmp(m, "net");
       if(!strcasecmp(m, "net")){
         const char *e0 = x->no ? x->o[0].v[0] : "";
-        if(strcasecmp(e0, "request") && strcasecmp(e0, "connection") && strcasecmp(e0, "data") && strcasecmp(e0, "udp") && strcasecmp(e0, "closed")) dpushf(E, n, "On:Net: use Request, Connection, Data, Udp or Closed (not %s)", e0);
+        if(strcasecmp(e0, "request") && strcasecmp(e0, "connection") && strcasecmp(e0, "data") && strcasecmp(e0, "udp") && strcasecmp(e0, "closed") && strcasecmp(e0, "wsopen") && strcasecmp(e0, "wsmessage") && strcasecmp(e0, "wsclose") && strcasecmp(e0, "message")) dpushf(E, n, "On:Net: use Request, Connection, Data, Udp, Closed, WsOpen, WsMessage, WsClose or Message (not %s)", e0);
       }
       if(!strcasecmp(m, "pin")){   /* v2.1: On:Pin(N)("Rising"|"Falling"|"Change") */
         if(x->a.n < 1) dpush(E, n, "On:Pin needs a pin number: On:Pin(5)(\"Rising\")");
@@ -1078,8 +1078,8 @@ static void chk(SL *ns, DV *E, DV *W, ChkSt *s){
       }
       continue;
     }
-    if(k == K_i2c || k == K_spi || k == K_uart || k == K_net || k == K_http){   /* v2.1: unknown operation = compile error, like the simulator */
-      const char *op = x->h.n > 1 ? x->h.v[1] : "", *okl = k == K_i2c ? "write read scan close" : k == K_spi ? "open transfer write read close" : k == K_net ? "tcp udp http respond" : k == K_http ? "get post" : "open write read close";
+    if(k == K_i2c || k == K_spi || k == K_uart || k == K_net || k == K_http || k == K_mqtt){   /* v2.1: unknown operation = compile error, like the simulator */
+      const char *op = x->h.n > 1 ? x->h.v[1] : "", *okl = k == K_i2c ? "write read scan close" : k == K_spi ? "open transfer write read close" : k == K_net ? "tcp udp http respond ws" : k == K_http ? "get post" : k == K_mqtt ? "connect subscribe unsubscribe publish close" : "open write read close";
       int found = 0; size_t ol = strlen(op); const char *q = okl;
       while(*q){ const char *e = strchr(q, ' '); size_t l2 = e ? (size_t)(e - q) : strlen(q); if(l2 == ol && !strncasecmp(q, op, l2)) found = 1; q += l2; if(*q == ' ') q++; }
       if(!found) dpushf(E, n, "Unknown %s operation: %s (valid: %s)", x->h.v[0], op, okl);
@@ -2608,23 +2608,29 @@ static sock_t net_listen_sock(int type, const char *bind_, int port, int *outpor
 
 /* ---- table of open sockets, shared with the polling thread ---- */
 #define NETMAX 32
-enum { NS_FREE, NS_CONN, NS_LISTEN, NS_UDP, NS_HTTP, NS_RESP };
-enum { NE_REQUEST, NE_CONNECTION, NE_DATA, NE_UDP, NE_CLOSED, NE_COUNT };
-typedef struct { int kind, closed, npend; char id[40]; sock_t s; char pend[16][40]; } NetS;
+#define NETBIG (1 << 20)   /* largest message for Net:Tcp / Net:Ws / Mqtt:Publish Send calls */
+enum { NS_FREE, NS_CONN, NS_LISTEN, NS_UDP, NS_HTTP, NS_RESP, NS_WS, NS_MQTT };
+enum { NE_REQUEST, NE_CONNECTION, NE_DATA, NE_UDP, NE_CLOSED, NE_WSOPEN, NE_WSMSG, NE_WSCLOSE, NE_MESSAGE, NE_COUNT };
+typedef struct { int kind, closed, npend, idx; char id[40]; sock_t s; char pend[16][40]; } NetS;
 static NetS NSL[NETMAX];
 static pthread_mutex_t NETM = PTHREAD_MUTEX_INITIALIZER;
 static volatile int net_has[NE_COUNT];   /* handlers registered per event type */
 static int net_seq, net_started;
 static char cur_resp[40];                /* the request being answered by the running On:Net("Request") handler */
 
+/* per-connection state of WebSocket / MQTT sockets (receive buffer, message being assembled, keepalive). Only touched with NETM held. */
+typedef struct { unsigned char *b, *msg; int n, mlen, mop; double last_tx; int keepalive; } NetX;
+static NetX NX[NETMAX];
 static int ns_add(int kind, const char *id, sock_t s){   /* 0 ok, -1 table full, -2 id in use */
   int r = -1; pthread_mutex_lock(&NETM);
   for(int i = 0; i < NETMAX; i++) if(NSL[i].kind && !strcmp(NSL[i].id, id)){ r = -2; break; }
-  if(r == -1) for(int i = 0; i < NETMAX; i++) if(!NSL[i].kind){ memset(&NSL[i], 0, sizeof NSL[i]); NSL[i].kind = kind; snprintf(NSL[i].id, sizeof NSL[i].id, "%s", id); NSL[i].s = s; r = 0; break; }
+  if(r == -1) for(int i = 0; i < NETMAX; i++) if(!NSL[i].kind){ memset(&NSL[i], 0, sizeof NSL[i]); NSL[i].kind = kind; NSL[i].idx = i; snprintf(NSL[i].id, sizeof NSL[i].id, "%s", id); NSL[i].s = s; memset(&NX[i], 0, sizeof NX[i]); NX[i].last_tx = now(); r = 0; break; }
   pthread_mutex_unlock(&NETM); return r;
 }
 static int ns_get(const char *id, NetS *o){ int r = 0; pthread_mutex_lock(&NETM); for(int i = 0; i < NETMAX; i++) if(NSL[i].kind && !strcmp(NSL[i].id, id)){ *o = NSL[i]; r = 1; break; } pthread_mutex_unlock(&NETM); return r; }
-static void ns_del(const char *id){ pthread_mutex_lock(&NETM); for(int i = 0; i < NETMAX; i++) if(NSL[i].kind && !strcmp(NSL[i].id, id)){ if(NSL[i].s != SOCK_BAD) sclose(NSL[i].s); NSL[i].kind = 0; break; } pthread_mutex_unlock(&NETM); }
+static void ns_del(const char *id){ pthread_mutex_lock(&NETM); for(int i = 0; i < NETMAX; i++) if(NSL[i].kind && !strcmp(NSL[i].id, id)){ if(NSL[i].s != SOCK_BAD) sclose(NSL[i].s); NSL[i].kind = 0; free(NX[i].b); free(NX[i].msg); memset(&NX[i], 0, sizeof NX[i]); break; } pthread_mutex_unlock(&NETM); }
+static void ns_set_keepalive(const char *id, int ka){ pthread_mutex_lock(&NETM); for(int i = 0; i < NETMAX; i++) if(NSL[i].kind && !strcmp(NSL[i].id, id)){ NX[i].keepalive = ka; NX[i].last_tx = now(); break; } pthread_mutex_unlock(&NETM); }
+static void ns_touch(const char *id){ pthread_mutex_lock(&NETM); for(int i = 0; i < NETMAX; i++) if(NSL[i].kind && !strcmp(NSL[i].id, id)){ NX[i].last_tx = now(); break; } pthread_mutex_unlock(&NETM); }
 static void ns_markclosed(const char *id){ pthread_mutex_lock(&NETM); for(int i = 0; i < NETMAX; i++) if(NSL[i].kind && !strcmp(NSL[i].id, id)){ NSL[i].closed = 1; break; } pthread_mutex_unlock(&NETM); }
 static void net_post(const char *sub, const char *id, const char *key, char *big, int blen){
   Ev e; memset(&e, 0, sizeof e); e.kind = EV_NET; snprintf(e.sub, sizeof e.sub, "%s", sub); snprintf(e.id, sizeof e.id, "%s", id); if(key) snprintf(e.key, sizeof e.key, "%s", key); e.big = big; e.blen = blen; eq_push(&e);
@@ -2740,7 +2746,104 @@ static void do_http(Stmt *x){
   into_named(x, "status", Vn(r.status)); into(x, Vsn(r.body, r.blen)); free(r.body);
 }
 
-/* ---- polling thread: accepts connections, reads data / requests and posts events ---- */
+/* ---- SHA-1 and Base64 (needed by the WebSocket handshake; no library) ---- */
+#define ROL32(v, b) (((v) << (b)) | ((v) >> (32 - (b))))
+static void sha1(const unsigned char *d, size_t n, unsigned char out[20]){
+  uint32_t h[5] = { 0x67452301u, 0xEFCDAB89u, 0x98BADCFEu, 0x10325476u, 0xC3D2E1F0u };
+  size_t total = ((n + 8) / 64 + 1) * 64; unsigned char *m = calloc(total, 1); memcpy(m, d, n); m[n] = 0x80;
+  uint64_t bits = (uint64_t)n * 8; for(int i = 0; i < 8; i++) m[total - 1 - (size_t)i] = (unsigned char)(bits >> (8 * i));
+  for(size_t off = 0; off < total; off += 64){
+    uint32_t w[80]; for(int i = 0; i < 16; i++) w[i] = (uint32_t)m[off + 4 * (size_t)i] << 24 | (uint32_t)m[off + 4 * (size_t)i + 1] << 16 | (uint32_t)m[off + 4 * (size_t)i + 2] << 8 | m[off + 4 * (size_t)i + 3];
+    for(int i = 16; i < 80; i++) w[i] = ROL32(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
+    uint32_t a = h[0], b = h[1], c = h[2], dd = h[3], e = h[4];
+    for(int i = 0; i < 80; i++){
+      uint32_t f, k;
+      if(i < 20){ f = (b & c) | (~b & dd); k = 0x5A827999u; } else if(i < 40){ f = b ^ c ^ dd; k = 0x6ED9EBA1u; }
+      else if(i < 60){ f = (b & c) | (b & dd) | (c & dd); k = 0x8F1BBCDCu; } else { f = b ^ c ^ dd; k = 0xCA62C1D6u; }
+      uint32_t t = ROL32(a, 5) + f + e + k + w[i]; e = dd; dd = c; c = ROL32(b, 30); b = a; a = t;
+    }
+    h[0] += a; h[1] += b; h[2] += c; h[3] += dd; h[4] += e;
+  }
+  free(m); for(int i = 0; i < 5; i++){ out[4 * i] = (unsigned char)(h[i] >> 24); out[4 * i + 1] = (unsigned char)(h[i] >> 16); out[4 * i + 2] = (unsigned char)(h[i] >> 8); out[4 * i + 3] = (unsigned char)h[i]; }
+}
+static void b64enc(const unsigned char *d, int n, char *out){
+  static const char T[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"; int o = 0;
+  for(int i = 0; i < n; i += 3){
+    uint32_t v = (uint32_t)d[i] << 16 | (i + 1 < n ? (uint32_t)d[i + 1] << 8 : 0) | (i + 2 < n ? d[i + 2] : 0);
+    out[o++] = T[(v >> 18) & 63]; out[o++] = T[(v >> 12) & 63]; out[o++] = i + 1 < n ? T[(v >> 6) & 63] : '='; out[o++] = i + 2 < n ? T[v & 63] : '=';
+  }
+  out[o] = 0;
+}
+static pthread_mutex_t SENDM = PTHREAD_MUTEX_INITIALIZER;   /* WebSocket/MQTT frames from two threads must not interleave */
+static int net_send_locked(sock_t s, const char *d, size_t n){ pthread_mutex_lock(&SENDM); int r = net_sendall(s, d, n); pthread_mutex_unlock(&SENDM); return r; }
+
+/* ---- WebSocket (RFC 6455): server side, text/binary messages up to 1 MB, fragmentation, ping/pong, close ---- */
+static int ws_frame(int op, const unsigned char *d, int n, unsigned char **out){   /* unmasked server frame; returns length */
+  unsigned char *f = malloc((size_t)n + 10); int h = 0; f[h++] = (unsigned char)(0x80 | op);
+  if(n < 126) f[h++] = (unsigned char)n; else if(n < 65536){ f[h++] = 126; f[h++] = (unsigned char)(n >> 8); f[h++] = (unsigned char)n; }
+  else { f[h++] = 127; for(int i = 7; i >= 0; i--) f[h++] = (unsigned char)(((uint64_t)n >> (8 * i)) & 255); }
+  if(n) memcpy(f + h, d, (size_t)n); *out = f; return h + n;
+}
+/* parses the frames buffered in x. Called with NETM held (memory work only): events are posted, replies are collected in *reply */
+static void ws_parse(NetX *x, const char *id, Buf *reply, int *closeit){
+  for(;;){
+    if(x->n < 2) return;
+    unsigned char b0 = x->b[0], b1 = x->b[1]; int fin = b0 & 0x80, op = b0 & 15; uint64_t len = b1 & 0x7f; int hdr = 2;
+    if(!(b1 & 0x80)){ *closeit = 1; return; }   /* RFC: client frames must be masked */
+    if(len == 126){ if(x->n < 4) return; len = (uint64_t)x->b[2] << 8 | x->b[3]; hdr = 4; }
+    else if(len == 127){ if(x->n < 10) return; len = 0; for(int i = 0; i < 8; i++) len = len << 8 | x->b[2 + i]; hdr = 10; }
+    if(len > (1u << 20)){ *closeit = 1; return; }
+    if((uint64_t)x->n < (uint64_t)hdr + 4 + len) return;
+    const unsigned char *mk = x->b + hdr, *pl = x->b + hdr + 4; unsigned char *p = malloc((size_t)len + 1);
+    for(uint64_t i = 0; i < len; i++) p[i] = pl[i] ^ mk[i & 3];
+    p[len] = 0;
+    if(op == 0 || op == 1 || op == 2){
+      if(op != 0){ free(x->msg); x->msg = NULL; x->mlen = 0; x->mop = op; }
+      if(op == 0 && !x->mop){ free(p); *closeit = 1; return; }
+      if((uint64_t)x->mlen + len > (1u << 20)){ free(p); *closeit = 1; return; }
+      x->msg = realloc(x->msg, (size_t)x->mlen + (size_t)len + 1); memcpy(x->msg + x->mlen, p, (size_t)len); x->mlen += (int)len; x->msg[x->mlen] = 0;
+      if(fin){ char *copy = malloc((size_t)x->mlen + 1); memcpy(copy, x->msg, (size_t)x->mlen + 1); net_post("wsmsg", id, NULL, copy, x->mlen); free(x->msg); x->msg = NULL; x->mlen = 0; x->mop = 0; }
+      free(p);
+    } else if(op == 9){ if(len <= 125){ unsigned char *f; int fl = ws_frame(10, p, (int)len, &f); bcat(reply, (const char *)f, fl); free(f); } free(p); }   /* ping -> pong */
+    else if(op == 10){ free(p); }
+    else if(op == 8){ unsigned char *f; int fl = ws_frame(8, p, len >= 2 ? 2 : 0, &f); bcat(reply, (const char *)f, fl); free(f); free(p); *closeit = 1; return; }
+    else { free(p); *closeit = 1; return; }
+    int used = hdr + 4 + (int)len; memmove(x->b, x->b + used, (size_t)(x->n - used)); x->n -= used;
+  }
+}
+
+/* ---- MQTT 3.1.1 client: QoS 0 publish/subscribe (QoS 1 messages from the broker are acknowledged) ---- */
+static void mq_len(Buf *b, int n){ do { int d = n % 128; n /= 128; if(n) d |= 128; bc(b, (char)d); } while(n); }
+static void mq_str(Buf *b, const char *s){ int l = (int)strlen(s); bc(b, (char)(l >> 8)); bc(b, (char)l); bcat(b, s, l); }
+static void mqtt_parse(NetX *x, const char *id, Buf *reply, int *closeit){
+  for(;;){
+    if(x->n < 2) return;
+    int rem = 0, mult = 1, lb = 0, done = 0;
+    for(int i = 1; i < 5 && i < x->n; i++){ rem += (x->b[i] & 127) * mult; mult *= 128; lb++; if(!(x->b[i] & 128)){ done = 1; break; } }
+    if(!done){ if(lb >= 4) *closeit = 1; return; }
+    int total = 1 + lb + rem; if(rem > (1 << 20)){ *closeit = 1; return; }
+    if(x->n < total) return;
+    unsigned char b0 = x->b[0]; const unsigned char *body = x->b + 1 + lb; int type = b0 >> 4;
+    if(type == 3){   /* PUBLISH */
+      int qos = (b0 >> 1) & 3; if(rem < 2){ *closeit = 1; return; }
+      int tl = body[0] << 8 | body[1], pos = 2 + tl; if(pos > rem){ *closeit = 1; return; }
+      int pid = 0; if(qos > 0){ if(pos + 2 > rem){ *closeit = 1; return; } pid = body[pos] << 8 | body[pos + 1]; pos += 2; }
+      Buf mb = {0}; bcat(&mb, (const char *)body + 2, tl); bc(&mb, '\n'); bcat(&mb, (const char *)body + pos, rem - pos); int ml = mb.n; char *big = btake(&mb);
+      net_post("message", id, NULL, big, ml);
+      if(qos == 1){ char ack[4] = { 0x40, 2, (char)(pid >> 8), (char)pid }; bcat(reply, ack, 4); }
+    }   /* CONNACK/SUBACK/PINGRESP/PUBACK... need no action */
+    memmove(x->b, x->b + total, (size_t)(x->n - total)); x->n -= total;
+  }
+}
+static void net_keepalive(void){   /* PINGREQ at half of the keepalive interval */
+  sock_t ps[NETMAX]; int np = 0; double t = now();
+  pthread_mutex_lock(&NETM);
+  for(int i = 0; i < NETMAX; i++) if(NSL[i].kind == NS_MQTT && NX[i].keepalive > 0 && t - NX[i].last_tx > NX[i].keepalive * 0.5){ NX[i].last_tx = t; ps[np++] = NSL[i].s; }
+  pthread_mutex_unlock(&NETM);
+  for(int i = 0; i < np; i++){ const char pr[2] = { (char)0xC0, 0 }; net_send_locked(ps[i], pr, 2); }
+}
+
+/* ---- polling thread: accepts connections, reads data / requests / frames and posts events ---- */
 static void *netpoll_main(void *a_){
   (void)a_;
   while(!S.stop){
@@ -2748,7 +2851,7 @@ static void *netpoll_main(void *a_){
     pthread_mutex_lock(&NETM);
     for(int i = 0; i < NETMAX; i++){
       NetS *n = &NSL[i]; if(!n->kind || n->closed) continue;
-      int want = n->kind == NS_LISTEN || n->kind == NS_HTTP || (n->kind == NS_UDP && net_has[NE_UDP]) || (n->kind == NS_CONN && net_has[NE_DATA]);
+      int want = n->kind == NS_LISTEN || n->kind == NS_HTTP || n->kind == NS_WS || n->kind == NS_MQTT || (n->kind == NS_UDP && net_has[NE_UDP]) || (n->kind == NS_CONN && net_has[NE_DATA]);
 #ifndef _WIN32
       if(n->s >= FD_SETSIZE) want = 0;
 #endif
@@ -2756,6 +2859,7 @@ static void *netpoll_main(void *a_){
     }
     pthread_mutex_unlock(&NETM);
     if(!any){ usleep(20000); continue; }
+    net_keepalive();
     struct timeval tv; tv.tv_sec = 0; tv.tv_usec = 20000;
     int r = select((int)mx + 1, &rf, NULL, NULL, &tv); if(r <= 0) continue;
     NetS ready[NETMAX]; int nr = 0;
@@ -2776,8 +2880,22 @@ static void *netpoll_main(void *a_){
           if(!m){ const char *e = "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"; net_sendall(c, e, strlen(e)); sclose(c); continue; }
           char meth[16] = "", target[2048] = ""; if(sscanf(m, "%15s %2047s", meth, target) != 2){ free(m); sclose(c); continue; }
           char *te = hdr_find_n(m, hl, "Transfer-Encoding"); if(te){ free(te); free(m); const char *e = "HTTP/1.1 501 Not Implemented\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"; net_sendall(c, e, strlen(e)); sclose(c); continue; }
-          if(!net_has[NE_REQUEST]){ free(m); const char *e = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"; net_sendall(c, e, strlen(e)); sclose(c); continue; }
           char *q = strchr(target, '?'); const char *query = ""; if(q){ *q = 0; query = q + 1; }
+          char *up = hdr_find_n(m, hl, "Upgrade");
+          if(up && ci_has(up, "websocket")){   /* WebSocket handshake */
+            char *key = hdr_find_n(m, hl, "Sec-WebSocket-Key"); free(up); free(m);
+            if(!key || !(net_has[NE_WSOPEN] || net_has[NE_WSMSG])){ free(key); const char *e = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"; net_sendall(c, e, strlen(e)); sclose(c); continue; }
+            size_t kl = strlen(key); while(kl && (key[kl - 1] == ' ' || key[kl - 1] == '\t')) key[--kl] = 0;
+            Buf kb = {0}; bs(&kb, key); bs(&kb, "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"); char *kc = btake(&kb); unsigned char dg[20]; sha1((const unsigned char *)kc, (size_t)kb.n, dg); char ac[40]; b64enc(dg, 20, ac); free(kc); free(key);
+            char resp[256]; snprintf(resp, sizeof resp, "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: %s\r\n\r\n", ac);
+            char wid[40]; snprintf(wid, sizeof wid, "w%d", ++net_seq);
+            if(ns_add(NS_WS, wid, c) != 0){ sclose(c); continue; }
+            net_send_locked(c, resp, strlen(resp));
+            char *pcopy = malloc(strlen(target) + 1); strcpy(pcopy, target); net_post("wsopen", wid, NULL, pcopy, (int)strlen(target));
+            continue;
+          }
+          free(up);
+          if(!net_has[NE_REQUEST]){ free(m); const char *e = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"; net_sendall(c, e, strlen(e)); sclose(c); continue; }
           Buf pb = {0}; bs(&pb, meth); bc(&pb, '\n'); bs(&pb, target); bc(&pb, '\n'); bs(&pb, query); bc(&pb, '\n'); bcat(&pb, m + hl, bl);
           int plen = pb.n; char *payload = btake(&pb); free(m);
           char rid[40]; snprintf(rid, sizeof rid, "r%d", ++net_seq);
@@ -2793,6 +2911,24 @@ static void *netpoll_main(void *a_){
         char buf[4096]; int k = (int)recv(n->s, buf, sizeof buf, 0);
         if(k > 0){ char *d = malloc((size_t)k + 1); memcpy(d, buf, (size_t)k); d[k] = 0; net_post("data", n->id, NULL, d, k); }
         else { ns_markclosed(n->id); net_post("closed", n->id, NULL, NULL, 0); }
+      } else if(n->kind == NS_WS || n->kind == NS_MQTT){
+        unsigned char tmp[16384]; int k = (int)recv(n->s, (char *)tmp, sizeof tmp, 0);
+        int closeit = 0; Buf reply = {0};
+        if(k <= 0) closeit = 1;
+        else {
+          pthread_mutex_lock(&NETM);
+          if(NSL[n->idx].kind == n->kind && !strcmp(NSL[n->idx].id, n->id)){
+            NetX *x = &NX[n->idx];
+            if(x->n + k > (1 << 21)) closeit = 1;
+            else { x->b = realloc(x->b, (size_t)(x->n + k)); memcpy(x->b + x->n, tmp, (size_t)k); x->n += k;
+                   if(n->kind == NS_WS) ws_parse(x, n->id, &reply, &closeit); else mqtt_parse(x, n->id, &reply, &closeit); }
+          }
+          pthread_mutex_unlock(&NETM);
+        }
+        int rl = reply.n; char *rp = btake(&reply);
+        if(rl) net_send_locked(n->s, rp, (size_t)rl);
+        free(rp);
+        if(closeit){ net_post(n->kind == NS_WS ? "wsclose" : "closed", n->id, NULL, NULL, 0); ns_del(n->id); }
       }
     }
   }
@@ -2813,9 +2949,78 @@ static char *net_idopt(Stmt *x){ const char *s = og(x, "id"); if(!s) lerr("Net: 
 static void net_getsock(const char *id, int kind, NetS *n, const char *who){
   if(!ns_get(id, n) || n->kind != kind) lerr("%s: '%s' is not open", who, id);
 }
+static void do_ws(Stmt *x){
+  net_perm("Net:Ws"); const char *op = x->no ? x->o[0].v[0] : "";
+  if(!strcasecmp(op, "send") || !strcasecmp(op, "broadcast")){
+    int bc_ = !strcasecmp(op, "broadcast"); char *id = bc_ ? xs("") : net_idopt(x);
+    unsigned char *buf = malloc(NETBIG); int len = collect_bytes(x, buf, NETBIG); int bin = 0;
+    for(int i = 0; i < x->no; i++) if(!strcasecmp(x->o[i].v[0], "byte") || !strcasecmp(x->o[i].v[0], "bytes")) bin = 1;
+    unsigned char *f; int fl = ws_frame(bin ? 2 : 1, buf, len, &f); free(buf);
+    if(bc_){
+      sock_t ss[NETMAX]; int ns = 0; pthread_mutex_lock(&NETM); for(int i = 0; i < NETMAX; i++) if(NSL[i].kind == NS_WS) ss[ns++] = NSL[i].s; pthread_mutex_unlock(&NETM);
+      for(int i = 0; i < ns; i++) net_send_locked(ss[i], (const char *)f, (size_t)fl);
+    } else {
+      NetS n; if(!ns_get(id, &n) || n.kind != NS_WS){ free(f); lerr("Net:Ws: '%s' is not an open WebSocket", id); }
+      if(net_send_locked(n.s, (const char *)f, (size_t)fl)){ free(f); lerr("Net:Ws: send failed (the browser closed?)"); }
+    }
+    free(f); free(id); return;
+  }
+  if(!strcasecmp(op, "close")){
+    char *id = net_idopt(x); NetS n; if(ns_get(id, &n) && n.kind == NS_WS){ unsigned char *f; int fl = ws_frame(8, (const unsigned char *)"\x03\xe8", 2, &f); net_send_locked(n.s, (const char *)f, (size_t)fl); free(f); ns_del(id); }
+    free(id); return;
+  }
+  lerr("Unknown Net:Ws operation: %s (valid: Send, Broadcast, Close)", op);
+}
+static void do_mqtt(Stmt *x){
+  const char *w = hw_(x, 1); net_perm("Mqtt"); char *id = net_idopt(x);
+  if(!strcasecmp(w, "connect")){
+    const char *ho = og(x, "host"); if(!ho) lerr("Mqtt: Host is missing"); char *host = fm(ho); int port = opt_int(x, "port", 1883), ka = opt_int(x, "keepalive", 30), tmo = opt_int(x, "timeout", 5000);
+    if(port < 1 || port > 65535) lerr("Mqtt: Port must be 1-65535"); if(ka < 0 || ka > 65535) lerr("Mqtt: Keepalive must be 0-65535 seconds");
+    const char *co = og(x, "client"), *uo = og(x, "user"), *po = og(x, "pass");
+    char dflt[32]; snprintf(dflt, sizeof dflt, "logl-%06x", (unsigned)(now() * 1000.0) & 0xffffff);
+    char *client = co ? fm(co) : xs(dflt), *user = uo ? fm(uo) : NULL, *pass = po ? fm(po) : NULL;
+    if(pass && !user) lerr("Mqtt: Pass needs User");
+    Buf b = {0}; mq_str(&b, "MQTT"); bc(&b, 4); bc(&b, (char)(0x02 | (user ? 0x80 : 0) | (pass ? 0x40 : 0))); bc(&b, (char)(ka >> 8)); bc(&b, (char)ka);
+    mq_str(&b, client); if(user) mq_str(&b, user); if(pass) mq_str(&b, pass);
+    int bl = b.n; char *body = btake(&b); Buf pk = {0}; bc(&pk, 0x10); mq_len(&pk, bl); bcat(&pk, body, bl); free(body); int pl = pk.n; char *pkt = btake(&pk);
+    free(client); free(user); free(pass);
+    char err[200]; err[0] = 0; unsigned char ack[4]; int got = 0;
+    pthread_mutex_unlock(&GIL);
+    sock_t s = net_connect(host, port, tmo, err, sizeof err);
+    if(s != SOCK_BAD){
+      if(net_sendall(s, pkt, (size_t)pl)) snprintf(err, sizeof err, "send failed");
+      else { double t0 = now(); while(got < 4 && (now() - t0) * 1000 < tmo){ if(wait_fd(s, 0, 200) > 0){ int k = (int)recv(s, (char *)ack + got, 4 - got, 0); if(k <= 0) break; got += k; } } if(got < 4) snprintf(err, sizeof err, "the broker did not answer (timeout)"); }
+      if(err[0]){ sclose(s); s = SOCK_BAD; }
+    }
+    gil_lock(); free(host); free(pkt);
+    if(s == SOCK_BAD) lerr("Mqtt: %s", err);
+    if(ack[0] != 0x20 || ack[1] != 2){ sclose(s); lerr("Mqtt: the server did not answer with MQTT"); }
+    if(ack[3] != 0){ sclose(s); static const char *why[] = { "", "unacceptable protocol version", "client identifier rejected", "server unavailable", "bad user name or password", "not authorized" }; lerr("Mqtt: the broker refused the connection (code %d: %s)", ack[3], ack[3] < 6 ? why[ack[3]] : "unknown"); }
+    int r = ns_add(NS_MQTT, id, s); if(r){ sclose(s); lerr(r == -2 ? "Net: the Id is already in use" : "Net: too many open sockets"); }
+    ns_set_keepalive(id, ka); net_start(); free(id); return;
+  }
+  NetS n; if(!ns_get(id, &n) || n.kind != NS_MQTT) lerr("Mqtt: '%s' is not connected", id);
+  if(!strcasecmp(w, "close")){ const char dc[2] = { (char)0xE0, 0 }; net_send_locked(n.s, dc, 2); ns_del(id); free(id); return; }
+  const char *to = og(x, "topic"); if(!to) lerr("Mqtt: Topic is missing"); char *topic = fm(to); int tl = (int)strlen(topic);
+  if(tl < 1 || tl > 65535){ free(topic); lerr("Mqtt: Topic must be 1-65535 bytes"); }
+  Buf pk = {0};
+  if(!strcasecmp(w, "publish")){
+    if(strchr(topic, '+') || strchr(topic, '#')){ free(topic); lerr("Mqtt:Publish: the Topic cannot contain + or # (they are for Subscribe)"); }
+    unsigned char *buf = malloc(NETBIG); int len = collect_bytes(x, buf, NETBIG); int retain = opt_int(x, "retain", 0) != 0;
+    bc(&pk, (char)(0x30 | retain)); mq_len(&pk, 2 + tl + len); mq_str(&pk, topic); bcat(&pk, (const char *)buf, len); free(buf);
+  } else if(!strcasecmp(w, "subscribe") || !strcasecmp(w, "unsubscribe")){
+    static int pid; pid = pid % 65535 + 1; int sub = !strcasecmp(w, "subscribe");
+    bc(&pk, sub ? (char)0x82 : (char)0xA2); mq_len(&pk, 2 + 2 + tl + (sub ? 1 : 0)); bc(&pk, (char)(pid >> 8)); bc(&pk, (char)pid); mq_str(&pk, topic); if(sub) bc(&pk, 0);
+  } else { free(topic); lerr("Unknown Mqtt operation: %s (valid: Connect, Subscribe, Unsubscribe, Publish, Close)", w); }
+  int pl = pk.n; char *pkt = btake(&pk); free(topic);
+  pthread_mutex_unlock(&GIL); int rc = net_send_locked(n.s, pkt, (size_t)pl); gil_lock(); free(pkt);
+  if(rc) lerr("Mqtt: send failed (the broker closed the connection?)");
+  ns_touch(id); free(id);
+}
 static void net_close_op(const char *id){ ns_del(id); }
 static void do_net(Stmt *x){
   const char *w = hw_(x, 1);
+  if(!strcasecmp(w, "ws")){ do_ws(x); return; }
   /* ---------------- Net:Respond ---------------- */
   if(!strcasecmp(w, "respond")){
     net_perm("Net:Respond"); if(!cur_resp[0]) lerr("Net:Respond can only be used inside On:Net(\"Request\")");
@@ -2847,7 +3052,7 @@ static void do_net(Stmt *x){
   }
   /* ---------------- Net:Tcp / Net:Udp ---------------- */
   int tcp = !strcasecmp(w, "tcp"), udp = !strcasecmp(w, "udp");
-  if(!tcp && !udp) lerr("Unknown Net operation: %s (valid: Tcp, Udp, Http, Respond)", w);
+  if(!tcp && !udp) lerr("Unknown Net operation: %s (valid: Tcp, Udp, Http, Respond, Ws)", w);
   const char *who = tcp ? "Net:Tcp" : "Net:Udp"; net_perm(who);
   const char *op = x->no ? x->o[0].v[0] : ""; if(!*op) lerr("%s: say what to do, for example %s(\"Close\",\"Id;x\")", who, who);
   char *id = net_idopt(x);
@@ -2881,20 +3086,21 @@ static void do_net(Stmt *x){
     free(id); into(x, Vs(cid)); return;
   }
   if(!strcasecmp(op, "send")){
-    unsigned char buf[BUSMAX]; int len = collect_bytes(x, buf, BUSMAX); if(!len) lerr("%s:Send needs Byte, Bytes or Text", who);
+    unsigned char *buf = malloc(NETBIG); int len = collect_bytes(x, buf, NETBIG); if(!len){ free(buf); lerr("%s:Send needs Byte, Bytes or Text", who); }
+    if(udp && len > 65000){ free(buf); lerr("Net:Udp: a datagram can carry at most 65000 bytes"); }
     if(tcp){
       net_getsock(id, NS_CONN, &n, who); if(n.closed) lerr("%s: connection '%s' is closed", who, id);
-      pthread_mutex_unlock(&GIL); int rc = net_sendall(n.s, (const char *)buf, (size_t)len); gil_lock(); if(rc) lerr("%s: send failed (the other side closed?)", who);
+      pthread_mutex_unlock(&GIL); int rc = net_sendall(n.s, (const char *)buf, (size_t)len); gil_lock(); free(buf); if(rc) lerr("%s: send failed (the other side closed?)", who);
     } else {
       net_getsock(id, NS_UDP, &n, who); const char *ho = og(x, "host"); if(!ho) lerr("Net:Udp: Host is missing"); char *host = fm(ho); int port = opt_int(x, "port", 0);
-      if(port < 1 || port > 65535){ free(host); lerr("Net:Udp: Port must be 1-65535"); }
+      if(port < 1 || port > 65535){ free(host); free(buf); lerr("Net:Udp: Port must be 1-65535"); }
       struct sockaddr_in a; memset(&a, 0, sizeof a); a.sin_family = AF_INET; a.sin_port = htons((unsigned short)port);
       if(inet_pton(AF_INET, host, &a.sin_addr) != 1){   /* a name: resolve it */
         struct addrinfo hi, *rs = NULL; memset(&hi, 0, sizeof hi); hi.ai_family = AF_INET; hi.ai_socktype = SOCK_DGRAM;
         pthread_mutex_unlock(&GIL); int gr = getaddrinfo(host, NULL, &hi, &rs); gil_lock();
-        if(gr || !rs){ free(host); lerr("Net:Udp: could not resolve the host"); } a.sin_addr = ((struct sockaddr_in *)rs->ai_addr)->sin_addr; freeaddrinfo(rs);
+        if(gr || !rs){ free(host); free(buf); lerr("Net:Udp: could not resolve the host"); } a.sin_addr = ((struct sockaddr_in *)rs->ai_addr)->sin_addr; freeaddrinfo(rs);
       }
-      free(host); if(sendto(n.s, (const char *)buf, len, 0, (struct sockaddr *)&a, sizeof a) < 0) lerr("Net:Udp: send failed");
+      free(host); int sr = (int)sendto(n.s, (const char *)buf, len, 0, (struct sockaddr *)&a, sizeof a); free(buf); if(sr < 0) lerr("Net:Udp: send failed");
     }
     free(id); return;
   }
@@ -3441,6 +3647,12 @@ static void fire_ev(const Ev *e){
     if(!strcmp(e->sub, "connection")){ setg("net_id", Vs(e->key)); setg("net_listener", Vs(e->id)); }
     else setg("net_id", Vs(e->id));
     if(!strcmp(e->sub, "data") || !strcmp(e->sub, "udp")){ setg("net_data", Vsn(e->big ? e->big : "", e->blen)); setg("net_from", Vs(e->key)); }
+    if(!strcmp(e->sub, "wsopen")) setg("req_path", Vsn(e->big ? e->big : "", e->blen));
+    if(!strcmp(e->sub, "wsmsg")) setg("net_data", Vsn(e->big ? e->big : "", e->blen));
+    if(!strcmp(e->sub, "message")){   /* big = topic \n payload */
+      const char *p = e->big ? e->big : ""; const char *nl = strchr(p, '\n'); int tl = nl ? (int)(nl - p) : e->blen;
+      setg("mqtt_topic", Vsn(p, tl)); setg("mqtt_msg", Vsn(nl ? nl + 1 : "", nl ? e->blen - tl - 1 : 0));
+    }
     if(!strcmp(e->sub, "request")){
       const char *p = e->big ? e->big : ""; const char *l1 = strchr(p, '\n'), *l2 = l1 ? strchr(l1 + 1, '\n') : NULL, *l3 = l2 ? strchr(l2 + 1, '\n') : NULL;
       if(l1 && l2 && l3){ setg("req_method", Vsn(p, (int)(l1 - p))); setg("req_path", Vsn(l1 + 1, (int)(l2 - l1 - 1))); setg("req_query", Vsn(l2 + 1, (int)(l3 - l2 - 1))); setg("req_body", Vsn(l3 + 1, e->blen - (int)(l3 + 1 - p))); }
@@ -4320,6 +4532,7 @@ static int one(Stmt *x, Scope *sc){
   case K_watchdog: do_watchdog(x); break;
   case K_net: do_net(x); break;
   case K_http: do_http(x); break;
+  case K_mqtt: do_mqtt(x); break;
   case K_store: {
     const char *w = hw_(x, 1); const char *ko = og(x, "key"); Buf kb = {0}; bs(&kb, "logdata:"); bs(&kb, ko ? ko : ""); char *key = btake(&kb);
     int err; size_t n; char *tx = readfile(S.stpath, &n); Val d = tx ? jparse(tx, &err) : Vu(); if(!tx || err || d.t != T_DICT){ vdrop(d); d = Vd(); } free(tx);
@@ -4401,7 +4614,9 @@ static int one(Stmt *x, Scope *sc){
       const char *en = x->no ? x->o[0].v[0] : ""; int ne = -1; char sub[16];
       if(!strcasecmp(en, "request")){ ne = NE_REQUEST; strcpy(sub, "request"); } else if(!strcasecmp(en, "connection")){ ne = NE_CONNECTION; strcpy(sub, "connection"); }
       else if(!strcasecmp(en, "data")){ ne = NE_DATA; strcpy(sub, "data"); } else if(!strcasecmp(en, "udp")){ ne = NE_UDP; strcpy(sub, "udp"); } else if(!strcasecmp(en, "closed")){ ne = NE_CLOSED; strcpy(sub, "closed"); }
-      else lerr("On:Net: use Request, Connection, Data, Udp or Closed");
+      else if(!strcasecmp(en, "wsopen")){ ne = NE_WSOPEN; strcpy(sub, "wsopen"); } else if(!strcasecmp(en, "wsmessage")){ ne = NE_WSMSG; strcpy(sub, "wsmsg"); }
+      else if(!strcasecmp(en, "wsclose")){ ne = NE_WSCLOSE; strcpy(sub, "wsclose"); } else if(!strcasecmp(en, "message")){ ne = NE_MESSAGE; strcpy(sub, "message"); }
+      else lerr("On:Net: use Request, Connection, Data, Udp, Closed, WsOpen, WsMessage, WsClose or Message");
       net_perm("On:Net"); if(S.nevh >= 64) lerr("Too many event handlers");
       EvH *eh = &S.evh[S.nevh]; memset(eh, 0, sizeof *eh); eh->kind = EV_NET; eh->body = &x->body; eh->sc = sc; snprintf(eh->sub, sizeof eh->sub, "%s", sub);
       scope_ref(sc); S.nevh++; S.npinh++; net_has[ne]++; start_evthread(); net_start();
