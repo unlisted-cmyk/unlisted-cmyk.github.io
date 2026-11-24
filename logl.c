@@ -4855,7 +4855,7 @@ static void usage(void){
        "  v2.0: Host file tools, G3D (OBJ, Pick, Orbit, z-buffer), UI TextArea/Dropdown/List, Mem/Math bit tools (see README_v2.md)\n"
        "  --hw  enables REAL hardware access (Reg, Port, Pin). Linux only; may need root.\n"
        "  Permissions (v2.1): files are confined to the program folder (--root) unless --allow-disk;\n"
-       "  real Pin access needs --hw AND --allow-pins; --allow-net is reserved for the network layer;\n"
+       "  real Pin access needs --hw AND --allow-pins; --allow-net enables Net:, Http:, Mqtt: and On:Net;\n"
        "  --allow-all = disk + pins + net + raw (it does not imply --hw).\n"
        "  --fake-gpio runs the real-hardware pin code on a GPIO simulated in memory (for tests, no board needed).");
 }
