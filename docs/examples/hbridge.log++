@@ -1,0 +1,51 @@
+<log++>
+// Reversible DC motor with an H-bridge driver board (TB6612 / DRV8833 style, see docs/LOADS.md, circuit 4).
+// G18 = PWM (speed), G23 and G24 = direction inputs. All three are Safe;Low: a crash or a stuck program brakes/stops the motor.
+Setup
+{
+    Pin:18("Output")
+    Pin:23("Output")
+    Pin:24("Output")
+    Pin:18("Safe;Low")
+    Pin:23("Safe;Low")
+    Pin:24("Safe;Low")
+    Pin:18("PWM;500","Duty;0")
+    Watchdog("Ms;1500")
+    Var:step("Value;0")
+    Print("H-bridge ready")
+}
+Loop
+{
+    Watchdog("Feed")
+    // forward 2 s, stop 1 s, backward 2 s, stop 1 s
+    If(step==0)
+    {
+        Pin:23("Set;High")
+        Pin:24("Set;Low")
+        Pin:18("Duty;60")
+        Print("forward")
+    }
+    If(step==20)
+    {
+        Pin:18("Duty;0")
+        Print("stop")
+    }
+    If(step==30)
+    {
+        Pin:23("Set;Low")
+        Pin:24("Set;High")
+        Pin:18("Duty;60")
+        Print("backward")
+    }
+    If(step==50)
+    {
+        Pin:18("Duty;0")
+        Print("stop")
+    }
+    step += 1
+    If(step>=60)
+    {
+        Set:step("Value;0")
+    }
+    Wait("ms;100")
+}

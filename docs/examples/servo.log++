@@ -1,0 +1,22 @@
+<log++>
+// Hobby servo on G18: 50 Hz, a 1 ms pulse = one end, 1.5 ms = center, 2 ms = the other end (duty 5 / 7.5 / 10 %).
+// WARNING: this is SOFTWARE PWM (jitter of tens or hundreds of microseconds): the servo may tremble. See docs/LOADS.md, circuit 5.
+Setup
+{
+    Pin:18("Output")
+    Pin:18("Safe;Low")
+    Pin:18("PWM;50","Duty;7.5")
+    Var:pos("Value;0")
+    Print("servo centered")
+}
+Loop
+{
+    Pin:18("Duty;5")
+    Wait("ms;1000")
+    Pin:18("Duty;7.5")
+    Wait("ms;1000")
+    Pin:18("Duty;10")
+    Wait("ms;1000")
+    Pin:18("Duty;7.5")
+    Wait("ms;1000")
+}

@@ -1,0 +1,25 @@
+<log++>
+// DC motor / fan / pump through an N-MOSFET (see docs/LOADS.md, circuit 2). MOSFET gate on G18.
+// Safe;Low + Watchdog: if this program hangs or ends, the gate goes LOW and the motor stops.
+// The button on G5 (to GND when pressed, with the internal pull-up of your board or an external 10 k to 3.3 V) is an emergency stop.
+Setup
+{
+    Pin:18("Output")
+    Pin:18("Safe;Low")
+    Pin:5("Input;PullUp")
+    Pin:18("PWM;500","Duty;0")
+    Watchdog("Ms;1000")
+    Var:speed("Value;0")
+    Print("motor ready, speed 0")
+}
+Loop
+{
+    Watchdog("Feed")
+    If(speed<80)
+    {
+        speed += 10
+        Pin:18("Duty;speed")
+        Print("speed {speed}%")
+    }
+    Wait("ms;300")
+}
