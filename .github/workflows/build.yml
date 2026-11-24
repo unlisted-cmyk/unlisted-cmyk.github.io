@@ -44,6 +44,10 @@ jobs:
         run: |
           python3 tests/ws_ext.py ./logl-linux
           python3 tests/mqtt_ext.py ./logl-linux
+      - name: Log computer image scripts (console session, installer, SHA-256 checks)
+        run: |
+          python3 tests/session_test.py ./logl-linux
+          python3 tests/image_test.py ./logl-linux
       - uses: actions/upload-artifact@v4
         with:
           name: linux-x86_64
@@ -78,6 +82,10 @@ jobs:
         run: |
           python3 tests/ws_ext.py ./logl-linux-arm64
           python3 tests/mqtt_ext.py ./logl-linux-arm64
+      - name: Log computer image scripts (console session, installer, SHA-256 checks)
+        run: |
+          python3 tests/session_test.py ./logl-linux-arm64
+          python3 tests/image_test.py ./logl-linux-arm64
       - uses: actions/upload-artifact@v4
         with:
           name: linux-arm64
