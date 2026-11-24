@@ -40,6 +40,9 @@ RT=1 run_case t20_http_server_client t20_http_server_client.log+ --allow-net
 RT=1 run_case t21_onnet_events   t21_onnet_events.log+ --allow-net
 run_case e09_net_noperm     e09_net_noperm.log+
 run_case e10_http_noperm    e10_http_noperm.log+
+run_case x01_example_motor   ../docs/examples/motor_mosfet.log++ --check
+run_case x02_example_hbridge ../docs/examples/hbridge.log++ --check
+run_case x03_example_servo   ../docs/examples/servo.log++ --check
 run_case e11_net_badops     e11_net_badops.log+ --check
 RT=1 run_case t12_pwm_virtual    t12_pwm_virtual.log+
 RT=1 run_case t14_onpin_virtual  t14_onpin_virtual.log+
