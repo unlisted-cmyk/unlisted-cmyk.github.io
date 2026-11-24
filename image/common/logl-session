@@ -1,0 +1,52 @@
+#!/bin/sh
+# logl-session: the only program that runs on the console of a Log computer.
+# init (systemd or BusyBox) starts it and starts it again whenever it ends, so you always land in Log.
+# It is plain POSIX sh (works with BusyBox ash, dash and bash).
+#
+# Settings (all optional; they can also be put in /etc/logl.conf):
+#   LOGL_BIN          the logl executable                       (default /usr/local/bin/logl, or /usr/bin/logl)
+#   LOGL_HOME         the folder where your programs live       (default /home/log)
+#   LOGL_AUTORUN_DIR  where autorun.log* is looked for first    (default /boot)
+#   LOGL_FLAGS        flags for logl                            (default: --hw --allow-all --no-window)
+# This computer is meant to be yours alone: --allow-all gives every program full access to disk, pins and network.
+
+[ -r /etc/logl.conf ] && . /etc/logl.conf
+LOGL="${LOGL_BIN:-}"
+if [ -z "$LOGL" ]; then
+  if [ -x /usr/local/bin/logl ]; then LOGL=/usr/local/bin/logl; else LOGL=/usr/bin/logl; fi
+fi
+HOMEDIR="${LOGL_HOME:-/home/log}"
+AUTORUN_DIR="${LOGL_AUTORUN_DIR:-/boot}"
+FLAGS="${LOGL_FLAGS---hw --allow-all --no-window}"
+
+mkdir -p "$HOMEDIR" 2>/dev/null
+cd "$HOMEDIR" || { echo "logl-session: cannot enter $HOMEDIR"; sleep 5; exit 1; }
+[ -t 1 ] && printf '\033[2J\033[H'
+
+# Maintenance door: create an empty file called logl-shell in the boot folder and the next start gives you a shell once.
+if [ -f "$AUTORUN_DIR/logl-shell" ]; then
+  rm -f "$AUTORUN_DIR/logl-shell" 2>/dev/null
+  echo "Maintenance shell (the file logl-shell was removed, so Log starts normally next time). Type exit to continue."
+  [ -x /bin/sh ] && /bin/sh
+fi
+
+echo "Log OS - $("$LOGL" --version 2>&1)"
+echo "Your programs live in $HOMEDIR.  Type Log code below; :quit restarts this terminal."
+
+# 1) program that starts by itself: autorun.log+ / autorun.log++ / autorun.log- / autorun.logall
+for f in "$AUTORUN_DIR"/autorun.log* "$HOMEDIR"/autorun.log*; do
+  if [ -f "$f" ]; then
+    echo "[autorun] $f"
+    # shellcheck disable=SC2086  (the flags are meant to be split)
+    "$LOGL" "$f" $FLAGS
+    echo "[autorun] ended (exit code $?)"
+    break
+  fi
+done
+
+# 2) the interactive Log terminal
+# shellcheck disable=SC2086
+"$LOGL" $FLAGS
+echo "[Log ended with code $?]"
+sleep 1   # protects against a restart storm if something is broken
+exit 0

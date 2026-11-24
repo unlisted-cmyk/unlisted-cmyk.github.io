@@ -1,0 +1,10 @@
+# Kernel options Log needs, built in (this image has no module loader). CHECK that they exist in your kernel version.
+CONFIG_I2C=y
+CONFIG_I2C_CHARDEV=y
+CONFIG_I2C_BCM2835=y
+CONFIG_SPI=y
+CONFIG_SPI_BCM2835=y
+CONFIG_SPI_SPIDEV=y
+CONFIG_DEVTMPFS=y
+CONFIG_DEVTMPFS_MOUNT=y
+CONFIG_IIO=y

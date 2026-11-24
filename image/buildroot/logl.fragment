@@ -1,0 +1,6 @@
+# Added to the Buildroot .config by build.sh (@HERE@ is replaced with this folder). Option names follow Buildroot 2024.02; CHECK them with
+# "make menuconfig" if your version complains.
+BR2_TARGET_GENERIC_HOSTNAME="logl"
+BR2_TARGET_GENERIC_ISSUE="Log OS"
+BR2_ROOTFS_OVERLAY="@HERE@/overlay"
+BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="@HERE@/kernel.fragment"
