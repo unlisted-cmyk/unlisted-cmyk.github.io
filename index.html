@@ -125,7 +125,7 @@ canvas{display:block;width:100%;image-rendering:pixelated;background:#000;border
 <script>
 const $=s=>document.querySelector(s),sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const T=$('#term'),PR=$('#pr'),IN=$('#in'),ED=$('#ed'),EA=$('#ea'),OUT=$('#out'),OL=$('#ol'),CV=$('#cv'),cx=CV.getContext('2d');
-let files=(()=>{try{return JSON.parse(localStorage.getItem('logfs')||'{}')}catch(_){return{}}})(),cur=null,R=null,res=null,t0=Date.now(),cpu=3,PIN=Array(32).fill(0),V={},TY={},CC={},port=null,wr=null,AC=null;
+let files=(()=>{try{return JSON.parse(localStorage.getItem('logfs')||'{}')}catch(_){return{}}})(),cur=null,R=null,res=null,t0=Date.now(),cpu=3,PIN=Array(64).fill(0),V={},TY={},CC={},port=null,wr=null,AC=null;
 const add=(box,t,c,before)=>{const d=document.createElement('div');d.textContent=t;if(c)d.className=c;box.insertBefore(d,before||null);box.scrollTop=box.scrollHeight};
 const pr=(t,c)=>add(T,t,c,PR),op=(t,c)=>add(OL,t,c);
 const LG=/^<\s*(log\+\+|log\+-|log\+|log-|logall|log\*)\s*>$/i,norm=s=>(s=s.toLowerCase())==='log*'?'logall':s;
@@ -200,7 +200,7 @@ Loop
 }
 `};
 /* ---------- parser ---------- */
-const KN=['use','print','var','set','repeat','for','if','wait','screen','display','reg','pin','on','loop','setup','expect','sound','serial','else','while','break','continue','input','ui','store','g3d','push','pop','remove','insert','sort','shuffle','split','each','def','call','return','elseif','console','mem','disk','exec','panic','stop','task','spawn','kill','join','import','try','lock','unlock','send','recv','yield','assert','sys','proc','surface','host','i2c','ram','cpu','irq','pci','dev','admin'],OPS=['pixel','rect','line','circle','clear','resolution','text','blit','get','show'],TYP=['u8','u16','u32','i32','f32','f64','str'];
+const KN=['use','print','var','set','repeat','for','if','wait','screen','display','reg','pin','on','loop','setup','expect','sound','serial','else','while','break','continue','input','ui','store','g3d','push','pop','remove','insert','sort','shuffle','split','each','def','call','return','elseif','console','mem','disk','exec','panic','stop','task','spawn','kill','join','import','try','lock','unlock','send','recv','yield','assert','sys','proc','surface','host','i2c','ram','cpu','irq','pci','dev','admin','switch','case','default','watchdog','spi','uart','net','http','mqtt'],OPS=['pixel','rect','line','circle','clear','resolution','text','blit','get','show'],TYP=['u8','u16','u32','i32','f32','f64','str'];
 const CAST={u8:v=>v&255,u16:v=>v&65535,u32:v=>v>>>0,i32:v=>v|0,f32:v=>Math.fround(+v),f64:v=>+v,str:v=>String(v).slice(0,65535)};
 function sp(s){const a=[];let d=0,q=0,b=0;for(let i=0;i<=s.length;i++){const c=s[i];if(c==='"')q^=1;if(!q){if(c==='('||c==='[')d++;if(c===')'||c===']')d--}if(i===s.length||(c===','&&!d&&!q)){a.push(s.slice(b,i).trim());b=i+1}}return a}
 function grp(s){const g=[];let d=0,b=0;for(let i=0;i<s.length;i++){const c=s[i];if(c==='"'){if(!d)return null;const j=s.indexOf('"',i+1);if(j<0)return null;i=j}else if(c==='('){if(d++===0)b=i+1}else if(c===')'){if(--d<0)return null;if(d===0)g.push(s.slice(b,i))}else if(!d&&c!==' ')return null}return d?null:g}
@@ -210,7 +210,7 @@ const x={n,lg,h:hm[0].split(':'),els,a:[],q:[]},g=grp(t.slice(hm[0].length).trim
 g.forEach(s=>{if(s.includes('"'))(s.match(/"[^"]*"/g)||[]).forEach(m=>x.q.push(m.slice(1,-1)));else x.a=s.trim()?sp(s):[]});
 x.o=x.q.map(s=>s.split(';').map(v=>v.trim()));return x}
 function parse(src,name){const E=[],W=[],L=[];
-src.split('\n').forEach((r,i)=>{let t=r.replace(/\/\/.*$/,'').trim();if(!t)return;if(t==='{'){L.length&&(L[L.length-1].o=1);return}let o=0;if(t.length>1&&t.endsWith('{')){t=t.slice(0,-1).trim();o=1}L.push({n:i+1,t,o})});
+src.split('\n').forEach((r,i)=>{let t=r.replace(/\/\/.*$/,'').trim();if(!t)return;if(t==='{'){L.length&&(L[L.length-1].o=1);return}let o=0;if(t.length>1&&t.endsWith('{')){t=t.slice(0,-1).trim();o=1}L.push({n:i+1,t:desugar21(t),o})});
 const h=L.shift(),hm=h&&h.t.match(LG);if(!hm){E.push([h?h.n:1,'Missing language header, for example <log+>']);return{E,W}}
 const fl=norm(hm[1]),ext=name.split('.').pop();if(ext!==fl)W.push([h.n,`The header <${fl}> does not match the .${ext} extension`]);
 let i=0,w=0;
@@ -227,6 +227,11 @@ const hw=ns=>ns.some(x=>x.h[0].toLowerCase()==='wait'||hw(x.body||[]));
 function chk(ns,E,W,s){for(const x of ns){const k=x.h[0].toLowerCase(),l=x.lg,n=x.n;
 if(x.bad){E.push([n,'Incorrect syntax in the instruction',x.why]);continue}
 if(!KN.includes(k)){E.push([n,`Unknown instruction: ${x.h[0]}`,sug(x.h[0])||'Instructions: '+KN.join(', ')]);continue}
+if(k==='case'||k==='default'){E.push([n,`${x.h[0]} is only valid directly inside a Switch`]);continue}
+if(k==='switch'){if(!x.a.length)E.push([n,'Switch needs an expression: Switch(expr)']);if(!x.body)E.push([n,'Switch needs a block { ... } with Case(...) and Default']);let nd=0;
+for(const c of x.body||[]){if(c.bad){E.push([c.n,'Syntax error: '+c.why]);continue}const ck=c.h[0].toLowerCase();
+if(ck==='case'){if(!c.a.length)E.push([c.n,'Case needs at least one value: Case(1) or Case(1,2)'])}else if(ck==='default'){if(++nd>1)E.push([c.n,'Switch has more than one Default'])}else{E.push([c.n,'Only Case(...) and Default are allowed directly inside a Switch']);continue}
+if(c.body)chk(c.body,E,W,s)}continue}
 if(k==='reg'&&l!=='log-')E.push([n,'Reg: is exclusive to Log- (use Screen: or Display:)']);
 if(['ram','cpu','irq','pci','dev','admin'].includes(k)&&l!=='log-')E.push([n,x.h[0]+': is exclusive to Log-','Change the header to <log-> or tag the line with #-']);
 if(['screen','display','reg'].includes(k)){const p=x.h.map(v=>v.toLowerCase()).find(v=>OPS.includes(v));
@@ -244,7 +249,7 @@ if(x.body)chk(x.body,E,W,s);if(x.alt)chk(x.alt,E,W,s)}}
 /* ---------- intérprete ---------- */
 const MO={};Object.getOwnPropertyNames(Math).forEach(m=>{MO[m]=Math[m]});
 function ev(e){let f=CC[e];if(!f){try{f=CC[e]=new Function('H','M','V','with(H){with(M){with(V){return('+e+')}}}')}catch(_){throw 'Invalid expression: '+e}}
-try{return f(HF,MO,V)}catch(_){throw 'Could not evaluate: '+e}}
+try{return f(HF,MO,V)}catch(err){if(err instanceof ReferenceError){const mm=/^(\w+) is not defined/.exec(err.message);if(mm)throw 'Undeclared variable: '+mm[1]}throw 'Could not evaluate: '+e}}
 const fm=s=>s.replace(/\{([^}]+)\}/g,(_,e)=>ev(e));
 const kv=a=>{const r={};a.slice(1).forEach(p=>{const[m,v]=p.split('=');r[m.trim().toUpperCase()]=ev(v)});return r};
 function cs(p){if(p[0]==='hsl')return`hsl(${ev(p[1])} 90% ${p[2]?ev(p[2]):55}%)`;if(p[0]==='rgb')p=p.slice(1);if(p.length>=3)return`rgb(${p.slice(0,3).map(e=>ev(e)&255)})`;return p[0]}
@@ -420,6 +425,7 @@ else throw'Admin: use Id, Run, Kill, Nice or Chmod'}
 async function ex(ns,fl){for(const x of ns){if(R.stop)throw'STOP';if(fl.task&&fl.task.stop)throw'KILL';if(++R.st%(R.k?20000:2500)===0)await(R.k?tick():sleep(0));if(R.stop)throw'STOP';if(fl.task&&fl.task.stop)throw'KILL';if(LL.any&&LL.on)await LLdeliver();V=fl.v;TY=fl.t;R.fn=fl.fn;
 try{await one(x,fl)}catch(e){if(e==='STOP'||e==='KILL'||e===BRK||e===CNT||e instanceof Ret||/^l\.\d+:/.test(e))throw e;throw`l.${x.n}: ${typeof e==='string'?e:e.message}`}}}
 async function one(x,fl){const k=x.h[0].toLowerCase();
+if(X21[k]){const r21=await X21[k](x,fl);if(r21!==0)return}
 switch(k){
 case'use':if(x.q[0]){const f=resolveP(fl.path,x.q[0]),fr=(((x.q[1]||'').match(/^from;(.*)$/i)||[])[1]||(R.k?'disk':'host')).toLowerCase(),st=fr==='disk'?VD[f]:files[f];if(st===undefined)throw'Use: file does not exist '+f+' (in '+fr+')';if((R.inc=(R.inc||0)+1)>8)throw'Use: too many levels';const p=parse(st,f);if(p.nodes){chk(p.nodes,p.E,p.W,{});chkx(p.nodes,p.E,p.W,{},0)}if(p.E.length)throw`${f} l.${p.E[0][0]}: ${p.E[0][1]}`;op(`[use] ${f} incluido`);reg(p.nodes);const p0=fl.path;fl.path=dirOf(f);try{await ex(p.nodes,fl)}finally{fl.path=p0}R.inc--}else op(`[lib] ${x.h[1]||''} loaded from silicon`);break;
 case'sound':{const g=k=>ev((x.o.find(a=>a[0].toLowerCase()===k)||['',k==='ms'?200:440])[1]),m=g('ms');beep(g('freq'),m);R.waiting=1;await sleep(m);R.waiting=0;break}
@@ -535,7 +541,7 @@ case'recv':{R.queues=R.queues||{};const n=x.h[1],to=og(x,'into'),okv=og(x,'ok'),
 case'yield':await sleep(0);break;
 case'assert':{const c=og(x,'cond');if(c===null)throw'Assert needs Cond';if(!ev(c))throw'Assert failed: '+fm(og(x,'text')||c);break}
 case'ram':LLram(x);break;case'cpu':LLcpu(x);break;case'irq':await LLirq(x);break;case'pci':LLpci(x);break;case'dev':LLdev(x);break;case'admin':LLadmin(x);break;
-case'sys':{const to=og(x,'into');if(to===null||!(to in V))throw'Undeclared variable: '+(to||'(missing Into)');V[to]={ghz:3,cpu:'Log-SoC 3.0 GHz',ram_mb:4096,mem_bytes:MEM.length,width:res?res.w:0,height:res?res.h:0,kernel:R.k?1:0,uptime_ms:Date.now()-R.t0,tasks:Object.values(R.tasks).filter(t=>t.on).length,version:'2.0',uid:R.k?0:1000,is_root:R.k?1:0};break}
+case'sys':{const to=og(x,'into');if(to===null||!(to in V))throw'Undeclared variable: '+(to||'(missing Into)');V[to]={ghz:3,cpu:'Log-SoC 3.0 GHz',ram_mb:4096,mem_bytes:MEM.length,width:res?res.w:0,height:res?res.h:0,kernel:R.k?1:0,uptime_ms:Date.now()-R.t0,tasks:Object.values(R.tasks).filter(t=>t.on).length,version:'2.1',uid:R.k?0:1000,is_root:R.k?1:0};break}
 case'proc':{const w=(x.h[1]||'').toLowerCase(),to=og(x,'into');if(to===null||!(to in V))throw'Undeclared variable: '+(to||'(missing Into)');if(w==='list')V[to]=cv(TY[to],Object.values(R.tasks).filter(t=>t.on).map(t=>t.n));else if(w==='alive'){const t=R.tasks[fm(og(x,'id')||'')];V[to]=cv(TY[to],t&&t.on?1:0)}else throw'Proc: use List or Alive';break}
 case'panic':{const m=fm(x.q.length?x.q[0].replace(/^text;/i,''):'no message');if(!res)setRes(318,180);Con.on=0;clearTimeout(Con.t);Con.t=0;cx.fillStyle='#7a0000';cx.fillRect(0,0,res.w,res.h);cx.fillStyle='#ffffff';cx.font='8px ui-monospace,Menlo,Consolas,monospace';cx.textBaseline='top';cx.fillText('KERNEL PANIC',6,6);const ln=(m.match(/.{1,48}/g)||['']);ln.forEach((s,i)=>cx.fillText(s,6,22+i*10));cx.fillText('System halted.',6,28+ln.length*10);throw'KERNEL PANIC: '+m}
 case'stop':if(fl.xd)throw new Ret();R.stop=1;R.fin&&R.fin();throw'STOP';
@@ -613,15 +619,15 @@ const ss=t=>{$('#os').textContent=(kmode?'KERNEL · ':'')+t;if(t!=='RUNNING')$('
 async function runFile(n,o){kmode=!!(o&&o.k);
 if(R&&R.on){R.stop=1;Object.values(R.tasks||{}).forEach(t=>t.stop=1);R.fin&&R.fin();R.pj&&R.pj('STOP');await new Promise(f=>R.dn=f)}
 OL.innerHTML='';G3reset();Con.on=0;Con.sus=0;CV.style.imageRendering='';MEM.fill(0);for(const k in SURF)delete SURF[k];$('#dev').hidden=true;$('#vk').hidden=true;$('#pad').hidden=true;$('#cur').hidden=true;held=0;$('#ph').textContent='Hold';CV.style.touchAction='';$('#ui').innerHTML='';$('#ui').hidden=true;$('#inw').hidden=true;$('#app').classList.add('o');OUT.hidden=false;$('#on').textContent=n;res=null;$('#cw').hidden=true;$('#pins').hidden=true;hd();
-PIN.fill(0);[...$('#pins').children].forEach(e=>e.className='');V={};TY={};
+PIN.fill(0);reset21();[...$('#pins').children].forEach(e=>e.className='');V={};TY={};
 SL=files[n].split('\n');const p=parse(files[n],n);if(p.nodes){chk(p.nodes,p.E,p.W,{});chkx(p.nodes,p.E,p.W,{ids:new Set(ids(p.nodes)),fns:new Set(fnn(p.nodes))},0)}
 p.E.sort((a,b)=>a[0]-b[0]);p.W.forEach(w=>show('WARNING',w,'wrn'));p.E.forEach(e=>show('ERROR',e,'err'));
 if(p.E.length){op(`Compilation aborted: ${p.E.length} error(s)`,'err');ss('ERROR');return}
 op(`Compiled without errors (${p.W.length} warning(s)). Running...`,'ok');
 const r=R={on:1,stop:0,st:0,hd:[],t0:Date.now(),n,fn:{},k:kmode,tasks:{},tid:0,tn:0,pid:0,locks:{},queues:{},mods:{},modf:{}};Object.keys(KD).forEach(k=>delete KD[k]);LLreset();r.root={v:V,t:TY,fn:r.fn,path:dirOf(n)};V.keys=KD;reg(p.nodes);if(kmode)showDev();ss('RUNNING');let bad=0;
 try{await ex(p.nodes,r.root);r.done=1;if((r.hd.length||r.ui||(r.tm&&r.tm.length)||r.tn>0)&&!r.stop){op('Waiting for events (Stop to exit)','ok');await new Promise(f=>{r.fin=f;taskEnd()})}}
-catch(e){if(e!=='STOP'){bad=1;const m=String(e).match(/^l\.(\d+): ([\s\S]*)$/);if(m)show('ERROR',[+m[1],m[2]],'err');else op('ERROR '+e,'err')}}
-r.on=0;(r.tm||[]).forEach(t=>clearInterval(t.i));Object.values(r.tasks).forEach(t=>t.stop=1);ss(bad?'ERROR':r.stop?'STOPPED':'FINISHED');r.dn&&r.dn()}
+catch(e){safe21();if(e!=='STOP'){bad=1;const m=String(e).match(/^l\.(\d+): ([\s\S]*)$/);if(m)show('ERROR',[+m[1],m[2]],'err');else op('ERROR '+e,'err')}}
+safe21();P21.wd.on=0;clearInterval(P21.wd.id);P21.wd.id=0;r.on=0;(r.tm||[]).forEach(t=>clearInterval(t.i));Object.values(r.tasks).forEach(t=>t.stop=1);ss(bad?'ERROR':r.stop?'STOPPED':'FINISHED');r.dn&&r.dn()}
 const stopRun=()=>{if(R&&R.on){LLstop();R.stop=1;Object.values(R.tasks||{}).forEach(t=>t.stop=1);R.fin&&R.fin();R.pj&&R.pj('STOP')}};
 /* ---------- terminal y editor ---------- */
 for(let i=0;i<16;i++){const e=document.createElement('i');e.title='pin '+i;$('#pins').appendChild(e)}
@@ -696,7 +702,7 @@ function sug(w,L){L=L||KN;w=w.toLowerCase();let b='',d=9;for(const c of L){const
 function diag(t){if(/^[A-Za-z_][\w:]*:\s+\S/.test(t))return'There is a space after ":". Write it attached: '+t.replace(/^([A-Za-z_][\w:]*:)\s+/,'$1');
 if((t.match(/"/g)||[]).length%2)return'A quote is not closed (")';const a=(t.match(/\(/g)||[]).length,b=(t.match(/\)/g)||[]).length;if(a>b)return'A parenthesis is not closed ")"';if(b>a)return'Extra parenthesis ")"';return'There cannot be loose text after the parentheses'}
 const ids=ns=>ns.flatMap(x=>[...(x.h[0].toLowerCase()==='ui'&&x.o?x.o.filter(q=>q[0].toLowerCase()==='id').map(q=>q[1].toLowerCase()):[]),...ids(x.body||[]),...ids(x.alt||[])]);
-const OA=(()=>{const S=['w','h','bits','set','color','write','text','target','style','size','src','into'];return{var:['value','text','list','size','fill','index','dict','key'],set:['value','text','index','key'],push:['value','text'],insert:['index','value','text'],remove:['index','key'],pop:['into'],sort:['order'],split:['value','text','by','sep','on','into','limit','trim','skip'],call:['into'],return:['value','text'],wait:['ms','us','press','until'],pin:['set','output','input','mode'],screen:S,display:S,reg:S,sound:['freq','ms'],i2c:['addr','byte','bytes','text','into'],expect:['equals'],input:['prompt'],ui:['id','label','text','min','max','value','options','rows','cols','syntax','goto','what','into'],store:['key','value','into','default'],g3d:['id','x','y','z','size','color','rx','ry','rz','s','sx','sy','sz','visible','mesh','name','file','fit','twosided','into','tx','ty','tz','fov','mode','bg','ambient','grid','yaw','pitch','dist','dyaw','dpitch','zoom'],console:['cols','rows','color','bg','text','col','row','into','prompt'],mem:['addr','value','size','len','from','to','text','into','type','a','b','bit'],disk:['file','into','text','value','prefix','to'],import:['as','from'],host:['file','into','text','value','to','raw','mark','filter','hidden','prefix'],exec:['file','args','into','from','bg','id'],surface:['id','w','h'],proc:['id','into'],recv:['into','timeout','ok'],send:['value','text'],sys:['into'],ram:['addr','size','len','from','to','mode','value','lo','hi','into'],cpu:['leaf','sub','eax','ebx','ecx','edx','vendor','text','into','addr','arg','core','reg','value','lo','hi'],irq:['n','call','ms','sig'],pci:['seg','bus','dev','fn','off','size','value','lo','hi','into'],dev:['id','path','mode','off','addr','len','into','req','arg'],admin:['uid','euid','gid','egid','root','pid','cmd','into','code','sig','level','file','mode'],assert:['cond','text'],kill:['id'],join:['id'],panic:['text'],spawn:['id']}})();
+const OA=(()=>{const S=['w','h','bits','set','color','write','text','target','style','size','src','into'];return{var:['value','text','list','size','fill','index','dict','key'],set:['value','text','index','key'],push:['value','text'],insert:['index','value','text'],remove:['index','key'],pop:['into'],sort:['order'],split:['value','text','by','sep','on','into','limit','trim','skip'],call:['into'],return:['value','text'],wait:['ms','us','press','until'],pin:['set','output','input','mode','toggle','read','pwm','duty','adc','analog','safe','into','dev'],watchdog:['ms','feed','off','status','into'],spi:['bus','cs','speed','mode','byte','bytes','text','count','into'],uart:['port','baud','id','byte','bytes','text','count','timeout','as','into'],net:['connect','listen','accept','send','recv','status','close','open','respond','broadcast','id','host','port','bind','timeout','count','as','into','from','byte','bytes','text','type','header'],http:['url','host','port','path','text','type','header','into','status','timeout'],mqtt:['id','host','port','client','user','pass','keepalive','timeout','topic','byte','bytes','text','retain'],screen:S,display:S,reg:S,sound:['freq','ms'],i2c:['addr','byte','bytes','text','into','bus','count'],expect:['equals'],input:['prompt'],ui:['id','label','text','min','max','value','options','rows','cols','syntax','goto','what','into'],store:['key','value','into','default'],g3d:['id','x','y','z','size','color','rx','ry','rz','s','sx','sy','sz','visible','mesh','name','file','fit','twosided','into','tx','ty','tz','fov','mode','bg','ambient','grid','yaw','pitch','dist','dyaw','dpitch','zoom'],console:['cols','rows','color','bg','text','col','row','into','prompt'],mem:['addr','value','size','len','from','to','text','into','type','a','b','bit'],disk:['file','into','text','value','prefix','to'],import:['as','from'],host:['file','into','text','value','to','raw','mark','filter','hidden','prefix'],exec:['file','args','into','from','bg','id'],surface:['id','w','h'],proc:['id','into'],recv:['into','timeout','ok'],send:['value','text'],sys:['into'],ram:['addr','size','len','from','to','mode','value','lo','hi','into'],cpu:['leaf','sub','eax','ebx','ecx','edx','vendor','text','into','addr','arg','core','reg','value','lo','hi'],irq:['n','call','ms','sig'],pci:['seg','bus','dev','fn','off','size','value','lo','hi','into'],dev:['id','path','mode','off','addr','len','into','req','arg'],admin:['uid','euid','gid','egid','root','pid','cmd','into','code','sig','level','file','mode'],assert:['cond','text'],kill:['id'],join:['id'],panic:['text'],spawn:['id']}})();
 const ARG={blit:[2],get:[2],text:[2],each:[1],pixel:[2],rect:[4],line:[4],circle:[3],repeat:[1],if:[1],while:[1],for:[2,3]};
 function chkx(ns,E,W,s,lp){s.ids=s.ids||new Set();for(const x of ns){if(x.bad||!KN.includes(x.h[0].toLowerCase()))continue;const k=x.h[0].toLowerCase(),l=x.lg,n=x.n;
 if(!['print','serial','use','import'].includes(k))x.o.forEach(q=>{const a=q[0];if(/[:\s]/.test(a))E.push([n,`The command "${q.join(';')}" is not properly separated`,`Use ";" to separate: "${a.split(/[:\s]+/).filter(Boolean).join(';')}"`]);else if(OA[k]&&!OA[k].includes(a.toLowerCase()))W.push([n,`Unknown command "${a}" in ${x.h[0]}`,sug(a,OA[k])||'Valid: '+OA[k].join(', ')])});
@@ -707,11 +713,14 @@ if(k==='ui'){if(!EXT.has('uivisuals')&&!s.wu){s.wu=1;E.push([n,'UI needs the UIV
 if(!EXT.has('storage')&&!s.ws&&k==='store'){s.ws=1;E.push([n,'Store needs the Storage extension','In the terminal type: pkg install Storage'])}
 if(['screen','display','reg'].includes(k)&&x.h.some(v=>v.toLowerCase()==='resolution'))s.res=1;
 if(k==='g3d'){const o=(x.h[1]||'').toLowerCase();if(!EXT.has('graphics3d')&&!s.w3){s.w3=1;E.push([n,'G3D needs the Graphics3D extension','In the terminal type: pkg install Graphics3D'])}if(l==='log++')E.push([n,'Log++ has no screen: G3D cannot be used here','Use Log+ or Log-']);else if(l==='log-'&&!s.res)E.push([n,'Log- requires Resolution before using G3D','Add Screen:Resolution(...) above']);if(!G3O.includes(o))E.push([n,'Unknown G3D operation: '+(x.h[1]||''),sug(o,G3O)||'Valid: '+G3O.join(', ')])}
-if(k==='on'){const m=(x.h[1]||'').toLowerCase();if(m!=='start_button'&&m!=='key'&&m!=='canvas'&&m!=='timer'&&m!=='mouse'&&!s.ids.has(m))W.push([n,`On:${x.h[1]}: that event does not exist, nor a widget with that Id`,'Events: START_BUTTON or the Id of a UI widget'])}
+if(k==='on'){const m=(x.h[1]||'').toLowerCase();
+if(m==='net'){const e0=x.o.length?x.o[0][0]:'';if(!['request','connection','data','udp','closed','wsopen','wsmessage','wsclose','message'].includes(e0.toLowerCase()))E.push([n,`On:Net: use Request, Connection, Data, Udp, Closed, WsOpen, WsMessage, WsClose or Message (not ${e0})`])}
+if(m==='pin'){if(!x.a.length)E.push([n,'On:Pin needs a pin number: On:Pin(5)("Rising")']);else if(x.o.length){const e0=x.o[0][0];if(!['rising','falling','change'].includes(e0.toLowerCase()))E.push([n,`On:Pin: use Rising, Falling or Change (not ${e0})`])}}
+if(m!=='start_button'&&m!=='key'&&m!=='canvas'&&m!=='timer'&&m!=='mouse'&&m!=='pin'&&m!=='net'&&!s.ids.has(m))W.push([n,`On:${x.h[1]}: that event does not exist, nor a widget with that Id`,'Events: START_BUTTON or the Id of a UI widget'])}
 if(k==='var'&&x.o[0]&&x.o[0][0].toLowerCase()==='text'&&l==='log-'&&x.h.length>2&&x.h[1].toLowerCase()!=='str')E.push([n,'Log- requires type STR for text','Write Var:STR:name("Text;Hello")']);
 if(k==='console'){const o=(x.h[1]||'').toLowerCase(),CO=['init','clear','print','put','at','read','refresh'];if(l==='log++')E.push([n,'Log++ has no screen: Console cannot be used here','Use Log+ or Log-']);else if(o==='init')s.res=1;else if(l==='log-'&&!s.res)E.push([n,'Log- requires Console:Init (or Screen:Resolution) before using the console','Add Console:Init("Cols;53","Rows;20") above']);if(!CO.includes(o))E.push([n,'Unknown Console operation: '+(x.h[1]||''),sug(o,CO)||'Valid: '+CO.join(', ')])}
 if(k==='mem'&&!['write','read','fill','copy','writetext','find','cmp','hash','swap','readtext','setbit','clearbit','togglebit','testbit','xor','and','or','not'].includes((x.h[1]||'').toLowerCase()))E.push([n,'Unknown Mem operation: '+(x.h[1]||''),'Valid: write, read, fill, copy, writetext, find, cmp, hash, swap, readtext, setbit, clearbit, togglebit, testbit, xor, and, or, not']);
-if(k==='i2c'&&!['write','scan'].includes((x.h[1]||'').toLowerCase()))E.push([n,'Unknown I2C operation: '+(x.h[1]||''),'Valid: write, scan']);
+if(['i2c','spi','uart','net','http','mqtt'].includes(k)){const LST={i2c:'write read scan close',spi:'open transfer write read close',uart:'open write read close',net:'tcp udp http respond ws',http:'get post',mqtt:'connect subscribe unsubscribe publish close'}[k],op=(x.h[1]||'');if(!LST.split(' ').includes(op.toLowerCase()))E.push([n,`Unknown ${x.h[0]} operation: ${op} (valid: ${LST})`])}
 if(k==='disk'&&!['list','listdir','read','exists','isdir','size','usage','write','append','mkdir','rmdir','delete','rename','copy','format'].includes((x.h[1]||'').toLowerCase()))E.push([n,'Unknown Disk operation: '+(x.h[1]||''),'Valid: list, listdir, read, exists, isdir, size, usage, write, append, mkdir, rmdir, delete, rename, copy, format']);
 if(k==='host'&&!['list','listdir','read','exists','size','isdir','mkdir','write','append','delete','copy','move','lines','writelines','stat','rmdir','cwd','savejson','loadjson'].includes((x.h[1]||'').toLowerCase()))E.push([n,'Unknown Host operation: '+(x.h[1]||''),'Valid: list, listdir, read, exists, size, isdir, mkdir, write, append, delete, copy, move, lines, writelines, stat, rmdir, cwd, savejson, loadjson']);
 if(k==='surface'&&!['new','free'].includes((x.h[1]||'').toLowerCase()))E.push([n,'Unknown Surface operation: '+(x.h[1]||''),'Valid: new, free']);
@@ -1213,7 +1222,7 @@ spiral.log+   graphics app
 Start it:  run # kernel.log-
 Auto-boot:  boot kernel.log-
 The kernel has its own virtual disk (vd ls)`};
-const CIRSEED={"Circuit_Programs/README.txt": "Circuit_Programs - examples for Circuits mode (Circuits button or command: circ)\nAll of them use the default board (32 GPIO, 5V, 3V3, GND). Press \"Simulate\" to power it.\nblink.log++            LED on G13. Circuit: \"Example\" button (G13 -> LED -> 220 ohm -> GND)\ntraffic_light.log++    3 LEDs on G2 (red), G3 (yellow), G4 (green), each with a resistor to GND\nbinary_counter.log++   8 LEDs on G0..G7 (with resistors to GND) count in binary\nbutton_led.log++       Push button between 3V3 and G14; LED with resistor on G13\nlcd_i2c.log++          LCD 16x2 (address 0x27): GND-GND, VCC-3V3, SCL-G22, SDA-G21 - one I2C:Write\nlcd_counter.log++      Same LCD wiring: a counter with a variable, cursor placed with Bytes;11,col,row\noled_i2c.log++         OLED 128x64 (address 0x3C), same wiring - text and pixels with I2C:Write\nhdmi_panel.logall      Press START_BUTTON (pin 5): draws on the HDMI and turns on G13\ni2c_scan.log++         LCD + OLED on the same bus: I2C:Scan lists their addresses\nI2C in Log++:  I2C:Write(\"Addr;0x27\",\"Text;Hi\\nthere\",\"Byte;65\",\"Bytes;27,10,20\",\"Into;ack\")  (ack = 1 if the device answered)\nI2C:Scan(\"Into;list\") returns the addresses that answer. Display bytes: 12 clear, 11 col row = move cursor, 10 new line, 13 start of line, 32-126 characters; OLED: 27 x y toggles a pixel.\nYour own circuits: \"My circuits\" menu in Circuits mode. They are saved in the Circuits/ folder (.circ files) together with the last program you ran.\nThe START button in the header = START_BUTTON (pin 5) without leaving Circuits mode.\n", "Circuit_Programs/blink.log++": "<log++>\n// Blink: LED + resistor on G13 (\"Example\" button of Circuits mode)\nSetup\n{\n    Pin:13(\"Output\")\n    Print(\"Blinking on G13\")\n}\nLoop\n{\n    Pin:13(\"Set;High\")\n    Wait(\"ms;400\")\n    Pin:13(\"Set;Low\")\n    Wait(\"ms;400\")\n}\n", "Circuit_Programs/traffic_light.log++": "<log++>\n// Traffic light: red G2, yellow G3, green G4 (each LED with its resistor to GND)\nSetup\n{\n    Pin:2(\"Output\")\n    Pin:3(\"Output\")\n    Pin:4(\"Output\")\n}\nLoop\n{\n    Pin:2(\"Set;High\")\n    Wait(\"ms;1500\")\n    Pin:2(\"Set;Low\")\n    Pin:4(\"Set;High\")\n    Wait(\"ms;1500\")\n    Pin:4(\"Set;Low\")\n    Pin:3(\"Set;High\")\n    Wait(\"ms;600\")\n    Pin:3(\"Set;Low\")\n}\n", "Circuit_Programs/binary_counter.log++": "<log++>\n// Binary counter on 8 LEDs: G0 (least significant bit) to G7\nSetup\n{\n    Pin:0(\"Output\")\n    Pin:1(\"Output\")\n    Pin:2(\"Output\")\n    Pin:3(\"Output\")\n    Pin:4(\"Output\")\n    Pin:5(\"Output\")\n    Pin:6(\"Output\")\n    Pin:7(\"Output\")\n    Var:U8:n(\"Value;0\")\n}\nLoop\n{\n    Pin:0(\"Set;Low\")\n    Pin:1(\"Set;Low\")\n    Pin:2(\"Set;Low\")\n    Pin:3(\"Set;Low\")\n    Pin:4(\"Set;Low\")\n    Pin:5(\"Set;Low\")\n    Pin:6(\"Set;Low\")\n    Pin:7(\"Set;Low\")\n    If((n&1)!=0)\n    {\n        Pin:0(\"Set;High\")\n    }\n    If((n&2)!=0)\n    {\n        Pin:1(\"Set;High\")\n    }\n    If((n&4)!=0)\n    {\n        Pin:2(\"Set;High\")\n    }\n    If((n&8)!=0)\n    {\n        Pin:3(\"Set;High\")\n    }\n    If((n&16)!=0)\n    {\n        Pin:4(\"Set;High\")\n    }\n    If((n&32)!=0)\n    {\n        Pin:5(\"Set;High\")\n    }\n    If((n&64)!=0)\n    {\n        Pin:6(\"Set;High\")\n    }\n    If((n&128)!=0)\n    {\n        Pin:7(\"Set;High\")\n    }\n    Wait(\"ms;150\")\n    Set:n(\"Value;n+1\")\n}\n", "Circuit_Programs/button_led.log++": "<log++>\n// Push button between 3V3 and G14; LED (with resistor) on G13\nSetup\n{\n    Pin:14(\"Input;PullDown\")\n    Pin:13(\"Output\")\n}\nLoop\n{\n    Pin:13(\"Set;Low\")\n    If(pin(14)==1)\n    {\n        Pin:13(\"Set;High\")\n    }\n    Wait(\"ms;10\")\n}\n", "Circuit_Programs/lcd_i2c.log++": "<log++>\n// LCD 16x2 over I2C (SDA=G21, SCL=G22, address 0x27)\n// Connect: GND-GND, VCC-3V3, SCL-G22, SDA-G21\n// In Text: \\f clears the screen and \\n starts a new line\nSetup\n{\n    Var:ack(\"Value;0\")\n    I2C:Write(\"Addr;0x27\",\"Text;\\fLog OS\\nI2C 0x27\",\"Into;ack\")\n    Print(\"ACK from 0x27: {ack}\")\n}\n", "Circuit_Programs/oled_i2c.log++": "<log++>\n// OLED 128x64 over I2C (SDA=G21, SCL=G22, address 0x3C)\n// Connect: GND-GND, VCC-3V3, SCL-G22, SDA-G21\n// Bytes;27,x,y toggles the pixel (x,y); text goes through Text\nSetup\n{\n    I2C:Write(\"Addr;0x3C\",\"Text;\\fLOG-SoC\\nOLED over I2C\")\n    For:i(0,40)\n    {\n        I2C:Write(\"Addr;0x3C\",\"Bytes;27,i*3,30+i/2\")\n    }\n    Print(\"OLED updated\")\n}\n", "Circuit_Programs/hdmi_panel.logall": "<logall>\n// Press START (button of the Circuits panel or of the output panel): draws on the HDMI and turns on G13\n#++ Setup\n{\n    Pin:13(\"Output\")\n}\n#- Screen:Resolution(\"W;160\",\"H;90\",\"Bits;24\")\n#+ Screen:Clear(\"Color;rgb;10;20;60\")\n#+ Screen:Rect(10,10,140,70)(\"Color;rgb;30;60;120\")\n#+ On:START_BUTTON(\"Press\")\n{\n    Screen:Rect(20,20,120,50)(\"Color;rgb;0;180;90\")\n    #++ Pin:13(\"Set;High\")\n    Print(\"HDMI ready and LED G13 on\")\n}\n", "Circuit_Programs/.dir": "", "Circuit_Programs/lcd_counter.log++": "<log++>\n// LCD 16x2 over I2C: a counter updated every second\n// Connect: GND-GND, VCC-3V3, SCL-G22, SDA-G21\n// Bytes;11,col,row moves the cursor\nSetup\n{\n    Var:n(\"Value;0\")\n    I2C:Write(\"Addr;0x27\",\"Text;\\fLog OS counter\")\n}\nLoop\n{\n    I2C:Write(\"Addr;0x27\",\"Bytes;11,0,1\",\"Text;Count: {n}   \")\n    Set:n(\"Value;n+1\")\n    Wait(\"ms;1000\")\n}\n", "Circuit_Programs/i2c_scan.log++": "<log++>\n// I2C scan: lists the devices that answer on the bus (G21 = SDA, G22 = SCL)\n// Circuit: the \"I2C scan\" example (LCD + OLED on the same bus)\nSetup\n{\n    Var:found(\"List;\")\n    I2C:Scan(\"Into;found\")\n    Print(\"Devices found: {found.length}\")\n    Each:a(found)\n    {\n        Print(\"  address 0x{a.toString(16)}\")\n    }\n}\n"};
+const CIRSEED={"Circuit_Programs/pwm_led.log++":"<log++>\n// PWM dimmer: LED + resistor on G13 (Circuits mode: Examples > \"PWM dimmable LED\"). The duty goes 0..100..0 %.\n// In the simulator's Circuits mode the LED shows the AVERAGE brightness of the PWM.\nSetup\n{\n    Pin:13(\"Output\")\n    Pin:13(\"PWM;500\",\"Duty;0\")\n    Var:d(\"Value;0\")\n    Var:dir(\"Value;5\")\n}\nLoop\n{\n    Pin:13(\"Duty;d\")\n    If(d>=100)\n    {\n        Set:dir(\"Value;-5\")\n    }\n    If(d<=0)\n    {\n        Set:dir(\"Value;5\")\n    }\n    d += dir\n    Wait(\"ms;50\")\n}\n","Circuit_Programs/button_event.log++":"<log++>\n// Button event: push button between 3V3 and G14, LED + resistor on G13 (Circuits mode: Examples > \"Button event\").\n// On:Pin runs its block when the pin changes: no need to poll the button in a loop.\nSetup\n{\n    Pin:14(\"Input;PullDown\")\n    Pin:13(\"Output\")\n    Pin:13(\"Safe;Low\")\n    Var:n(\"Value;0\")\n    On:Pin(14)(\"Rising\")\n    {\n        n += 1\n        Print(\"pressed {n} times\")\n        Pin:13(\"Set;High\")\n    }\n    On:Pin(14)(\"Falling\")\n    {\n        Pin:13(\"Set;Low\")\n    }\n}\nLoop\n{\n    Wait(\"ms;100\")\n}\n","Circuit_Programs/README.txt": "Circuit_Programs - examples for Circuits mode (Circuits button or command: circ)\nAll of them use the default board (32 GPIO, 5V, 3V3, GND). Press \"Simulate\" to power it.\nblink.log++            LED on G13. Circuit: \"Example\" button (G13 -> LED -> 220 ohm -> GND)\ntraffic_light.log++    3 LEDs on G2 (red), G3 (yellow), G4 (green), each with a resistor to GND\nbinary_counter.log++   8 LEDs on G0..G7 (with resistors to GND) count in binary\nbutton_led.log++       Push button between 3V3 and G14; LED with resistor on G13\nlcd_i2c.log++          LCD 16x2 (address 0x27): GND-GND, VCC-3V3, SCL-G22, SDA-G21 - one I2C:Write\nlcd_counter.log++      Same LCD wiring: a counter with a variable, cursor placed with Bytes;11,col,row\noled_i2c.log++         OLED 128x64 (address 0x3C), same wiring - text and pixels with I2C:Write\nhdmi_panel.logall      Press START_BUTTON (pin 5): draws on the HDMI and turns on G13\ni2c_scan.log++         LCD + OLED on the same bus: I2C:Scan lists their addresses\nI2C in Log++:  I2C:Write(\"Addr;0x27\",\"Text;Hi\\nthere\",\"Byte;65\",\"Bytes;27,10,20\",\"Into;ack\")  (ack = 1 if the device answered)\nI2C:Scan(\"Into;list\") returns the addresses that answer. Display bytes: 12 clear, 11 col row = move cursor, 10 new line, 13 start of line, 32-126 characters; OLED: 27 x y toggles a pixel.\nPWM and events (2.1):  pwm_led.log++ dims the LED on G13 with Pin:13(\"PWM;500\",\"Duty;d\") (shown as the average brightness); button_event.log++ uses On:Pin(14)(\"Rising\") instead of polling.\nYour own circuits: \"My circuits\" menu in Circuits mode. They are saved in the Circuits/ folder (.circ files) together with the last program you ran.\nThe START button in the header = START_BUTTON (pin 5) without leaving Circuits mode.\n", "Circuit_Programs/blink.log++": "<log++>\n// Blink: LED + resistor on G13 (\"Example\" button of Circuits mode)\nSetup\n{\n    Pin:13(\"Output\")\n    Print(\"Blinking on G13\")\n}\nLoop\n{\n    Pin:13(\"Set;High\")\n    Wait(\"ms;400\")\n    Pin:13(\"Set;Low\")\n    Wait(\"ms;400\")\n}\n", "Circuit_Programs/traffic_light.log++": "<log++>\n// Traffic light: red G2, yellow G3, green G4 (each LED with its resistor to GND)\nSetup\n{\n    Pin:2(\"Output\")\n    Pin:3(\"Output\")\n    Pin:4(\"Output\")\n}\nLoop\n{\n    Pin:2(\"Set;High\")\n    Wait(\"ms;1500\")\n    Pin:2(\"Set;Low\")\n    Pin:4(\"Set;High\")\n    Wait(\"ms;1500\")\n    Pin:4(\"Set;Low\")\n    Pin:3(\"Set;High\")\n    Wait(\"ms;600\")\n    Pin:3(\"Set;Low\")\n}\n", "Circuit_Programs/binary_counter.log++": "<log++>\n// Binary counter on 8 LEDs: G0 (least significant bit) to G7\nSetup\n{\n    Pin:0(\"Output\")\n    Pin:1(\"Output\")\n    Pin:2(\"Output\")\n    Pin:3(\"Output\")\n    Pin:4(\"Output\")\n    Pin:5(\"Output\")\n    Pin:6(\"Output\")\n    Pin:7(\"Output\")\n    Var:U8:n(\"Value;0\")\n}\nLoop\n{\n    Pin:0(\"Set;Low\")\n    Pin:1(\"Set;Low\")\n    Pin:2(\"Set;Low\")\n    Pin:3(\"Set;Low\")\n    Pin:4(\"Set;Low\")\n    Pin:5(\"Set;Low\")\n    Pin:6(\"Set;Low\")\n    Pin:7(\"Set;Low\")\n    If((n&1)!=0)\n    {\n        Pin:0(\"Set;High\")\n    }\n    If((n&2)!=0)\n    {\n        Pin:1(\"Set;High\")\n    }\n    If((n&4)!=0)\n    {\n        Pin:2(\"Set;High\")\n    }\n    If((n&8)!=0)\n    {\n        Pin:3(\"Set;High\")\n    }\n    If((n&16)!=0)\n    {\n        Pin:4(\"Set;High\")\n    }\n    If((n&32)!=0)\n    {\n        Pin:5(\"Set;High\")\n    }\n    If((n&64)!=0)\n    {\n        Pin:6(\"Set;High\")\n    }\n    If((n&128)!=0)\n    {\n        Pin:7(\"Set;High\")\n    }\n    Wait(\"ms;150\")\n    Set:n(\"Value;n+1\")\n}\n", "Circuit_Programs/button_led.log++": "<log++>\n// Push button between 3V3 and G14; LED (with resistor) on G13\nSetup\n{\n    Pin:14(\"Input;PullDown\")\n    Pin:13(\"Output\")\n}\nLoop\n{\n    Pin:13(\"Set;Low\")\n    If(pin(14)==1)\n    {\n        Pin:13(\"Set;High\")\n    }\n    Wait(\"ms;10\")\n}\n", "Circuit_Programs/lcd_i2c.log++": "<log++>\n// LCD 16x2 over I2C (SDA=G21, SCL=G22, address 0x27)\n// Connect: GND-GND, VCC-3V3, SCL-G22, SDA-G21\n// In Text: \\f clears the screen and \\n starts a new line\nSetup\n{\n    Var:ack(\"Value;0\")\n    I2C:Write(\"Addr;0x27\",\"Text;\\fLog OS\\nI2C 0x27\",\"Into;ack\")\n    Print(\"ACK from 0x27: {ack}\")\n}\n", "Circuit_Programs/oled_i2c.log++": "<log++>\n// OLED 128x64 over I2C (SDA=G21, SCL=G22, address 0x3C)\n// Connect: GND-GND, VCC-3V3, SCL-G22, SDA-G21\n// Bytes;27,x,y toggles the pixel (x,y); text goes through Text\nSetup\n{\n    I2C:Write(\"Addr;0x3C\",\"Text;\\fLOG-SoC\\nOLED over I2C\")\n    For:i(0,40)\n    {\n        I2C:Write(\"Addr;0x3C\",\"Bytes;27,i*3,30+i/2\")\n    }\n    Print(\"OLED updated\")\n}\n", "Circuit_Programs/hdmi_panel.logall": "<logall>\n// Press START (button of the Circuits panel or of the output panel): draws on the HDMI and turns on G13\n#++ Setup\n{\n    Pin:13(\"Output\")\n}\n#- Screen:Resolution(\"W;160\",\"H;90\",\"Bits;24\")\n#+ Screen:Clear(\"Color;rgb;10;20;60\")\n#+ Screen:Rect(10,10,140,70)(\"Color;rgb;30;60;120\")\n#+ On:START_BUTTON(\"Press\")\n{\n    Screen:Rect(20,20,120,50)(\"Color;rgb;0;180;90\")\n    #++ Pin:13(\"Set;High\")\n    Print(\"HDMI ready and LED G13 on\")\n}\n", "Circuit_Programs/.dir": "", "Circuit_Programs/lcd_counter.log++": "<log++>\n// LCD 16x2 over I2C: a counter updated every second\n// Connect: GND-GND, VCC-3V3, SCL-G22, SDA-G21\n// Bytes;11,col,row moves the cursor\nSetup\n{\n    Var:n(\"Value;0\")\n    I2C:Write(\"Addr;0x27\",\"Text;\\fLog OS counter\")\n}\nLoop\n{\n    I2C:Write(\"Addr;0x27\",\"Bytes;11,0,1\",\"Text;Count: {n}   \")\n    Set:n(\"Value;n+1\")\n    Wait(\"ms;1000\")\n}\n", "Circuit_Programs/i2c_scan.log++": "<log++>\n// I2C scan: lists the devices that answer on the bus (G21 = SDA, G22 = SCL)\n// Circuit: the \"I2C scan\" example (LCD + OLED on the same bus)\nSetup\n{\n    Var:found(\"List;\")\n    I2C:Scan(\"Into;found\")\n    Print(\"Devices found: {found.length}\")\n    Each:a(found)\n    {\n        Print(\"  address 0x{a.toString(16)}\")\n    }\n}\n"};
 const FP=t=>{let a=7;for(let i=0;i<t.length;i++)a=(a*31+t.charCodeAt(i))|0;return t.length+':'+a};
 const OLDFP={"kernel.log-": ["9450:1285007633"], "hola.log+": ["189:-1579601510"], "espiral.log+": ["215:732408592"], "LEEME.txt": ["221:-254908227"], "Programas_Circuitos/LEEME.txt": ["1140:1167417409", "904:-970377125"], "Programas_Circuitos/parpadeo.log++": ["235:-1828277791"], "Programas_Circuitos/semaforo.log++": ["355:338603795"], "Programas_Circuitos/contador_binario.log++": ["930:-1232802320"], "Programas_Circuitos/boton_led.log++": ["233:1750858086"], "Programas_Circuitos/lcd_i2c.log++": ["10678:521082865"], "Programas_Circuitos/oled_i2c.log++": ["17960:-1811109000"], "Programas_Circuitos/panel_hdmi.logall": ["428:1874503677", "355:1136638149"], "Programas_Circuitos/.dir": ["0:7"]};
 try{if(localStorage.getItem('logseed5')!=='1'){const k0=files['kernel.log-'];if(k0!==undefined&&!k0.includes('LOGOS 0.3')){files['kernel.v2.log-']=k0;delete files['kernel.log-']}for(const k in OLDFP)if(files[k]!==undefined&&OLDFP[k].includes(FP(files[k])))delete files[k];for(const k in SEED)if(files[k]===undefined)files[k]=SEED[k];for(const k in CIRSEED)if(files[k]===undefined)files[k]=CIRSEED[k];localStorage.setItem('logseed5','1');sv()}}catch(_){for(const k in SEED)if(files[k]===undefined)files[k]=SEED[k];for(const k in CIRSEED)if(files[k]===undefined)files[k]=CIRSEED[k]}
@@ -1322,7 +1331,7 @@ const SURF={},KD={},DV=new DataView(MEM.buffer);
 const EVK=['mx','my','mb','key','keys'];
 const mkChild=l=>new Proxy(l,{get:(t,k)=>k in t?t[k]:EVK.includes(k)?RV()[k]:undefined,has:(t,k)=>k in t||(EVK.includes(k)&&k in RV()),set:(t,k,v)=>{t[k]=v;return true},deleteProperty:(t,k)=>{delete t[k];return true},ownKeys:t=>[...new Set([...Reflect.ownKeys(t),...EVK.filter(k=>k in RV())])],getOwnPropertyDescriptor:(t,k)=>(k in t||(EVK.includes(k)&&k in RV()))?{value:k in t?t[k]:RV()[k],enumerable:true,configurable:true,writable:true}:undefined});
 function killProc(p,r){r=r||R;if(!r)return;r.hd=r.hd.filter(h=>!(h.sc&&h.sc.proc===p));(r.tm||[]).filter(t=>t.p===p).forEach(t=>clearInterval(t.i));if(r.tm)r.tm=r.tm.filter(t=>t.p!==p);Object.values(r.tasks).filter(t=>t.proc===p).forEach(t=>t.stop=1)}
-const HF={pin:n=>PIN[n]|0,rnd:(a,b)=>a+Math.floor(Math.random()*(b-a+1)),peek:pk,peek16:pk16,peek32:pk32,peekstr:pks,peekf:a=>{a=mc(a);mc(a+3);return DV.getFloat32(a,true)},peekd:a=>{a=mc(a);mc(a+7);return DV.getFloat64(a,true)},fix:(v,n)=>(+v).toFixed(n===undefined?2:n)};
+const HF={pin:n=>pin21(n),rnd:(a,b)=>a+Math.floor(Math.random()*(b-a+1)),peek:pk,peek16:pk16,peek32:pk32,peekstr:pks,peekf:a=>{a=mc(a);mc(a+3);return DV.getFloat32(a,true)},peekd:a=>{a=mc(a);mc(a+7);return DV.getFloat64(a,true)},fix:(v,n)=>(+v).toFixed(n===undefined?2:n)};
 {const U=v=>BigInt.asUintN(64,BigInt(Math.trunc(+v))),U32=v=>(+v)>>>0;
 Object.assign(HF,{hex:(v,w)=>'0x'+U(v).toString(16).toUpperCase().padStart(Math.max(1,Math.min(16,w===undefined?1:+w)),'0'),bit:(v,n)=>Number((U(v)>>BigInt(+n&63))&1n),lo32:v=>Number(U(v)&0xFFFFFFFFn),hi32:v=>Number(U(v)>>32n),
 rol:(v,n)=>{n&=31;v=U32(v);return((v<<n)|(v>>>((32-n)&31)))>>>0},ror:(v,n)=>{n&=31;v=U32(v);return((v>>>n)|(v<<((32-n)&31)))>>>0},bswap:v=>{v=U32(v);return(((v&255)<<24)|(((v>>8)&255)<<16)|(((v>>16)&255)<<8)|(v>>>24))>>>0}});Object.assign(HF,{popcount:v=>{let n=0,b=U(v);while(b){n+=Number(b&1n);b>>=1n}return n},clz:v=>{v=U32(v);return v?Math.clz32(v):32},ctz:v=>{v=U32(v);if(!v)return 32;let n=0;while(!(v&1)){v>>>=1;n++}return n},wrap8:v=>Number(U(v)&255n),wrap16:v=>Number(U(v)&65535n),wrap32:v=>Number(U(v)&0xFFFFFFFFn),sext8:v=>Number(BigInt.asIntN(8,U(v))),sext16:v=>Number(BigInt.asIntN(16,U(v))),sext32:v=>Number(BigInt.asIntN(32,U(v))),bswap16:v=>{v=U32(v)&65535;return((v&255)<<8)|(v>>8)},clamp:(v,lo,hi)=>v<lo?lo:v>hi?hi:+v,lerp:(a,b,t)=>+a+(b-a)*t})}
@@ -1365,7 +1374,7 @@ S.wires.forEach(w=>{if(id.has(w.a)&&id.has(w.b))par[f(id.get(w.a))]=f(id.get(w.b
 const nm=new Map(),N=k=>{const r=f(id.get(k));if(!nm.has(r))nm.set(r,nm.size);return nm.get(r)},root={};
 id.forEach((_,k)=>root[k]=N(k));S.root=root;S.tv={};S.cv={};const nn=nm.size;
 const src=[],el=[],pc=new Int16Array(nn),sc=new Int16Array(nn),rd=[];
-BP.forEach(p=>{const n=root['B:'+p.k];if(p.t!=='g')src.push({n,g:20,v:p.t==='5'?5:p.t==='3'?3.3:0,t:p.t});else{const m=PMODE[p.n];if(m&&m.m==='in'){rd.push({n,p});if(m.pull)src.push({n,g:1e-5,v:m.pull==='up'?3.3:0,t:'i'})}else src.push({n,g:.04,v:PIN[p.n]?3.3:0,t:'o',p})}});
+BP.forEach(p=>{const n=root['B:'+p.k];if(p.t!=='g')src.push({n,g:20,v:p.t==='5'?5:p.t==='3'?3.3:0,t:p.t});else{const m=PMODE[p.n];if(m&&m.m==='in'){rd.push({n,p});if(m.pull)src.push({n,g:1e-5,v:m.pull==='up'?3.3:0,t:'i'})}else src.push({n,g:.04,v:pwmBit21(p.n)?3.3:0,t:'o',p})}});
 src.forEach(s=>sc[s.n]++);
 S.comps.forEach(c=>{const P=i=>root['C'+c.id+':'+i],r=rt(c);
 if(c.t==='res')el.push({k:'r',a:P(0),b:P(1),g:1/Math.max(+c.v||1,.01),c});
@@ -1384,13 +1393,13 @@ el.forEach(e=>{const i=ix[e.a],j=ix[e.b];let G=e.g,k=0;if(e.k==='d'){const o=e.o
 for(let c=0;c<n;c++){let p=c;for(let r=c+1;r<n;r++)if(Math.abs(A[r][c])>Math.abs(A[p][c]))p=r;[A[c],A[p]]=[A[p],A[c]];const d=A[c][c];for(let r=c+1;r<n;r++){const m=A[r][c]/d;if(m)for(let k=c;k<=n;k++)A[r][k]-=m*A[c][k]}}
 for(let r=n-1;r>=0;r--){let s=A[r][n];for(let k=r+1;k<n;k++)s-=A[r][k]*X[k];X[r]=s/A[r][r]}
 let ch=0;el.forEach(e=>{if(e.k==='d'){const o=(X[ix[e.a]]-X[ix[e.b]])>e.vf;if(o!==e.on){e.on=o;ch=1}}});if(!ch)break}}
-el.forEach(e=>{const r=rt(e.c),Va=S.sim?X[ix[e.a]]:0,Vb=S.sim?X[ix[e.b]]:0;let I=0;if(S.sim){if(e.k==='d'){I=e.on?.2*(Va-Vb-e.vf):0;r.on=e.on;if(I>.04)r.burnt=1}else I=e.g*(Va-Vb)}else r.on=0;r.i=I});
+el.forEach(e=>{const r=rt(e.c),Va=S.sim?X[ix[e.a]]:0,Vb=S.sim?X[ix[e.b]]:0;let I=0;if(S.sim){if(e.k==='d'){I=e.on?.2*(Va-Vb-e.vf):0;r.on=e.on;if(I>.04)r.burnt=1}else I=e.g*(Va-Vb)}else r.on=0;r.i=P21.anyPwm?(r.ia=(r.ia||0)*.8+I*.2):(r.ia=I)});
 let i5=0,i3=0,io=0,sh=0,vg=0;
 if(S.sim)src.forEach(s=>{if(s.g<1e-3)return;const I=s.g*(s.v-vn(s.n));if(Math.abs(I)>1)sh=1;if(s.t==='5')i5+=Math.max(0,I);else if(s.t==='3')i3+=Math.max(0,I);else if(s.t==='o'){io+=Math.max(0,I);if(PIN[s.p.n])vg=Math.max(vg,vn(s.n))}});
 S.st={i5,i3,io,sh,v5:vn(root['B:V5_0']),v3:vn(root['B:V3_0']),vg};
 id.forEach((_,k)=>S.tv[k]=vn(root[k]));
 S.comps.forEach(c=>{if(c.t==='oled'||c.t==='lcd')S.cv[c.id]=[0,1,2,3].map(i=>S.tv['C'+c.id+':'+i])});
-if(S.sim)rd.forEach(q=>{const m=PMODE[q.p.n];if((ix[q.n]>=0||(m.pull&&q.p.n!==5))){const v=vn(q.n)>1.65?1:0;if(PIN[q.p.n]!==v){PIN[q.p.n]=v;const e=$('#pins').children[q.p.n];if(e)e.className=v?'on':''}}})}
+if(S.sim)rd.forEach(q=>{const m=PMODE[q.p.n];if((ix[q.n]>=0||(m.pull&&q.p.n!==5))){const v=vn(q.n)>1.65?1:0;if(PIN[q.p.n]!==v){PIN[q.p.n]=v;P21.lv[q.p.n]=v;edge21(q.p.n,v);const e=$('#pins').children[q.p.n];if(e)e.className=v?'on':''}}})}
 /* ---------- I2C (decodifica los pines G21=SDA, G22=SCL) ---------- */
 const pwr=c=>{const v=S.cv[c.id];if(!S.sim||!v||v[1]-v[0]<2.5||v[0]>.5)return 0;const r=S.root;return r['C'+c.id+':3']===r['B:G21']&&r['C'+c.id+':2']===r['B:G22']};
 function nl(r){r.cx=0;r.cy=(r.cy+1)%r.H;r.tx[r.cy]=Array(r.W).fill(' ')}
@@ -1555,7 +1564,9 @@ const EJ=[
 {n:'LCD counter',d:'Variable text over I2C',f:'lcd_counter.log++',b:()=>i2cW('lcd')},
 {n:'I2C scan · LCD + OLED',d:'I2C:Scan finds 0x27 and 0x3C',f:'i2c_scan.log++',b:()=>i2cW2()},
 {n:'OLED 128x64 over I2C',d:'SDA=G21, SCL=G22, 0x3C',f:'oled_i2c.log++',b:()=>i2cW('oled')},
-{n:'HDMI + LED (LogAll)',d:'START_BUTTON draws on HDMI and turns on G13',f:'hdmi_panel.logall',b:()=>ledRow([13],[1],10,0)}];
+{n:'HDMI + LED (LogAll)',d:'START_BUTTON draws on HDMI and turns on G13',f:'hdmi_panel.logall',b:()=>ledRow([13],[1],10,0)},
+{n:'PWM dimmable LED',d:'Duty 0-100 % on G13, shown as average brightness',f:'pwm_led.log++',b:()=>ledRow([13],[0],10,0)},
+{n:'Button event · On:Pin',d:'Push button 3V3→G14 raises On:Pin; LED on G13',f:'button_event.log++',b:()=>{ledRow([13],[1],10,0);const p=A('pb',16,-6,0,0);W('B:G14','C'+p+':0',[[15*U,-6*U]]);W('C'+p+':1','B:V3_0',[[22*U,-6*U]])}}];
 function exMenu(){const m=$('#cmenu');m.innerHTML='<div class="mu">Examples: circuit + program at the same time</div>'+EJ.map((e,i)=>`<div class="pi"><span title="${esc(e.d)}">${esc(e.n)}<br><small class="mu">${esc(e.d)}</small></span><button data-x="${i}">Load</button></div>`).join('')}
 function loadEj(i){const e=EJ[i],fn='Circuit_Programs/'+e.f;if(!e)return;$('#cmenu').hidden=true;
 if(files[fn]===undefined&&typeof CIRSEED!=='undefined'&&CIRSEED[fn]!==undefined){files[fn]=CIRSEED[fn];files['Circuit_Programs/.dir']=''}
@@ -1592,4 +1603,315 @@ function auto(n){S.prog=n;setSim(1);if(!S.open)openC('win')}
 return{open:openC,close:closeC,pe,mode,reset,auto,i2c:i2cw,scan:i2cscan,_:{S,solve,PMODE,I2,get RT(){return RT},loadEj,EJ,saveC,loadC,myMenu}}})();
 const _rf=runFile;runFile=function(n){try{CIR.reset();const t=files[n]||'';if(/^\s*<\s*log\+\+\s*>/i.test(t)||/^\s*(#\+\+\s*)?Pin:\d+/im.test(t))CIR.auto(n)}catch(_){}return _rf.apply(this,arguments)};
 boot();
+/* ======================================================================================================================
+ * v2.1  (same instruction names, options and error messages as logl 2.1; see "Differences" in the manual)
+ *   - x += e, Switch/Case/Default
+ *   - Pin: Toggle/Read/PWM/Duty/ADC/Analog/Safe, On:Pin edges, Watchdog
+ *   - I2C Read/Close, SPI, UART       (virtual, like logl without --hw: no I2C devices except the ones of the Circuits mode, SPI/UART are loopbacks)
+ *   - Net:, Http:, Mqtt:, On:Net      (SIMULATED network: everything stays inside the browser, see the panel "Network (simulated)")
+ * ==================================================================================================================== */
+const X21={};
+const g21=v=>String(+(+v).toPrecision(6));                       /* like C's %g for the values used here */
+const hex2=n=>n.toString(16).toUpperCase().padStart(2,'0');
+const into21=(x,k,v)=>{const to=og(x,k);if(to===null)return;if(!(to in V))throw'Undeclared variable: '+to;V[to]=cv(TY[to],v)};
+const need21=x=>{if(og(x,'into')===null)throw'Undeclared variable: (missing Into)'};
+const oint21=(x,k,d)=>{const s=og(x,k);return s&&s.trim()?Math.trunc(+ev(s)):d};
+const ENC21=new TextEncoder(),DEC21=new TextDecoder();
+function desugar21(t){                                           /* "x += e" -> Set:x("Value;x+(e)"); only lines that were syntax errors before */
+  const m=t.match(/^(#(?:\+\+|\+|-)\s*)?([A-Za-z_]\w*)\s*([+\-*/])=(?!=)\s*(.+)$/);
+  if(!m||m[4].includes('"')||m[4].includes(';'))return t;
+  return `${m[1]||''}Set:${m[2]}("Value;${m[2]}${m[3]}(${m[4]})")`}
+function eq21(a,b){const an=typeof a==='number'||typeof a==='boolean',bn=typeof b==='number'||typeof b==='boolean';if(an&&bn)return+a===+b;if(typeof a!==typeof b)return false;if(Array.isArray(a)&&Array.isArray(b))return a.length===b.length&&a.every((v,i)=>eq21(v,b[i]));return a===b}
+function bytes21(x,cap){                                          /* Byte; Bytes; Text; in the order written (same rules as logl) */
+  const by=[],push=b=>{if(by.length>=cap)throw`Too many bytes (max ${cap})`;by.push(b&255)};
+  for(const a of x.o){const k=a[0].toLowerCase(),v=a.slice(1).join(';');
+    if(k==='byte')push(Math.trunc(+ev(v)));
+    else if(k==='bytes'){const l=ev('['+v+']');if(!Array.isArray(l))throw'Bytes needs numbers separated by commas';l.forEach(n=>push(Math.trunc(+n)))}
+    else if(k==='text'){const u=ENC21.encode(fm(v));for(let i=0;i<u.length;i++){let c=u[i];if(c===92&&i+1<u.length){const q=u[i+1];if(q===110){c=10;i++}else if(q===114){c=13;i++}else if(q===102){c=12;i++}else if(q===116){c=9;i++}else if(q===48){c=0;i++}}push(c)}}}
+  return by}
+const sText21=a=>DEC21.decode(Uint8Array.from(a));
+
+/* ---------------------------------------------------------------- state (reset at every run) */
+let P21,SPI21,UART21,N21,EQ21=Promise.resolve(),SIM21={};
+function reset21(){
+  if(P21){clearInterval(P21.wd.id)}
+  P21={pwm:{},freq:{},duty:{},analog:{},safe:{},lv:{},watch:{},sd:{},anyPwm:0,wd:{on:0,ms:0,last:0,fired:0,id:0}};
+  SPI21={open:0};UART21={};EQ21=Promise.resolve();
+  N21={sock:{},port:{},eph:49151,seq:0,has:{request:0,connection:0,data:0,udp:0,closed:0,wsopen:0,wsmsg:0,wsclose:0,message:0},cur:null,mq:{conns:{},ret:{}},ws:{},log:{}};
+  if(SIM21.refresh)SIM21.refresh()}
+reset21();
+
+/* ---------------------------------------------------------------- event queue: handlers run one at a time, in order (like logl's event thread) */
+function post21(fn){const p=EQ21.then(async()=>{if(!R||!R.on||R.stop)return;await fn()});EQ21=p.catch(()=>{});return p}
+async function fire21(name){for(const h of (R.hd||[]).filter(h=>h.n===name)){if(R.stop)break;await runIn(h.sc||R.root,h.b)}}
+const setg21=(k,v)=>{if(R&&R.root)R.root.v[k]=v};
+
+/* ---------------------------------------------------------------- pins */
+function pin21(n){n=Math.trunc(+n);if(!(n>=0&&n<64))throw'Pin out of range (0-63)';
+  if(P21.pwm[n]&&R){const ph=((Date.now()-R.t0)/1000*P21.freq[n])%1;return ph*100<P21.duty[n]?1:0}return PIN[n]|0}
+function edge21(n,v){if(!P21.watch[n]||!R||!R.on)return;const e=v?'rising':'falling';post21(async()=>{await fire21('pin:'+n+':'+e);await fire21('pin:'+n+':change')})}
+function setLevel21(n,v,emit){const old=P21.lv[n]|0;P21.lv[n]=v;PIN[n]=v;CIR.mode(n,'set');led(n);send(`${n}=${v}`);if(emit&&old!==v)edge21(n,v)}
+SIM21.pinInput=(n,v)=>{if((P21.lv[n]|0)!==v){P21.lv[n]=v;PIN[n]=v;led(n);edge21(n,v)}};   /* a button of the Circuits mode or the panel */
+/* PWM in the Circuits mode: the solver asks for the level of every output pin once per solution. A PWM pin answers with a sigma-delta bit, so the fraction of
+ * "high" answers is exactly the duty cycle on the SAME clock as the solver (no beating); the LED current is smoothed (see r.ia), which shows the average brightness. */
+function pwmBit21(n){if(!P21.pwm[n])return PIN[n]|0;const a=(P21.sd[n]||0)+P21.duty[n]/100;if(a>=1){P21.sd[n]=a-1;return 1}P21.sd[n]=a;return 0}
+const pwmAny21=()=>{P21.anyPwm=Object.values(P21.pwm).some(v=>v)?1:0};
+function pwmPanel21(n){PIN[n]=(P21.duty[n]||0)>=50?1:0;led(n)}   /* the pin bar has no way to show a duty: it lights up from 50 % */
+function pwmOff21(n){P21.pwm[n]=0;PIN[n]=P21.lv[n]|0;led(n);pwmAny21()}
+function safe21(){                                                /* program end, error, Stop, watchdog: PWM off, then the safe level of every marked pin */
+  for(const k in P21.pwm)if(P21.pwm[k])pwmOff21(+k);
+  for(const k in P21.safe){const n=+k,s=P21.safe[k];if(!s)continue;const v=s===2?1:0,cur=P21.lv[n]|0;P21.lv[n]=v;PIN[n]=v;led(n);if(cur!==v)op(`[safe] pin ${n} = ${v}`)}}
+X21.pin=async(x)=>{
+  const n=Math.trunc(+x.h[1]);if(!(n>=0&&n<64))throw'Pin out of range (0-63)';
+  if(!x.o.length)throw'Pin: use Mode, Set, Toggle, Read, PWM, Duty, ADC, Analog or Safe';
+  $('#pins').hidden=false;
+  for(let i=0;i<x.o.length;i++){const a=x.o[i],c=(a[0]||'').toLowerCase(),a1=a.length>1?a[1]:'';
+    if(c==='set'){const hi=/^(high|1)$/i.test(a1)?1:0;setLevel21(n,hi,1);op(`[pin ${n}] = ${hi}`)}
+    else if(c==='toggle'){const nv=(P21.lv[n]|0)^1;setLevel21(n,nv,1);op(`[pin ${n}] = ${nv}`)}
+    else if(c==='read'){into21(x,'into',pin21(n))}
+    else if(c==='mode'){CIR.mode(n,'mode',a1)}
+    else if(c==='output'||c==='input'){CIR.mode(n,c,a1)}
+    else if(c==='pwm'){const f=+ev(a1);
+      if(f===0){if(P21.pwm[n])pwmOff21(n);op(`[pin ${n}] PWM off`)}
+      else{if(f<1||f>100000)throw'Pin: PWM frequency must be between 1 and 100000 Hz';P21.freq[n]=f;P21.pwm[n]=1;if(P21.duty[n]===undefined)P21.duty[n]=0;CIR.mode(n,'output');pwmAny21();pwmPanel21(n);op(`[pin ${n}] PWM ${g21(f)} Hz, duty ${g21(P21.duty[n])}%`)}}
+    else if(c==='duty'){if(!P21.pwm[n])throw'Pin: set PWM;frequency before Duty';const d=+ev(a1);if(d<0||d>100)throw'Pin: Duty must be between 0 and 100';P21.duty[n]=d;pwmPanel21(n);op(`[pin ${n}] PWM ${g21(P21.freq[n])} Hz, duty ${g21(d)}%`)}
+    else if(c==='analog'){const v=+ev(a1);if(v<0||v>3.3)throw'Pin: Analog must be between 0 and 3.3 (volts)';P21.analog[n]=v}
+    else if(c==='adc'){need21(x);const bits=a1?Math.trunc(+ev(a1)):10;if(bits<2||bits>16)throw'Pin: ADC bits must be between 2 and 16';into21(x,'into',Math.floor((P21.analog[n]||0)/3.3*((1<<bits)-1)+0.5))}
+    else if(c==='safe'){const s=a1.toLowerCase();if(s==='low')P21.safe[n]=1;else if(s==='high')P21.safe[n]=2;else if(s==='off')P21.safe[n]=0;else throw'Pin: Safe must be Low, High or Off'}
+    else if(i===0)throw'Pin: use Mode, Set, Toggle, Read, PWM, Duty, ADC, Analog or Safe'}
+  return 1};
+X21.watchdog=async(x)=>{
+  const k=x.o.length?x.o[0][0].toLowerCase():'',W=P21.wd;
+  if(k==='feed')W.last=Date.now();
+  else if(k==='off')W.on=0;
+  else if(k==='status'){need21(x);into21(x,'into',W.fired)}
+  else if(k==='ms'){const ms=+ev(x.o[0].slice(1).join(';'));if(ms<10||ms>600000)throw'Watchdog: Ms must be between 10 and 600000';W.ms=ms;W.last=Date.now();W.on=1;
+    if(!W.id)W.id=setInterval(()=>{if(W.on&&Date.now()-W.last>W.ms){W.on=0;W.fired++;safe21();op(`[WATCHDOG] no Feed in ${Math.round(W.ms)} ms: safe outputs applied`)}},2)}
+  else throw'Watchdog: use Ms;n (arm), Feed, Off or Status';
+  return 1};
+
+/* ---------------------------------------------------------------- Switch / Case / Default */
+X21.switch=async(x,fl)=>{
+  const v=ev(x.a[0]);let hit=null,dflt=null;
+  for(const c of x.body||[]){const ck=c.h[0].toLowerCase();if(ck==='default'){dflt=c;continue}if(ck!=='case')throw'Only Case(...) and Default are allowed directly inside a Switch';for(const e of c.a){if(eq21(v,ev(e))){hit=c;break}}if(hit)break}
+  const m=hit||dflt;if(m)await ex(m.body||[],fl);return 1};
+X21.case=X21.default=async(x)=>{throw`${x.h[0]} is only valid directly inside a Switch`};
+
+/* ---------------------------------------------------------------- I2C, SPI, UART (virtual) */
+X21.i2c=async(x)=>{
+  const w=x.h[1]||'',wl=w.toLowerCase();
+  if(wl==='scan'){need21(x);into21(x,'into',CIR.scan());return 1}
+  if(wl==='close')return 1;
+  const isw=wl==='write',isr=wl==='read';if(!isw&&!isr)throw`Unknown I2C operation: ${w} (valid: Write, Read, Scan, Close)`;
+  const ad=og(x,'addr');if(ad===null)throw'I2C: Addr is missing';const addr=Math.trunc(+ev(ad))&127;
+  if(isw){const by=bytes21(x,4096);const ack=CIR.i2c(addr,by);if(og(x,'into')!==null)into21(x,'into',ack?1:0);return 1}
+  const cnt=oint21(x,'count',1);if(cnt<1||cnt>4096)throw'I2C: Count must be 1-4096';need21(x);
+  if(!CIR.scan().includes(addr))throw'I2C: no answer from address 0x'+hex2(addr);
+  into21(x,'into',Array(cnt).fill(0));return 1};
+X21.spi=async(x)=>{
+  const w=x.h[1]||'',wl=w.toLowerCase();
+  if(wl==='open'){if(SPI21.open)throw'SPI: already open (use SPI:Close first)';oint21(x,'bus',0);oint21(x,'cs',0);const mode=oint21(x,'mode',0),sp=oint21(x,'speed',1000000);
+    if(mode<0||mode>3)throw'SPI: Mode must be 0-3';if(sp<1)throw'SPI: Speed must be positive';SPI21.open=1;return 1}
+  if(wl==='close'){SPI21.open=0;return 1}
+  const xfer=tx=>{if(!SPI21.open)throw'SPI: not open (use SPI:Open first)';return tx.slice()};
+  if(wl==='transfer'||wl==='write'){const tx=bytes21(x,4096);if(!tx.length)throw`SPI:${w} needs Byte, Bytes or Text`;const rx=xfer(tx);if(wl==='transfer'){need21(x);into21(x,'into',rx)}return 1}
+  if(wl==='read'){const n=oint21(x,'count',0);if(n<1||n>4096)throw'SPI:Read needs Count between 1 and 4096';need21(x);into21(x,'into',xfer(Array(n).fill(0)));return 1}
+  throw`Unknown SPI operation: ${w} (valid: Open, Transfer, Write, Read, Close)`};
+X21.uart=async(x)=>{
+  const w=x.h[1]||'',wl=w.toLowerCase(),idv=og(x,'id'),id=idv===null?'uart0':fm(idv);
+  if(wl==='open'){if(UART21[id])throw`UART: '${id}' is already open`;oint21(x,'baud',9600);if(Object.keys(UART21).length>=4)throw'UART: at most 4 ports can be open at the same time';UART21[id]={q:[]};return 1}
+  const u=UART21[id];if(!u&&wl!=='close')throw`UART: '${id}' is not open (use UART:Open first)`;
+  if(wl==='close'){delete UART21[id];return 1}
+  if(wl==='write'){const b=bytes21(x,4096);if(u.q.length+b.length>4096)throw'UART: virtual buffer full (4096 bytes)';u.q.push(...b);return 1}
+  if(wl==='read'){const cnt=oint21(x,'count',0);oint21(x,'timeout',100);if(cnt<1||cnt>4096)throw'UART:Read needs Count between 1 and 4096';need21(x);
+    const got=u.q.splice(0,cnt),as=og(x,'as');into21(x,'into',as&&as.toLowerCase()==='text'?sText21(got):got);return 1}
+  throw`Unknown UART operation: ${w} (valid: Open, Write, Read, Close)`};
+
+/* ---------------------------------------------------------------- simulated network */
+const isLocal21=h=>/^(localhost|127\.\d+\.\d+\.\d+|0\.0\.0\.0|::1)$/i.test(h);
+const NE21={request:'request',connection:'connection',data:'data',udp:'udp',closed:'closed',wsopen:'wsopen',wsmessage:'wsmsg',wsclose:'wsclose',message:'message'};
+const NEMSG21='On:Net: use Request, Connection, Data, Udp, Closed, WsOpen, WsMessage, WsClose or Message';
+function netPanel21(){$('#n21')&&($('#n21').hidden=false)}
+function nlog21(k,t){(N21.log[k]=N21.log[k]||[]).push(t);if(SIM21.refresh)SIM21.refresh()}
+function sAdd21(kind,id,o){const S=N21.sock;if(S[id])return -2;if(Object.keys(S).length>=32)return -1;S[id]=Object.assign({kind,id,closed:0,peerClosed:0,buf:[],pend:[]},o||{});return 0}
+function netId21(x){const s=og(x,'id');if(s===null)throw'Net: Id is missing (a name you choose, for example Id;c)';const i=fm(s);if(!i||i.length>30)throw'Net: Id must be 1-30 characters';return i}
+function getSock21(id,kind,who){const s=N21.sock[id];if(!s||s.kind!==kind)throw`${who}: '${id}' is not open`;return s}
+function allocPort21(proto,bind,port,who){
+  if(!/^\d{1,3}(\.\d{1,3}){3}$/.test(bind)||bind.split('.').some(p=>+p>255))throw`${who}: Bind must be an IPv4 address such as 127.0.0.1 or 0.0.0.0`;
+  if(port===0){do{port=++N21.eph}while(N21.port[proto+port])}
+  else if(N21.port[proto+port])throw`${who}: could not listen on ${bind}:${port} (is the port in use?)`;
+  return port}
+async function waitFor21(cond,tmo){const t0=Date.now();for(;;){if(cond())return 1;if(R&&R.stop)throw'STOP';if(Date.now()-t0>=tmo)return 0;await sleep(2)}}
+function setNetGlobals21(sub,id,key,data){
+  if(sub==='connection'){setg21('net_id',key);setg21('net_listener',id)}else setg21('net_id',id);
+  if(sub==='data'||sub==='udp'){setg21('net_data',data);setg21('net_from',key||'')}
+  if(sub==='wsopen')setg21('req_path',data);
+  if(sub==='wsmsg')setg21('net_data',data);
+  if(sub==='message'){setg21('mqtt_topic',key);setg21('mqtt_msg',data)}}
+function netEvent21(sub,id,key,data){const k=sub;if(!N21.has[k])return Promise.resolve();return post21(async()=>{setNetGlobals21(sub,id,key,data);await fire21('net:'+sub)})}
+function closeSock21(id){const s=N21.sock[id];if(!s)return;
+  if(s.kind==='listen'||s.kind==='http')delete N21.port['tcp'+s.port];if(s.kind==='udp')delete N21.port['udp'+s.port];
+  if(s.kind==='conn'&&s.peer){const p=N21.sock[s.peer];if(p){p.peerClosed=1;if(p.ext)nlog21('tcp:'+p.id,'(closed by the server)');else if(N21.has.data)netEvent21('closed',p.id,null,'')}}
+  delete N21.sock[id]}
+X21.net=async(x)=>{
+  netPanel21();const w=x.h[1]||'',wl=w.toLowerCase();
+  if(wl==='ws')return wsOp21(x);
+  if(wl==='respond'){
+    if(!N21.cur)throw'Net:Respond can only be used inside On:Net("Request")';
+    const code=oint21(x,'status',200);if(code<100||code>599)throw'Net:Respond: Status must be 100-599';
+    const t=og(x,'text'),rs=N21.sock[N21.cur];if(rs)rs.resp={status:code,body:t===null?'':fm(t)};N21.cur=null;return 1}
+  if(wl==='http'){
+    const op0=x.o.length?x.o[0][0].toLowerCase():'';
+    if(op0==='listen'){const io=og(x,'id'),id=io===null?'http':fm(io),bo=og(x,'bind'),bind=bo===null?'127.0.0.1':fm(bo);let port=oint21(x,'port',8080);if(port<0||port>65535)throw'Net: Port must be 0-65535 (0 = any free port)';
+      port=allocPort21('tcp',bind,port,'Net:Http');const r=sAdd21('http',id,{port});if(r)throw r===-2?'Net: the Id is already in use':'Net: too many open sockets';N21.port['tcp'+port]=id;if(og(x,'into')!==null)into21(x,'into',port);return 1}
+    if(op0==='close'){closeSock21(netId21(x));return 1}
+    throw`Unknown Net:Http operation: ${x.o.length?x.o[0][0]:''} (valid: Listen, Close)`}
+  const tcp=wl==='tcp',udp=wl==='udp';if(!tcp&&!udp)throw`Unknown Net operation: ${w} (valid: Tcp, Udp, Http, Respond, Ws)`;
+  const who=tcp?'Net:Tcp':'Net:Udp',op0=x.o.length?x.o[0][0]:'';if(!op0)throw`${who}: say what to do, for example ${who}("Close","Id;x")`;
+  const id=netId21(x),ol=op0.toLowerCase();
+  if(ol==='close'){closeSock21(id);return 1}
+  if(tcp&&ol==='connect'){
+    const ho=og(x,'host');if(ho===null)throw'Net:Tcp: Host is missing';const host=fm(ho),port=oint21(x,'port',0);oint21(x,'timeout',5000);
+    if(port<1||port>65535)throw'Net:Tcp: Port must be 1-65535';
+    const lid=N21.port['tcp'+port],L=lid&&N21.sock[lid];
+    if(!isLocal21(host)||!L||L.kind!=='listen')throw`Net:Tcp: could not connect to ${host}:${port}`;   /* the browser has no real network: only the sockets of this program can be reached */
+    const sid=`${L.id.slice(0,24)}.${++N21.seq}`;
+    let r=sAdd21('conn',id,{peer:sid});if(r)throw r===-2?'Net: the Id is already in use':'Net: too many open sockets';
+    r=sAdd21('conn',sid,{peer:id});if(r){delete N21.sock[id];throw'Net: too many open sockets'}
+    if(N21.has.connection)netEvent21('connection',L.id,sid,'');else if(L.pend.length<16)L.pend.push(sid);
+    return 1}
+  if((tcp&&ol==='listen')||(udp&&ol==='open')){
+    const bo=og(x,'bind'),bind=bo===null?'127.0.0.1':fm(bo);let port=oint21(x,'port',0);if(port<0||port>65535)throw'Net: Port must be 0-65535 (0 = any free port)';
+    port=allocPort21(tcp?'tcp':'udp',bind,port,who);const r=sAdd21(tcp?'listen':'udp',id,{port});if(r)throw r===-2?'Net: that Id is already in use':'Net: too many open sockets';
+    N21.port[(tcp?'tcp':'udp')+port]=id;if(og(x,'into')!==null)into21(x,'into',port);return 1}
+  if(tcp&&ol==='accept'){
+    const L=getSock21(id,'listen',who);need21(x);const tmo=oint21(x,'timeout',0);let cid='';
+    await waitFor21(()=>L.pend.length>0,tmo);if(L.pend.length)cid=L.pend.shift();into21(x,'into',cid);return 1}
+  if(ol==='send'){
+    const buf=bytes21(x,1<<20);if(!buf.length)throw`${who}:Send needs Byte, Bytes or Text`;if(udp&&buf.length>65000)throw'Net:Udp: a datagram can carry at most 65000 bytes';
+    if(tcp){const s=getSock21(id,'conn',who);if(s.closed)throw`${who}: connection '${id}' is closed`;const p=N21.sock[s.peer];if(!p||p.closed)throw`${who}: send failed (the other side closed?)`;
+      if(p.ext)nlog21('tcp:'+p.id,'< '+sText21(buf));else if(N21.has.data)netEvent21('data',p.id,null,sText21(buf));else p.buf.push(...buf)}
+    else{const s=getSock21(id,'udp',who),ho=og(x,'host');if(ho===null)throw'Net:Udp: Host is missing';const host=fm(ho),port=oint21(x,'port',0);if(port<1||port>65535)throw'Net:Udp: Port must be 1-65535';
+      if(!/^\d{1,3}(\.\d{1,3}){3}$/.test(host)&&!/^localhost$/i.test(host))throw'Net:Udp: could not resolve the host';
+      const did=N21.port['udp'+port],d=did&&N21.sock[did];
+      if(d&&isLocal21(/^localhost$/i.test(host)?'127.0.0.1':host)){const from='127.0.0.1:'+s.port;if(N21.has.udp)netEvent21('udp',d.id,from,sText21(buf));else d.buf.push({data:buf,from})}}
+    return 1}
+  if(ol==='recv'){
+    const s=getSock21(id,tcp?'conn':'udp',who);need21(x);const cnt=oint21(x,'count',4096),tmo=Math.max(0,oint21(x,'timeout',100));if(cnt<1||cnt>65536)throw`${who}:Recv: Count must be 1-65536`;
+    if(N21.has[tcp?'data':'udp'])throw`${who}:Recv cannot be used while an On:Net("${tcp?'Data':'Udp'}") handler is registered (the handler receives the data)`;
+    let got=[],from='';
+    await waitFor21(()=>s.buf.length>0||(tcp&&s.peerClosed),tmo);
+    if(tcp){if(s.buf.length)got=s.buf.splice(0,cnt);else if(s.peerClosed)s.closed=1}
+    else if(s.buf.length){const d=s.buf.shift();got=d.data.slice(0,cnt);from=d.from}
+    const as=og(x,'as');into21(x,'into',as&&as.toLowerCase()==='text'?sText21(got):got);if(udp)into21(x,'from',from);return 1}
+  if(tcp&&ol==='status'){const s=getSock21(id,'conn',who);need21(x);into21(x,'into',s.closed?0:1);return 1}
+  throw`Unknown ${who} operation: ${op0} (valid: ${tcp?'Connect, Listen, Accept, Send, Recv, Status, Close':'Open, Send, Recv, Close'})`};
+
+/* ---- HTTP client / server (both inside the simulator) ---- */
+async function httpServe21(L,method,path,query,body){
+  if(!N21.has.request)return{status:404,body:''};
+  const rid='r'+(++N21.seq);sAdd21('resp',rid,{resp:null});let resp=null;
+  await post21(async()=>{N21.cur=rid;setg21('net_id',rid);setg21('req_method',method);setg21('req_path',path);setg21('req_query',query);setg21('req_body',body);
+    await fire21('net:request');const rs=N21.sock[rid];resp=rs&&rs.resp?rs.resp:{status:204,body:''};N21.cur=null;delete N21.sock[rid]});
+  return resp||{status:204,body:''}}
+X21.http=async(x)=>{
+  netPanel21();const w=x.h[1]||'',post=/^post$/i.test(w);if(!post&&!/^get$/i.test(w))throw`Unknown Http operation: ${w} (valid: Get, Post)`;
+  const uo=og(x,'url'),ho=og(x,'host');let url;
+  if(uo!==null){const u=fm(uo);url=u.includes('://')?u:'http://'+u}
+  else if(ho!==null){const h=fm(ho),po=og(x,'path'),pa=po===null?'/':fm(po);url='http://'+h+':'+oint21(x,'port',80)+(pa[0]==='/'?'':'/')+pa}
+  else throw'Http: Url is missing (for example Url;127.0.0.1:8080/path, or Host;h with Port;n and Path;/p)';
+  const tmo=oint21(x,'timeout',5000);if(tmo<100||tmo>120000)throw'Http: Timeout must be 100-120000 ms';
+  if(post){og(x,'text')}
+  const hdr=x.o.filter(a=>a[0].toLowerCase()==='header').map(a=>fm(a.slice(1).join(';')));if(hdr.some(h=>/[\r\n]/.test(h)))throw'Http: Header cannot contain line breaks';
+  if(/^https:/i.test(url))throw'Http: https is not supported: this build has no TLS';
+  const m=url.match(/^http:\/\/([^\/:]+|\[[^\]]+\])(?::(\d+))?(\/[^\s]*)?$/i);if(!m)throw'Http: bad Url';
+  const host=m[1],port=m[2]?+m[2]:80,full=m[3]||'/';if(port<1||port>65535)throw'Http: bad port in Url';
+  const lid=N21.port['tcp'+port],L=lid&&N21.sock[lid];
+  if(!isLocal21(host)||!L||(L.kind!=='http'&&L.kind!=='listen'))throw`Http: could not connect to ${host}:${port}`;
+  if(L.kind==='listen')throw'Http: no valid answer (timeout, or the reply is larger than 4 MB)';
+  const qi=full.indexOf('?'),path=qi<0?full:full.slice(0,qi),query=qi<0?'':full.slice(qi+1);
+  const body=post&&og(x,'text')!==null?fm(og(x,'text')):'';
+  const r=await httpServe21(L,post?'POST':'GET',path,query,body);
+  into21(x,'status',r.status);into21(x,'into',r.body);return 1};
+
+/* ---- WebSocket: the "browsers" are simulated clients (panel or SIM21.ws*) ---- */
+function wsOp21(x){
+  const op0=x.o.length?x.o[0][0].toLowerCase():'';
+  if(op0==='send'||op0==='broadcast'){
+    const bc=op0==='broadcast',id=bc?'':netId21(x),b=bytes21(x,1<<20);
+    const bin=x.o.some(a=>/^(byte|bytes)$/i.test(a[0])),msg=bin?b.join(','):sText21(b);
+    if(bc){Object.values(N21.sock).filter(s=>s.kind==='ws').forEach(s=>nlog21('ws:'+s.id,'< '+msg))}
+    else{const s=N21.sock[id];if(!s||s.kind!=='ws')throw`Net:Ws: '${id}' is not an open WebSocket`;nlog21('ws:'+id,'< '+msg)}
+    return 1}
+  if(op0==='close'){const id=netId21(x),s=N21.sock[id];if(s&&s.kind==='ws'){nlog21('ws:'+id,'(closed by the server)');delete N21.sock[id]}return 1}
+  throw`Unknown Net:Ws operation: ${x.o.length?x.o[0][0]:''} (valid: Send, Broadcast, Close)`}
+SIM21.wsConnect=(path)=>{if(!N21.has.wsopen&&!N21.has.wsmsg)return null;const id='w'+(++N21.seq);sAdd21('ws',id,{});netEvent21('wsopen',id,null,path||'/');return id};
+SIM21.wsSend=(id,text)=>{if(!N21.sock[id])return false;netEvent21('wsmsg',id,null,String(text));return true};
+SIM21.wsClose=(id)=>{if(!N21.sock[id])return false;delete N21.sock[id];netEvent21('wsclose',id,null,'');return true};
+SIM21.wsLog=id=>(N21.log['ws:'+id]||[]).slice();
+/* ---- external HTTP request, TCP/UDP injection (panel) ---- */
+SIM21.httpRequest=async(method,target,body)=>{const L=Object.values(N21.sock).find(s=>s.kind==='http');if(!L)return{status:0,body:'(no HTTP server is listening)'};
+  const qi=target.indexOf('?');return httpServe21(L,method.toUpperCase(),qi<0?target:target.slice(0,qi),qi<0?'':target.slice(qi+1),body||'')};
+SIM21.tcpConnect=(port)=>{const lid=N21.port['tcp'+port],L=lid&&N21.sock[lid];if(!L||L.kind!=='listen')return null;const cid='ext'+(++N21.seq),sid=`${L.id.slice(0,24)}.${++N21.seq}`;
+  sAdd21('conn',cid,{peer:sid,ext:1});sAdd21('conn',sid,{peer:cid});if(N21.has.connection)netEvent21('connection',L.id,sid,'');else if(L.pend.length<16)L.pend.push(sid);return cid};
+SIM21.tcpSend=(cid,text)=>{const s=N21.sock[cid],p=s&&N21.sock[s.peer];if(!p)return false;const b=Array.from(ENC21.encode(text));if(N21.has.data)netEvent21('data',p.id,null,text);else p.buf.push(...b);return true};
+SIM21.tcpClose=cid=>closeSock21(cid);
+SIM21.tcpLog=id=>(N21.log['tcp:'+id]||[]).slice();
+
+/* ---- MQTT: one virtual broker, reachable at any host name (there is no real network in a browser) ---- */
+const mqMatch21=(f,t)=>{const F=f.split('/'),T=t.split('/');for(let i=0;i<F.length;i++){if(F[i]==='#')return i===F.length-1&&!(i===0&&t[0]==='$');if(i>=T.length)return false;if(F[i]==='+'){if(i===0&&t[0]==='$')return false;continue}if(F[i]!==T[i])return false}return F.length===T.length};
+function mqDeliver21(topic,payload){for(const [id,c] of Object.entries(N21.mq.conns))if([...c.subs].some(f=>mqMatch21(f,topic)))netEvent21('message',id,topic,payload)}
+SIM21.mqttPublish=(topic,payload,retain)=>{if(retain){if(payload==='')delete N21.mq.ret[topic];else N21.mq.ret[topic]=payload}nlog21('mqtt','> '+topic+' = '+payload);mqDeliver21(topic,payload)};
+X21.mqtt=async(x)=>{
+  netPanel21();const w=x.h[1]||'',wl=w.toLowerCase(),id=netId21(x);
+  if(wl==='connect'){
+    const ho=og(x,'host');if(ho===null)throw'Mqtt: Host is missing';const port=oint21(x,'port',1883),ka=oint21(x,'keepalive',30);oint21(x,'timeout',5000);
+    if(port<1||port>65535)throw'Mqtt: Port must be 1-65535';if(ka<0||ka>65535)throw'Mqtt: Keepalive must be 0-65535 seconds';
+    const uo=og(x,'user'),po=og(x,'pass');if(po!==null&&uo===null)throw'Mqtt: Pass needs User';
+    const r=sAdd21('mqtt',id,{});if(r)throw r===-2?'Net: the Id is already in use':'Net: too many open sockets';N21.mq.conns[id]={subs:new Set()};nlog21('mqtt','* '+id+' connected');return 1}
+  const s=N21.sock[id];if(!s||s.kind!=='mqtt')throw`Mqtt: '${id}' is not connected`;
+  if(wl==='close'){delete N21.sock[id];delete N21.mq.conns[id];return 1}
+  const to=og(x,'topic');if(to===null)throw'Mqtt: Topic is missing';const topic=fm(to),tl=ENC21.encode(topic).length;if(tl<1||tl>65535)throw'Mqtt: Topic must be 1-65535 bytes';
+  if(wl==='publish'){if(/[+#]/.test(topic))throw'Mqtt:Publish: the Topic cannot contain + or # (they are for Subscribe)';const b=bytes21(x,1<<20),retain=oint21(x,'retain',0)!==0;SIM21.mqttPublish(topic,sText21(b),retain);return 1}
+  if(wl==='subscribe'){const c=N21.mq.conns[id];c.subs.add(topic);for(const [t,p] of Object.entries(N21.mq.ret))if(mqMatch21(topic,t))netEvent21('message',id,t,p);return 1}
+  if(wl==='unsubscribe'){N21.mq.conns[id].subs.delete(topic);return 1}
+  throw`Unknown Mqtt operation: ${w} (valid: Connect, Subscribe, Unsubscribe, Publish, Close)`};
+
+/* ---------------------------------------------------------------- On:Pin / On:Net registration */
+X21.on=async(x,fl)=>{
+  const nm=(x.h[1]||'').toLowerCase();
+  if(nm==='pin'){
+    const pn=x.a.length?Math.trunc(+ev(x.a[0])):-1;if(!(pn>=0&&pn<64))throw'On:Pin needs a pin number 0-63, for example On:Pin(5)("Rising")';
+    const ed=(x.o.length?x.o[0][0]:'Change').toLowerCase();if(ed!=='rising'&&ed!=='falling'&&ed!=='change')throw'On:Pin: use Rising, Falling or Change';
+    if(R.hd.length>=64)throw'Too many event handlers';
+    R.hd.push({n:'pin:'+pn+':'+ed,b:x.body,sc:fl});P21.watch[pn]=(P21.watch[pn]||0)+1;$('#pins').hidden=false;return 1}
+  if(nm==='net'){
+    const en=(x.o.length?x.o[0][0]:'').toLowerCase(),sub=NE21[en];if(!sub)throw NEMSG21;if(R.hd.length>=64)throw'Too many event handlers';
+    netPanel21();R.hd.push({n:'net:'+sub,b:x.body,sc:fl});N21.has[sub]++;return 1}
+  return 0};
+
+/* ---------------------------------------------------------------- the panel "Network (simulated)" */
+(function(){
+  const css=document.createElement('style');css.textContent='#n21{position:fixed;right:8px;bottom:8px;width:330px;max-width:calc(100vw - 16px);max-height:60vh;overflow:auto;background:#10151c;color:#cfe;border:1px solid #345;border-radius:8px;font:12px ui-monospace,Menlo,Consolas,monospace;z-index:50;padding:6px}#n21 h4{margin:6px 0 3px;font-size:12px;color:#7fd}#n21 input,#n21 select{background:#0b0f14;color:#cfe;border:1px solid #345;border-radius:4px;padding:2px 4px;font:inherit;max-width:100%}#n21 button{background:#1d3a2f;color:#cfe;border:1px solid #3a6;border-radius:4px;padding:2px 6px;font:inherit;cursor:pointer}#n21 pre{margin:2px 0;white-space:pre-wrap;max-height:90px;overflow:auto;background:#0b0f14;padding:3px;border-radius:4px}#n21 small{color:#8ab}';
+  document.head.appendChild(css);
+  const d=document.createElement('div');d.id='n21';d.hidden=true;
+  d.innerHTML='<b>Network (simulated)</b> <button id="n21min" title="minimize">–</button> <small>no real network: everything stays in this browser</small><div id="n21c">'+
+   '<h4>HTTP request to your server</h4><select id="n21m"><option>GET</option><option>POST</option></select> <input id="n21p" value="/" size="14"> <input id="n21b" placeholder="body" size="10"> <button id="n21h">Send</button><pre id="n21ho"></pre>'+
+   '<h4>WebSocket browser</h4><input id="n21wp" value="/" size="8"> <button id="n21wc">Connect</button> <button id="n21wx">Close</button><br><input id="n21wm" placeholder="message" size="16"> <button id="n21ws">Send</button><pre id="n21wo"></pre>'+
+   '<h4>TCP client</h4><input id="n21tp" placeholder="port" size="6"> <button id="n21tc">Connect</button> <button id="n21tx">Close</button><br><input id="n21tm" placeholder="text" size="16"> <button id="n21ts">Send</button><pre id="n21to"></pre>'+
+   '<h4>MQTT: publish as another client</h4><input id="n21qt" placeholder="topic" size="12"> <input id="n21qp" placeholder="payload" size="10"> <label><input type="checkbox" id="n21qr">retain</label> <button id="n21qb">Publish</button><pre id="n21qo"></pre></div>';
+  document.body.appendChild(d);
+  let wsId=null,tcpId=null;const q=s=>d.querySelector(s);
+  SIM21.refresh=()=>{if(!d)return;if(wsId)q('#n21wo').textContent=SIM21.wsLog(wsId).join('\n');q('#n21qo').textContent=(N21.log.mqtt||[]).slice(-8).join('\n');if(tcpId)q('#n21to').textContent=(SIM21.tcpLog&&SIM21.tcpLog(tcpId)||[]).join('\n')};
+  q('#n21min').onclick=()=>{const c=q('#n21c');c.hidden=!c.hidden;q('#n21min').textContent=c.hidden?'+':'–'};
+  q('#n21h').onclick=async()=>{const r=await SIM21.httpRequest(q('#n21m').value,q('#n21p').value,q('#n21b').value);q('#n21ho').textContent=r.status+' '+r.body};
+  q('#n21wc').onclick=()=>{wsId=SIM21.wsConnect(q('#n21wp').value);q('#n21wo').textContent=wsId?'connected as '+wsId:'(no On:Net("WsOpen") or ("WsMessage") handler: 404)'};
+  q('#n21ws').onclick=()=>{if(wsId){nlog21('ws:'+wsId,'> '+q('#n21wm').value);SIM21.wsSend(wsId,q('#n21wm').value)}};
+  q('#n21wx').onclick=()=>{if(wsId){SIM21.wsClose(wsId);wsId=null}};
+  q('#n21tc').onclick=()=>{tcpId=SIM21.tcpConnect(+q('#n21tp').value);q('#n21to').textContent=tcpId?'connected':'(connection refused)'};
+  q('#n21ts').onclick=()=>{if(tcpId)SIM21.tcpSend(tcpId,q('#n21tm').value)};
+  q('#n21tx').onclick=()=>{if(tcpId){SIM21.tcpClose(tcpId);tcpId=null}};
+  q('#n21qb').onclick=()=>SIM21.mqttPublish(q('#n21qt').value,q('#n21qp').value,q('#n21qr').checked);
+})();
+
 </script></body></html>
