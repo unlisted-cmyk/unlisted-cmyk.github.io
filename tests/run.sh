@@ -43,6 +43,8 @@ run_case e10_http_noperm    e10_http_noperm.log+
 run_case x01_example_motor   ../docs/examples/motor_mosfet.log++ --check
 run_case x02_example_hbridge ../docs/examples/hbridge.log++ --check
 run_case x03_example_servo   ../docs/examples/servo.log++ --check
+run_case x04_example_pwm_led ../docs/examples/pwm_led.log++ --check
+run_case x05_example_button ../docs/examples/button_event.log++ --check
 run_case e11_net_badops     e11_net_badops.log+ --check
 RT=1 run_case t12_pwm_virtual    t12_pwm_virtual.log+
 RT=1 run_case t14_onpin_virtual  t14_onpin_virtual.log+
