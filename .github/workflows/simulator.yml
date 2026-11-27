@@ -1,0 +1,30 @@
+# Tests of the simulator (index.html) in a real browser (headless Chromium). It does not publish anything and does not block releases.
+# Runs when index.html or the tests change, and by hand ("Run workflow").
+name: simulator
+on:
+  push:
+    paths: ['index.html', 'tests/sim_*.py', 'tests/*.out', 'tests/t*.log*', 'tests/e*.log*']
+  workflow_dispatch:
+
+jobs:
+  simulator:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Playwright and Chromium
+        run: |
+          pip install playwright
+          playwright install --with-deps chromium
+      # Same programs as logl: the simulator must print what logl printed (tests/*.out were produced by logl)
+      - name: Parity with logl
+        run: python3 tests/sim_parity.py index.html
+      - name: Simulated network, MQTT, WebSocket, pin events
+        run: python3 tests/sim_features.py index.html
+      - name: Circuits mode (PWM brightness, push button, every example)
+        run: |
+          python3 tests/sim_circuit_pwm.py index.html
+          python3 tests/sim_circuit_button.py index.html
+          python3 tests/sim_examples.py index.html
