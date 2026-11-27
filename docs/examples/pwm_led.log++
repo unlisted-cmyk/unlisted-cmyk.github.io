@@ -1,0 +1,24 @@
+<log++>
+// PWM dimmer: LED + resistor on G13 (Circuits mode: Examples > "PWM dimmable LED"). The duty goes 0..100..0 %.
+// In the simulator's Circuits mode the LED shows the AVERAGE brightness of the PWM.
+Setup
+{
+    Pin:13("Output")
+    Pin:13("PWM;500","Duty;0")
+    Var:d("Value;0")
+    Var:dir("Value;5")
+}
+Loop
+{
+    Pin:13("Duty;d")
+    If(d>=100)
+    {
+        Set:dir("Value;-5")
+    }
+    If(d<=0)
+    {
+        Set:dir("Value;5")
+    }
+    d += dir
+    Wait("ms;50")
+}

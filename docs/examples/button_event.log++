@@ -1,0 +1,24 @@
+<log++>
+// Button event: push button between 3V3 and G14, LED + resistor on G13 (Circuits mode: Examples > "Button event").
+// On:Pin runs its block when the pin changes: no need to poll the button in a loop.
+Setup
+{
+    Pin:14("Input;PullDown")
+    Pin:13("Output")
+    Pin:13("Safe;Low")
+    Var:n("Value;0")
+    On:Pin(14)("Rising")
+    {
+        n += 1
+        Print("pressed {n} times")
+        Pin:13("Set;High")
+    }
+    On:Pin(14)("Falling")
+    {
+        Pin:13("Set;Low")
+    }
+}
+Loop
+{
+    Wait("ms;100")
+}
